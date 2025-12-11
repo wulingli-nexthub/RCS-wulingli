@@ -75,12 +75,18 @@ namespace Graphic
             this.MouseMove += Form1_MouseMove;          //鼠标移动
             this.MouseUp += Form1_MouseUp;              //鼠标弹起
             this.FormClosing += Form1_FormClosing;
+            this.Resize += Form1_Resize;
 
             // 启动后台线程，用线程＋sleep实现定时器
             _isRunning = true;
             _workerThread = new Thread(_Thread_Loop);
             _workerThread.IsBackground = true;
             _workerThread.Start();
+        }
+
+        private void Form1_Resize(object sender, EventArgs e)
+        {
+            CentreGrid();
         }
 
         //窗体关闭时，安全停止线程
@@ -200,14 +206,8 @@ namespace Graphic
             }
         }
 
-        /// <summary>
-        /// 窗体加载，确保每次运行网格处于屏幕中心
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Form1_Load(object sender, EventArgs e)
+        private void CentreGrid()
         {
-
             // 可用的屏幕大小（像素），这里直接用 ClientSize
             int clientWidth = this.ClientSize.Width;
             int clientHeight = this.ClientSize.Height;
@@ -240,6 +240,12 @@ namespace Graphic
             _initialOffsetY = _offsetY;
 
             this.Invalidate();   // 重绘
+        }
+
+        // 窗体加载时，居中显示网格
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            CentreGrid();
         }
 
         // 世界坐标(米) -> 屏幕坐标(像素)
