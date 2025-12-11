@@ -86,7 +86,20 @@ namespace Graphic
 
         private void Form1_Resize(object sender, EventArgs e)
         {
-            CentreGrid();
+            int clientWidth = this.ClientSize.Width;
+            int clientHeight = this.ClientSize.Height;
+            if (clientWidth <= 0 || clientHeight <= 0)
+                return;
+
+            // 当前缩放下，整个世界网格区域在屏幕上的像素宽高
+            double gridPixelWidth = _worldWidthM * _scale;
+            double gridPixelHeight = _worldHeightM * _scale;
+
+            // 让左上角偏移重新计算成居中
+            _offsetX = (clientWidth - gridPixelWidth) / 2.0;
+            _offsetY = (clientHeight - gridPixelHeight) / 2.0;
+
+            this.Invalidate();
         }
 
         //窗体关闭时，安全停止线程
