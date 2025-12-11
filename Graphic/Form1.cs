@@ -36,10 +36,7 @@ namespace Graphic
 
         //机器人的初始速度和加速度
         private double _robotSpeed = 1.5;
-        private double _robotVx = 1.5;
-        private double _robotAx = 0.0;
-        private double _robotVy = 0.0;
-        private double _robotAy = 0.0;
+        private double _robotAcc = 0;
 
         //机器人移动方向枚举
         private enum EnumMoveDirection
@@ -138,35 +135,34 @@ namespace Graphic
             lock (_robotLock)
             {
                 // 速度更新
-                _robotVx += _robotAx * _dt;
-                _robotVy += _robotAy * _dt;
-                _robotSpeed = Math.Sqrt(_robotVx * _robotVx + _robotVy * _robotVy);
+                _robotSpeed += _robotAcc * _dt;
 
+                if (_robotSpeed < 0)
+                {
+                    _robotSpeed = 0;
+                }
+
+                // 根据方向，用 robotSpeed 更新位置
                 switch (_moveDirection)
                 {
                     case EnumMoveDirection.Right:
-                        _robotVx = Math.Abs(_robotSpeed);
-                        _robotVy = 0.0;
+                        _robotX += _robotSpeed * _dt;
                         break;
-                    case EnumMoveDirection.Down:
-                        _robotVx = 0.0;
-                        _robotVy = Math.Abs(_robotSpeed);
-                        break;
+
                     case EnumMoveDirection.Left:
-                        _robotVx = -Math.Abs(_robotSpeed);
-                        _robotVy = 0.0;
+                        _robotX -= _robotSpeed * _dt;
                         break;
+
+                    case EnumMoveDirection.Down:
+                        _robotY += _robotSpeed * _dt;
+                        break;
+
                     case EnumMoveDirection.Up:
-                        _robotVx = 0.0;
-                        _robotVy = -Math.Abs(_robotSpeed);
+                        _robotY -= _robotSpeed * _dt;
                         break;
                 }
 
-                // 位置更新
-                _robotX += _robotVx * _dt;
-                _robotY += _robotVy * _dt;
-
-                // 根据位置决定是否转向
+                // 根据位置决定是否转向（右→下→左→上→右...）
                 switch (_moveDirection)
                 {
                     case EnumMoveDirection.Right:
@@ -176,6 +172,7 @@ namespace Graphic
                             _moveDirection = EnumMoveDirection.Down;
                         }
                         break;
+
                     case EnumMoveDirection.Down:
                         if (_robotY >= _worldHeightM)
                         {
@@ -183,6 +180,7 @@ namespace Graphic
                             _moveDirection = EnumMoveDirection.Left;
                         }
                         break;
+
                     case EnumMoveDirection.Left:
                         if (_robotX <= 0.0)
                         {
@@ -190,6 +188,7 @@ namespace Graphic
                             _moveDirection = EnumMoveDirection.Up;
                         }
                         break;
+
                     case EnumMoveDirection.Up:
                         if (_robotY <= 0.0)
                         {
@@ -313,7 +312,7 @@ namespace Graphic
                     robotX = _robotX;
                     robotY = _robotY;
                     robotV = _robotSpeed;
-                    robotA = _robotAx;
+                    robotA = _robotAcc;
                 }
 
                 string info = $"Scale: {_scale:F1} px/m   Offset: ({_offsetX:F0}, {_offsetY:F0})";
@@ -434,12 +433,7 @@ namespace Graphic
                 _robotY = 0.0;
 
                 _robotSpeed = 1.5;
-
-                _robotVx = _robotSpeed; // 向右
-                _robotVy = 0.0;
-
-                _robotAx = 0.0;
-                _robotAy = 0.0;
+                _robotAcc = 0.0;
 
                 _moveDirection = EnumMoveDirection.Right;
             }
@@ -455,7 +449,7 @@ namespace Graphic
         {
             lock (_robotLock)
             {
-                _robotAx = (double)((NumericUpDown)sender).Value;
+                _robotAcc = (double)((NumericUpDown)sender).Value;
             }
         }
 
