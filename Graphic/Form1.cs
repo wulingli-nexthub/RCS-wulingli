@@ -57,6 +57,22 @@ namespace Graphic
         private readonly object _robotLock = new object();
         //------------------------------机器人相关变量------------------------------//
 
+        // 世界坐标(米) -> 屏幕坐标(像素)
+        private PointF WorldToScreen(double wx, double wy)
+        {
+            float sx = (float)(wx * _scale + _offsetX);
+            float sy = (float)(wy * _scale + _offsetY);
+            return new PointF(sx, sy);
+        }
+
+        // 屏幕 -> 世界
+        private PointF ScreenToWorld(float sx, float sy)
+        {
+            float wx = (float)((sx - _offsetX) / _scale);
+            float wy = (float)((sy - _offsetY) / _scale);
+            return new PointF(wx, wy);
+        }
+
         public Form1()
         {
             InitializeComponent();
@@ -84,140 +100,10 @@ namespace Graphic
             _workerThread.Start();
         }
 
-        private void Form1_Resize(object sender, EventArgs e)
+        // 窗体加载时，居中显示网格
+        private void Form1_Load(object sender, EventArgs e)
         {
-            int clientWidth = this.ClientSize.Width;
-            int clientHeight = this.ClientSize.Height;
-
-            if (clientWidth <= 0 || clientHeight <= 0)
-                return;
-
-            // 当前缩放下，整个世界网格区域在屏幕上的像素宽高
-            double gridPixelWidth = _worldWidthM * _scale;
-            double gridPixelHeight = _worldHeightM * _scale;
-
-            // 让左上角偏移重新计算成居中
-            _offsetX = (clientWidth - gridPixelWidth) / 2.0;
-            _offsetY = (clientHeight - gridPixelHeight) / 2.0;
-
-            this.Invalidate();
-        }
-
-        //窗体关闭时，安全停止线程
-        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            _isRunning = false;
-            if (_workerThread != null && _workerThread.IsAlive)
-            {
-                // 等一会儿退出
-                _workerThread.Join(200);
-            }
-        }
-
-        /// <summary>
-        /// 线程主循环，相当于逻辑帧定时器
-        /// </summary>
-        private void _Thread_Loop()
-        {
-            while (_isRunning)
-            {
-                _Thread_UpdateRobot();
-
-                // 通知 UI 线程重绘
-                try
-                {
-                    if (!this.IsDisposed)
-                    {
-                        this.BeginInvoke(new Action(() =>
-                        {
-                            this.Invalidate();
-                        }));
-                    }
-                }
-                catch
-                {
-                    // 窗口关闭时可能抛异常，简单吞掉
-                }
-
-                // Thread.Sleep(_dt * 1000) 相当于一个简单“定时器”：每 20ms 触发一次逻辑更新
-                int sleepMs = (int)(_dt * 1000);
-                if (sleepMs < 1) sleepMs = 1;
-                Thread.Sleep(sleepMs);
-            }
-        }
-
-        /// <summary>
-        /// 机器人状态更新
-        /// </summary>
-        /// <param name="dt"></param>
-        private void _Thread_UpdateRobot()
-        {
-            lock (_robotLock)
-            {
-                // 速度更新
-                _robotSpeed += _robotAcc * _dt;
-
-                if (_robotSpeed < 0)
-                {
-                    _robotSpeed = 0;
-                }
-
-                // 根据方向，用 robotSpeed 更新位置
-                switch (_moveDirection)
-                {
-                    case EnumMoveDirection.Right:
-                        _robotX += _robotSpeed * _dt;
-                        break;
-
-                    case EnumMoveDirection.Left:
-                        _robotX -= _robotSpeed * _dt;
-                        break;
-
-                    case EnumMoveDirection.Down:
-                        _robotY += _robotSpeed * _dt;
-                        break;
-
-                    case EnumMoveDirection.Up:
-                        _robotY -= _robotSpeed * _dt;
-                        break;
-                }
-
-                // 根据位置决定是否转向（右→下→左→上→右...）
-                switch (_moveDirection)
-                {
-                    case EnumMoveDirection.Right:
-                        if (_robotX >= _worldWidthM)
-                        {
-                            _robotX = _worldWidthM;
-                            _moveDirection = EnumMoveDirection.Down;
-                        }
-                        break;
-
-                    case EnumMoveDirection.Down:
-                        if (_robotY >= _worldHeightM)
-                        {
-                            _robotY = _worldHeightM;
-                            _moveDirection = EnumMoveDirection.Left;
-                        }
-                        break;
-
-                    case EnumMoveDirection.Left:
-                        if (_robotX <= 0.0)
-                        {
-                            _robotX = 0.0;
-                            _moveDirection = EnumMoveDirection.Up;
-                        }
-                        break;
-
-                    case EnumMoveDirection.Up:
-                        if (_robotY <= 0.0)
-                        {
-                            _robotY = 0.0;
-                            _moveDirection = EnumMoveDirection.Right;
-                        }
-                        break;
-                }
-            }
+            CentreGrid();
         }
 
         private void CentreGrid()
@@ -256,26 +142,23 @@ namespace Graphic
             this.Invalidate();   // 重绘
         }
 
-        // 窗体加载时，居中显示网格
-        private void Form1_Load(object sender, EventArgs e)
+        private void Form1_Resize(object sender, EventArgs e)
         {
-            CentreGrid();
-        }
+            int clientWidth = this.ClientSize.Width;
+            int clientHeight = this.ClientSize.Height;
 
-        // 世界坐标(米) -> 屏幕坐标(像素)
-        private PointF WorldToScreen(double wx, double wy)
-        {
-            float sx = (float)(wx * _scale + _offsetX);
-            float sy = (float)(wy * _scale + _offsetY);
-            return new PointF(sx, sy);
-        }
+            if (clientWidth <= 0 || clientHeight <= 0)
+                return;
 
-        // 屏幕 -> 世界
-        private PointF ScreenToWorld(float sx, float sy)
-        {
-            float wx = (float)((sx - _offsetX) / _scale);
-            float wy = (float)((sy - _offsetY) / _scale);
-            return new PointF(wx, wy);
+            // 当前缩放下，整个世界网格区域在屏幕上的像素宽高
+            double gridPixelWidth = _worldWidthM * _scale;
+            double gridPixelHeight = _worldHeightM * _scale;
+
+            // 让左上角偏移重新计算成居中
+            _offsetX = (clientWidth - gridPixelWidth) / 2.0;
+            _offsetY = (clientHeight - gridPixelHeight) / 2.0;
+
+            this.Invalidate();
         }
 
         /// <summary>
@@ -375,6 +258,123 @@ namespace Graphic
         }
 
         /// <summary>
+        /// 机器人状态更新
+        /// </summary>
+        /// <param name="dt"></param>
+        private void _Thread_UpdateRobot()
+        {
+            lock (_robotLock)
+            {
+                // 速度更新
+                _robotSpeed += _robotAcc * _dt;
+
+                if (_robotSpeed < 0)
+                {
+                    _robotSpeed = 0;
+                }
+
+                // 根据方向，用 robotSpeed 更新位置
+                switch (_moveDirection)
+                {
+                    case EnumMoveDirection.Right:
+                        _robotX += _robotSpeed * _dt;
+                        break;
+
+                    case EnumMoveDirection.Left:
+                        _robotX -= _robotSpeed * _dt;
+                        break;
+
+                    case EnumMoveDirection.Down:
+                        _robotY += _robotSpeed * _dt;
+                        break;
+
+                    case EnumMoveDirection.Up:
+                        _robotY -= _robotSpeed * _dt;
+                        break;
+                }
+
+                // 根据位置决定是否转向（右→下→左→上→右...）
+                switch (_moveDirection)
+                {
+                    case EnumMoveDirection.Right:
+                        if (_robotX >= _worldWidthM)
+                        {
+                            _robotX = _worldWidthM;
+                            _moveDirection = EnumMoveDirection.Down;
+                        }
+                        break;
+
+                    case EnumMoveDirection.Down:
+                        if (_robotY >= _worldHeightM)
+                        {
+                            _robotY = _worldHeightM;
+                            _moveDirection = EnumMoveDirection.Left;
+                        }
+                        break;
+
+                    case EnumMoveDirection.Left:
+                        if (_robotX <= 0.0)
+                        {
+                            _robotX = 0.0;
+                            _moveDirection = EnumMoveDirection.Up;
+                        }
+                        break;
+
+                    case EnumMoveDirection.Up:
+                        if (_robotY <= 0.0)
+                        {
+                            _robotY = 0.0;
+                            _moveDirection = EnumMoveDirection.Right;
+                        }
+                        break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 线程主循环，相当于逻辑帧定时器
+        /// </summary>
+        private void _Thread_Loop()
+        {
+            while (_isRunning)
+            {
+                _Thread_UpdateRobot();
+
+                // 通知 UI 线程重绘
+                try
+                {
+                    if (!this.IsDisposed)
+                    {
+                        this.BeginInvoke(new Action(() =>
+                        {
+                            this.Invalidate();
+                        }));
+                    }
+                }
+                catch
+                {
+                    // 窗口关闭时可能抛异常，简单吞掉
+                }
+
+                // Thread.Sleep(_dt * 1000) 相当于一个简单“定时器”：每 20ms 触发一次逻辑更新
+                int sleepMs = (int)(_dt * 1000);
+                if (sleepMs < 1) sleepMs = 1;
+                Thread.Sleep(sleepMs);
+            }
+        }
+
+        //窗体关闭时，安全停止线程
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            _isRunning = false;
+            if (_workerThread != null && _workerThread.IsAlive)
+            {
+                // 等一会儿退出
+                _workerThread.Join(200);
+            }
+        }
+
+        /// <summary>
         /// 鼠标滚轮缩放
         /// </summary>
         /// <param name="sender"></param>
@@ -439,6 +439,22 @@ namespace Graphic
             }
         }
 
+        private void numericAcc_ValueChanged(object sender, EventArgs e)
+        {
+            lock (_robotLock)
+            {
+                _robotAcc = (double)((NumericUpDown)sender).Value;
+            }
+        }
+
+        private void numericVinit_ValueChanged(object sender, EventArgs e)
+        {
+            lock (_robotLock)
+            {
+                _robotSpeed = (double)((NumericUpDown)sender).Value;
+            }
+        }
+
         private void btnReset_Click(object sender, EventArgs e)
         {
             // 将当前缩放和偏移恢复到初始值
@@ -476,22 +492,6 @@ namespace Graphic
 
 
             this.Invalidate(); // 触发重绘
-        }
-
-        private void numericAcc_ValueChanged(object sender, EventArgs e)
-        {
-            lock (_robotLock)
-            {
-                _robotAcc = (double)((NumericUpDown)sender).Value;
-            }
-        }
-
-        private void numericVinit_ValueChanged(object sender, EventArgs e)
-        {
-            lock (_robotLock)
-            {
-                _robotSpeed = (double)((NumericUpDown)sender).Value;
-            }
         }
     }
 }
