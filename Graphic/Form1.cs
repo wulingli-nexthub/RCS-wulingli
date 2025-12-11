@@ -34,9 +34,23 @@ namespace Graphic
         private double _robotX = 0.0;
         private double _robotY = 0.0;
 
-        //机器人x方向的初始速度和加速度
+        //机器人的初始速度和加速度
+        private double _robotSpeed = 1.5;
         private double _robotVx = 1.5;
         private double _robotAx = 0.0;
+        private double _robotVy = 0.0;
+        private double _robotAy = 0.0;
+
+        //机器人移动方向枚举
+        private enum EnumMoveDirection
+        {
+            Right,
+            Left,
+            Down,
+            Up
+        }
+        //机器人当前移动方向
+        private EnumMoveDirection _moveDirection = EnumMoveDirection.Right;
 
         private readonly double _dt = 0.02;  //固定时间模拟步长0.02秒
 
@@ -125,20 +139,64 @@ namespace Graphic
             {
                 // 速度更新
                 _robotVx += _robotAx * _dt;
+                _robotVy += _robotAy * _dt;
+                _robotSpeed = Math.Sqrt(_robotVx * _robotVx + _robotVy * _robotVy);
+
+                switch (_moveDirection)
+                {
+                    case EnumMoveDirection.Right:
+                        _robotVx = Math.Abs(_robotSpeed);
+                        _robotVy = 0.0;
+                        break;
+                    case EnumMoveDirection.Down:
+                        _robotVx = 0.0;
+                        _robotVy = Math.Abs(_robotSpeed);
+                        break;
+                    case EnumMoveDirection.Left:
+                        _robotVx = -Math.Abs(_robotSpeed);
+                        _robotVy = 0.0;
+                        break;
+                    case EnumMoveDirection.Up:
+                        _robotVx = 0.0;
+                        _robotVy = -Math.Abs(_robotSpeed);
+                        break;
+                }
 
                 // 位置更新
                 _robotX += _robotVx * _dt;
+                _robotY += _robotVy * _dt;
 
-                // 在网格范围内往返（弹回）
-                if (_robotX < 0)
+                // 根据位置决定是否转向
+                switch (_moveDirection)
                 {
-                    _robotX = 0;
-                    _robotVx = -_robotVx;
-                }
-                else if (_robotX > _worldWidthM)
-                {
-                    _robotX = _worldWidthM;
-                    _robotVx = -_robotVx;
+                    case EnumMoveDirection.Right:
+                        if (_robotX >= _worldWidthM)
+                        {
+                            _robotX = _worldWidthM;
+                            _moveDirection = EnumMoveDirection.Down;
+                        }
+                        break;
+                    case EnumMoveDirection.Down:
+                        if (_robotY >= _worldHeightM)
+                        {
+                            _robotY = _worldHeightM;
+                            _moveDirection = EnumMoveDirection.Left;
+                        }
+                        break;
+                    case EnumMoveDirection.Left:
+                        if (_robotX <= 0.0)
+                        {
+                            _robotX = 0.0;
+                            _moveDirection = EnumMoveDirection.Up;
+                        }
+                        break;
+                    case EnumMoveDirection.Up:
+                        if (_robotY <= 0.0)
+                        {
+                            _robotY = 0.0;
+                            _moveDirection = EnumMoveDirection.Right;
+                        }
+                        break;
                 }
             }
         }
@@ -249,17 +307,17 @@ namespace Graphic
             using (var font = new Font("宋体", 10))
             using (var brush = new SolidBrush(Color.Black))
             {
-                double robotX, robotY, robotVx, robotAx;
+                double robotX, robotY, robotV, robotA;
                 lock (_robotLock)
                 {
                     robotX = _robotX;
                     robotY = _robotY;
-                    robotVx = _robotVx;
-                    robotAx = _robotAx;
+                    robotV = _robotSpeed;
+                    robotA = _robotAx;
                 }
 
                 string info = $"Scale: {_scale:F1} px/m   Offset: ({_offsetX:F0}, {_offsetY:F0})";
-                string infoRobot = $"Robot: x={robotX:F2}m, y={robotY:F2}m, v={robotVx:F2}m/s, a={robotAx:F2}m/s2";
+                string infoRobot = $"Robot: x={robotX:F2}m, y={robotY:F2}m, v={robotV:F2}m/s, a={robotA:F2}m/s2";
                 g.DrawString(info, font, brush, new PointF(10, 10));
                 g.DrawString(infoRobot, font, brush, new PointF(10, 25));
             }
@@ -370,10 +428,21 @@ namespace Graphic
             _offsetY = _initialOffsetY;
 
             //将机器人恢复到初始状态
-            _robotX = 0.0;
-            _robotY = 0.0;
-            _robotAx = 0.0;
-            _robotVx = 1.5;
+            lock (_robotLock)
+            {
+                _robotX = 0.0;
+                _robotY = 0.0;
+
+                _robotSpeed = 1.5;
+
+                _robotVx = _robotSpeed; // 向右
+                _robotVy = 0.0;
+
+                _robotAx = 0.0;
+                _robotAy = 0.0;
+
+                _moveDirection = EnumMoveDirection.Right;
+            }
 
             //将调节框恢复到初始状态
             numericAcc.Value = 0.0M;
@@ -394,7 +463,7 @@ namespace Graphic
         {
             lock (_robotLock)
             {
-                _robotVx = (double)((NumericUpDown)sender).Value;
+                _robotSpeed = (double)((NumericUpDown)sender).Value;
             }
         }
     }
