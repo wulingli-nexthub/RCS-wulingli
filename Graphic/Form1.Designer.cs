@@ -93,11 +93,6 @@
             0,
             65536});
             this.numericVinit.Location = new System.Drawing.Point(25, 181);
-            this.numericVinit.Minimum = new decimal(new int[] {
-            100,
-            0,
-            0,
-            -2147483648});
             this.numericVinit.Name = "numericVinit";
             this.numericVinit.Size = new System.Drawing.Size(120, 28);
             this.numericVinit.TabIndex = 6;
@@ -119,7 +114,7 @@
             this.Controls.Add(this.labelAcc);
             this.Controls.Add(this.btnReset);
             this.Name = "Form1";
-            this.Text = " RCS Ver2.4.2 吴灵丽";
+            this.Text = " RCS Ver2.4.3 吴灵丽";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
             this.ResumeLayout(false);
