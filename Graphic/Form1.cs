@@ -249,8 +249,17 @@ namespace Graphic
             using (var font = new Font("宋体", 10))
             using (var brush = new SolidBrush(Color.Black))
             {
+                double robotX, robotY, robotVx, robotAx;
+                lock (_robotLock)
+                {
+                    robotX = _robotX;
+                    robotY = _robotY;
+                    robotVx = _robotVx;
+                    robotAx = _robotAx;
+                }
+
                 string info = $"Scale: {_scale:F1} px/m   Offset: ({_offsetX:F0}, {_offsetY:F0})";
-                string infoRobot = $"Robot: x={_robotX:F2}m, y={_robotY:F2}m, v={_robotVx:F2}m/s, a={_robotAx:F2}m/s²";
+                string infoRobot = $"Robot: x={robotX:F2}m, y={robotY:F2}m, v={robotVx:F2}m/s, a={robotAx:F2}m/s2";
                 g.DrawString(info, font, brush, new PointF(10, 10));
                 g.DrawString(infoRobot, font, brush, new PointF(10, 25));
             }
@@ -262,14 +271,14 @@ namespace Graphic
         /// <param name="g"></param>
         private void DrawRobot(Graphics g)
         {
-            double x, y;
+            double robotX, robotY;
             lock (_robotLock)
             {
-                x = _robotX;
-                y = _robotY;
+                robotX = _robotX;
+                robotY = _robotY;
             }
 
-            PointF screenPos = WorldToScreen(_robotX, _robotY);
+            PointF screenPos = WorldToScreen(robotX, robotY);
 
             // 为保证机器人清晰，将像素设置为缩放大小的四分之一
             float radiusPx = (float)(_scale / 4);
@@ -375,12 +384,18 @@ namespace Graphic
 
         private void numericAcc_ValueChanged(object sender, EventArgs e)
         {
-            _robotAx = (double)((NumericUpDown)sender).Value;
+            lock (_robotLock)
+            {
+                _robotAx = (double)((NumericUpDown)sender).Value;
+            }
         }
 
         private void numericVinit_ValueChanged(object sender, EventArgs e)
         {
-            _robotVx = (double)((NumericUpDown)sender).Value;
+            lock (_robotLock)
+            {
+                _robotVx = (double)((NumericUpDown)sender).Value;
+            }
         }
     }
 }
