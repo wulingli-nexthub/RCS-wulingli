@@ -31,8 +31,8 @@ namespace Graphic
 
         //------------------------------机器人相关变量------------------------------//
         //机器人初始世界坐标
-        private double _robotX = 0.0;
-        private double _robotY = 0.0;
+        private double _robotX = CellSizeM / 2;
+        private double _robotY = CellSizeM / 2;
 
         //机器人的初始速度和加速度
         private double _robotSpeed = 1.5;
@@ -88,6 +88,7 @@ namespace Graphic
         {
             int clientWidth = this.ClientSize.Width;
             int clientHeight = this.ClientSize.Height;
+
             if (clientWidth <= 0 || clientHeight <= 0)
                 return;
 
@@ -357,7 +358,7 @@ namespace Graphic
             PointF screenPos = WorldToScreen(robotX, robotY);
 
             // 为保证机器人清晰，将像素设置为缩放大小的四分之一
-            float radiusPx = (float)(_scale / 4);
+            float radiusPx = (float)(_scale / 6);
 
             RectangleF rect = new RectangleF(
                 screenPos.X - radiusPx,
@@ -442,14 +443,26 @@ namespace Graphic
         {
             // 将当前缩放和偏移恢复到初始值
             _scale = _initialScale;
-            _offsetX = _initialOffsetX;
-            _offsetY = _initialOffsetY;
+
+            int clientWidth = this.ClientSize.Width;
+            int clientHeight = this.ClientSize.Height;
+
+            if (clientWidth <= 0 || clientHeight <= 0)
+                return;
+
+            // 当前缩放下，整个世界网格区域在屏幕上的像素宽高
+            double gridPixelWidth = _worldWidthM * _scale;
+            double gridPixelHeight = _worldHeightM * _scale;
+
+            // 让左上角偏移重新计算成居中
+            _offsetX = (clientWidth - gridPixelWidth) / 2.0;
+            _offsetY = (clientHeight - gridPixelHeight) / 2.0;
 
             //将机器人恢复到初始状态
             lock (_robotLock)
             {
-                _robotX = 0.0;
-                _robotY = 0.0;
+                _robotX = CellSizeM / 2;
+                _robotY = CellSizeM / 2;
 
                 _robotSpeed = 1.5;
                 _robotAcc = 0.0;
@@ -460,6 +473,7 @@ namespace Graphic
             //将调节框恢复到初始状态
             numericAcc.Value = 0.0M;
             numericVinit.Value = 1.5M;
+
 
             this.Invalidate(); // 触发重绘
         }
