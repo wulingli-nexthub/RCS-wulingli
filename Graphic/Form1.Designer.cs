@@ -96,11 +96,6 @@
             this.numericVinit.Name = "numericVinit";
             this.numericVinit.Size = new System.Drawing.Size(120, 28);
             this.numericVinit.TabIndex = 6;
-            this.numericVinit.Value = new decimal(new int[] {
-            15,
-            0,
-            0,
-            65536});
             this.numericVinit.ValueChanged += new System.EventHandler(this.numericVinit_ValueChanged);
             // 
             // Form1

@@ -36,6 +36,10 @@ namespace Graphic
         private readonly double _worldHeightM;
         private readonly double _cellSizeM;
 
+        public EnumMoveDirection TargetDirection { get; private set; }
+
+        public double HeadingAngleDeg { get; private set; }
+
         /// <summary>
         /// 构造函数，读取世界尺寸和单元格大小，确定机器人初始位置/速度/方向
         /// </summary>
@@ -52,9 +56,76 @@ namespace Graphic
             {
                 X = _cellSizeM / 2;
                 Y = _cellSizeM / 2;
-                Speed = 1.5;
+                Speed = 0.0;
                 Acc = 0.0;
                 Direction = EnumMoveDirection.Right;
+                TargetDirection = EnumMoveDirection.Right;
+                HeadingAngleDeg = 0.0;
+            }
+        }
+        public void TurnLeft()
+        {
+            lock (_lock)
+            {
+                switch (Direction)
+                {
+                    case EnumMoveDirection.Right:
+                        TargetDirection = EnumMoveDirection.Up;
+                        break;
+                    case EnumMoveDirection.Up:
+                        TargetDirection = EnumMoveDirection.Left;
+                        break;
+                    case EnumMoveDirection.Left:
+                        TargetDirection = EnumMoveDirection.Down;
+                        break;
+                    case EnumMoveDirection.Down:
+                        TargetDirection = EnumMoveDirection.Right;
+                        break;
+                    default:
+                        // 保持原有 TargetDirection
+                        break;
+                }
+            }
+        }
+
+        public void TurnRight()
+        {
+            lock (_lock)
+            {
+                switch (Direction)
+                {
+                    case EnumMoveDirection.Right:
+                        TargetDirection = EnumMoveDirection.Down;
+                        break;
+                    case EnumMoveDirection.Up:
+                        TargetDirection = EnumMoveDirection.Right;
+                        break;
+                    case EnumMoveDirection.Left:
+                        TargetDirection = EnumMoveDirection.Up;
+                        break;
+                    case EnumMoveDirection.Down:
+                        TargetDirection = EnumMoveDirection.Left;
+                        break;
+                    default:
+                        // 保持原有 TargetDirection
+                        break;
+                }
+            }
+        }
+
+        public void StartMoving(double speed)
+        {
+            lock (_lock)
+            {
+                Speed = 1.5;
+            }
+        }
+
+        public void StopMoving()
+        {
+            lock (_lock)
+            {
+                Speed = 0.0;
             }
         }
 
@@ -83,6 +154,18 @@ namespace Graphic
             lock (_lock)
             {
                 return (X, Y, Speed, Acc);
+            }
+        }
+
+        private static double DirectionToAngle(EnumMoveDirection dir)
+        {
+            switch (dir)
+            {
+                case EnumMoveDirection.Right: return 0.0;
+                case EnumMoveDirection.Down: return 90.0;
+                case EnumMoveDirection.Left: return 180.0;
+                case EnumMoveDirection.Up: return 270.0;
+                default: return 0.0;
             }
         }
 
@@ -149,6 +232,31 @@ namespace Graphic
                         }
                         break;
                 }
+
+                // 4. 朝向动画：HeadingAngleDeg 向目标方向角度平滑逼近
+                double targetAngle = DirectionToAngle(TargetDirection);
+                // 归一化误差到 [-180, 180]
+                double diff = targetAngle - HeadingAngleDeg;
+                while (diff > 180.0) diff -= 360.0;
+                while (diff < -180.0) diff += 360.0;
+
+                // 每秒旋转 180°（半圈），你可以根据需要调整转向速度
+                double turnSpeedDegPerSec = 180.0;
+                double maxStep = turnSpeedDegPerSec * dt;
+
+                if (System.Math.Abs(diff) <= maxStep)
+                {
+                    HeadingAngleDeg = targetAngle;
+                    // 当朝向完成后，把真正的运动方向也切成目标方向
+                    Direction = TargetDirection;
+                }
+                else
+                {
+                    HeadingAngleDeg += System.Math.Sign(diff) * maxStep;
+                    // 保持在 0~360
+                    if (HeadingAngleDeg < 0) HeadingAngleDeg += 360.0;
+                    if (HeadingAngleDeg >= 360.0) HeadingAngleDeg -= 360.0;
+                }
             }
         }
 
@@ -159,11 +267,11 @@ namespace Graphic
         /// </summary>
         public void Draw(Graphics g, DrawGrid grid)
         {
-            double x, y;
-            lock (_lock)
+            double x, y, heading;
             {
                 x = X;
                 y = Y;
+                heading = HeadingAngleDeg;
             }
 
             PointF screenPos = grid.WorldToScreen(x, y);
@@ -179,8 +287,19 @@ namespace Graphic
             using (var brush = new SolidBrush(Color.Red))
             using (var pen = new Pen(Color.Black, 1.5f))
             {
+                // 画圆形车身
                 g.FillEllipse(brush, rect);
                 g.DrawEllipse(pen, rect);
+
+                // 画指示朝向的小箭头（在圆外稍微伸出一截）
+                double rad = heading * System.Math.PI / 180.0;
+                float arrowLen = radiusPx * 1.2f;
+
+                var pHead = new PointF(
+                    screenPos.X + (float)(System.Math.Cos(rad) * arrowLen),
+                    screenPos.Y + (float)(System.Math.Sin(rad) * arrowLen));
+
+                g.DrawLine(pen, screenPos, pHead);
             }
         }
     }

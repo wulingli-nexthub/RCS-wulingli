@@ -49,6 +49,8 @@ namespace Graphic
                 }
             });
 
+            KeyPreview = true; // 让窗体优先接收键盘事件
+
             // 事件注册（也可以在 Designer 中绑定）
             Load += Form1_Load;
             Paint += Form1_Paint;
@@ -58,6 +60,46 @@ namespace Graphic
             MouseUp += Form1_MouseUp;
             FormClosing += Form1_FormClosing;
             Resize += Form1_Resize;
+            KeyDown += Form1_KeyDown;
+            KeyUp += Form1_KeyUp;
+        }
+
+        private void Form1_KeyUp(object sender, KeyEventArgs e)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.W:
+                case Keys.Up:
+                    // 松开 W/↑：停止前进
+                    _robot.StopMoving();
+                    break;
+            }
+        }
+
+        private void Form1_KeyDown(object sender, KeyEventArgs e)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.W:
+                case Keys.Up:
+                    // 按下 W/↑：开始按当前方向前进，
+                    // 使用数值框当前值作为速度（你也可以用固定 1.5）
+                    double v = (double)numericVinit.Value;
+                    _robot.StartMoving(v);
+                    break;
+
+                case Keys.A:
+                case Keys.Left:
+                    // 左转（只改目标方向，转向由动画完成）
+                    _robot.TurnLeft();
+                    break;
+
+                case Keys.D:
+                case Keys.Right:
+                    // 右转
+                    _robot.TurnRight();
+                    break;
+            }
         }
 
         /// <summary>
