@@ -53,6 +53,8 @@
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
     <Compile Include="Form1.DrawGrid.cs" />
+    <Compile Include="Form1.Robot.cs" />
+    <Compile Include="Form1.RobotSimulation.cs" />
     <Compile Include="Form1.WorldTransform.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
