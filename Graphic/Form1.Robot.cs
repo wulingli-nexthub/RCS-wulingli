@@ -37,7 +37,7 @@ namespace Graphic
         private readonly double _cellSizeM;
 
         /// <summary>
-        /// 构造函数，读取世界尺寸和单元格大小
+        /// 构造函数，读取世界尺寸和单元格大小，确定机器人初始位置/速度/方向
         /// </summary>
         /// <param name="cellSizeM"></param>
         /// <param name="worldWidthM"></param>
@@ -47,6 +47,15 @@ namespace Graphic
             _cellSizeM = cellSizeM;
             _worldWidthM = worldWidthM;
             _worldHeightM = worldHeightM;
+
+            lock (_lock)
+            {
+                X = _cellSizeM / 2;
+                Y = _cellSizeM / 2;
+                Speed = 1.5;
+                Acc = 0.0;
+                Direction = EnumMoveDirection.Right;
+            }
         }
 
         public void SetAcc(double acc)
