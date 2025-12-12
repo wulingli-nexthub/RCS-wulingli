@@ -188,23 +188,6 @@ namespace Graphic
             _offsetX = (clientWidth - gridPixelWidth) / 2.0;
             _offsetY = (clientHeight - gridPixelHeight) / 2.0;
 
-            //将机器人恢复到初始状态
-            lock (_robotLock)
-            {
-                _robotX = CellSizeM / 2;
-                _robotY = CellSizeM / 2;
-
-                _robotSpeed = 1.5;
-                _robotAcc = 0.0;
-
-                _moveDirection = EnumMoveDirection.Right;
-            }
-
-            //将调节框恢复到初始状态
-            numericAcc.Value = 0.0M;
-            numericVinit.Value = 1.5M;
-
-
             this.Invalidate(); // 触发重绘
         }
     }

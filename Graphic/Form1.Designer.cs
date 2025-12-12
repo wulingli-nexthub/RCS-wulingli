@@ -41,9 +41,9 @@
             // 
             this.btnReset.Location = new System.Drawing.Point(25, 69);
             this.btnReset.Name = "btnReset";
-            this.btnReset.Size = new System.Drawing.Size(77, 51);
+            this.btnReset.Size = new System.Drawing.Size(102, 51);
             this.btnReset.TabIndex = 0;
-            this.btnReset.Text = "重置";
+            this.btnReset.Text = "网格重置";
             this.btnReset.UseVisualStyleBackColor = true;
             this.btnReset.Click += new System.EventHandler(this.btnReset_Click);
             // 
@@ -114,7 +114,7 @@
             this.Controls.Add(this.labelAcc);
             this.Controls.Add(this.btnReset);
             this.Name = "Form1";
-            this.Text = " RCS Ver 2.4.9 吴灵丽";
+            this.Text = " RCS Ver 2.4.10 吴灵丽";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
             this.ResumeLayout(false);
