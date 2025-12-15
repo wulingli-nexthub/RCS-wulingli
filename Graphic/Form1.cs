@@ -62,6 +62,18 @@ namespace Graphic
             Resize += Form1_Resize;
             KeyDown += Form1_KeyDown;
             KeyUp += Form1_KeyUp;
+
+            numericAcc.KeyDown += numeric_KeyDown;
+            numericVinit.KeyDown += numeric_KeyDown;
+        }
+
+        private void numeric_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                this.ActiveControl = null; // 焦点离开数值框
+                e.Handled = true;
+            }
         }
 
         private void Form1_KeyUp(object sender, KeyEventArgs e)
