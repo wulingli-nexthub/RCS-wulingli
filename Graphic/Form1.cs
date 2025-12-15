@@ -31,7 +31,7 @@ namespace Graphic
             // 让窗体能先收到键盘事件
             this.KeyPreview = true;
 
-            DoubleBuffered = true;
+            DoubleBuffered = true;            // 启用双缓冲以及相关优化，减少闪烁
             SetStyle(ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.UserPaint |
                      ControlStyles.OptimizedDoubleBuffer, true);
@@ -40,11 +40,14 @@ namespace Graphic
             _robot = new Robot(_grid.CellSizeM, _grid.WorldWidthM, _grid.WorldHeightM);
             _view = new WorldTransform(_grid);
 
+            // 创建并启动仿真：
+            // - 定时调用 Robot.Update(Dt)
+            // - 每次更新后通过回调触发界面重绘
             _simulation = new RobotSimulation(_robot, Dt, () =>
             {
-                if (!IsDisposed)
+                if (!IsDisposed)                // 窗体未销毁时才重绘，避免退出时访问已销毁控件
                 {
-                    BeginInvoke(new Action(Invalidate));
+                    BeginInvoke(new Action(Invalidate));         // 在 UI 线程上异步调用 Invalidate 进行重绘
                 }
             });
 
@@ -57,7 +60,7 @@ namespace Graphic
             FormClosing += Form1_FormClosing;
             Resize += Form1_Resize;
 
-            // 新增：键盘事件
+            // 键盘控制机器人：前进/左转/右转
             KeyDown += Form1_KeyDown;
             KeyUp += Form1_KeyUp;
 
@@ -65,6 +68,11 @@ namespace Graphic
             numericVmax.KeyDown += numeric_KeyDown;
         }
 
+        /// <summary>
+        /// 重写数值框的回车键处理：
+        /// - 取消焦点，避免反复触发
+        /// - 标记事件已处理，防止系统发出“滴”声
+        /// </summary>
         private void numeric_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter)
@@ -74,6 +82,10 @@ namespace Graphic
             }
         }
 
+        /// <summary>
+        /// 键盘按下事件：处理前进 / 左转 / 右转。
+        /// 支持 WASD 与 方向键 两种习惯。
+        /// </summary>
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
             // 前进：W 或 Up
@@ -98,6 +110,9 @@ namespace Graphic
             }
         }
 
+        /// <summary>
+        /// 键盘抬起事件：处理停止前进。
+        /// </summary>
         private void Form1_KeyUp(object sender, KeyEventArgs e)
         {
             // 松开前进键：停止前进
@@ -111,8 +126,6 @@ namespace Graphic
         /// <summary>
         /// 首次加载时，根据当前 ClientSize 计算合适缩放并让网格居中。
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void Form1_Load(object sender, EventArgs e)
         {
             _view.CentreGrid(ClientSize.Width, ClientSize.Height);
@@ -121,8 +134,6 @@ namespace Graphic
         /// <summary>
         /// 窗体大小变化时，按当前缩放重新计算偏移，让网格始终居中显示。
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void Form1_Resize(object sender, EventArgs e)
         {
             _view.RecenterOnResize(ClientSize.Width, ClientSize.Height);
@@ -132,8 +143,6 @@ namespace Graphic
         /// <summary>
         /// 主绘制函数：网格 + 机器人 + 左上角状态文字。
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void Form1_Paint(object sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
@@ -159,8 +168,6 @@ namespace Graphic
         /// <summary>
         /// 鼠标滚轮缩放：以鼠标为中心进行放大/缩小。
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void Form1_MouseWheel(object sender, MouseEventArgs e)
         {
             _view.ZoomAt(e.Delta, e.X, e.Y);
@@ -170,8 +177,6 @@ namespace Graphic
         /// <summary>
         /// 左键按下开始拖动画布
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void Form1_MouseDown(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
@@ -185,8 +190,6 @@ namespace Graphic
         /// <summary>
         /// 鼠标移动：在拖动模式下偏移视图。
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void Form1_MouseMove(object sender, MouseEventArgs e)
         {
             if (_isPanning)
@@ -203,8 +206,6 @@ namespace Graphic
         /// <summary>
         /// 左键抬起时结束拖动。
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void Form1_MouseUp(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
@@ -217,8 +218,6 @@ namespace Graphic
         /// <summary>
         /// 窗体关闭：请求模拟线程安全退出
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
             _simulation.Stop();
@@ -227,8 +226,6 @@ namespace Graphic
         /// <summary>
         /// 加速度数值框变更：更新机器人加速度（m/s²）。
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void numericAcc_ValueChanged(object sender, EventArgs e)
         {
             _robot.SetAcc((double)((NumericUpDown)sender).Value);
@@ -237,8 +234,6 @@ namespace Graphic
         /// <summary>
         /// 初速度数值框变更：更新机器人当前速度（m/s）。
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void numericVmax_ValueChanged(object sender, EventArgs e)
         {
             _robot.SetMaxSpeed((double)((NumericUpDown)sender).Value);
@@ -247,8 +242,6 @@ namespace Graphic
         /// <summary>
         /// 重置按钮：重置网格到初始缩放/居中
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void btnReset_Click(object sender, EventArgs e)
         {
             _view.ResetAndCenter(ClientSize.Width, ClientSize.Height);

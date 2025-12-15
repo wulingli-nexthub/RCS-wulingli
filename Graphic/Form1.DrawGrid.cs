@@ -19,7 +19,12 @@ namespace Graphic
         public double InitialOffsetX { get; set; }
         public double InitialOffsetY { get; set; }
 
-        // 世界->屏幕
+        /// <summary>
+        /// 世界坐标->屏幕坐标
+        /// </summary>
+        /// <param name="wx">世界坐标X（米）</param>
+        /// <param name="wy">世界坐标Y（米）</param>
+        /// <returns>屏幕坐标点（像素）</returns>
         public PointF WorldToScreen(double wx, double wy)
         {
             float sx = (float)(wx * Scale + OffsetX);
@@ -27,7 +32,13 @@ namespace Graphic
             return new PointF(sx, sy);
         }
 
-        // 屏幕->世界
+        /// <summary>
+        /// 屏幕坐标 -> 世界坐标。
+        /// 和 WorldToScreen 互逆，通常用于拾取/缩放中心等操作。
+        /// </summary>
+        /// <param name="sx">屏幕 X（像素）</param>
+        /// <param name="sy">屏幕 Y（像素）</param>
+        /// <returns>世界坐标点（米）</returns>
         public PointF ScreenToWorld(float sx, float sy)
         {
             float wx = (float)((sx - OffsetX) / Scale);
@@ -36,16 +47,18 @@ namespace Graphic
         }
 
         /// <summary>
-        /// 绘制网格
+        /// 绘制网格：
+        /// - 按当前 Scale / Offset 将世界坐标网格线映射到屏幕
+        /// - 每 1 个 CellSizeM 画一条细线
+        /// - 每 5 个格子画一条粗线（方便分辨大网格）
         /// </summary>
-        /// <param name="g"></param>
+        /// <param name="g">GDI+ 画布对象</param>
         public void Draw(Graphics g)
         {
             using (var thinPen = new Pen(Color.LightGray, 1f))
             using (var thickPen = new Pen(Color.Gray, 1.5f))
             {
-                // 竖线
-                for (int i = 0; i <= GridCount; i++)
+                for (int i = 0; i <= GridCount; i++)                // 竖线
                 {
                     double xWorld = i * CellSizeM;
                     PointF p1 = WorldToScreen(xWorld, 0);
@@ -55,8 +68,7 @@ namespace Graphic
                     g.DrawLine(pen, p1, p2);
                 }
 
-                // 横线
-                for (int j = 0; j <= GridCount; j++)
+                for (int j = 0; j <= GridCount; j++)                // 横线
                 {
                     double yWorld = j * CellSizeM;
                     PointF p1 = WorldToScreen(0, yWorld);

@@ -30,9 +30,8 @@ namespace Graphic
         /// <summary>当前朝向对应的“离散大方向”</summary>
         public EnumMoveDirection Direction { get; private set; }
 
-        /// <summary>连续朝向角（弧度）：0 向右，顺时针为正</summary>
-        private double _orientationAngle;
-        private double _targetAngle;
+        private double _orientationAngle;  // 当前朝向角度（弧度制，连续）
+        private double _targetAngle;  // 目标朝向角度（弧度制，连续）
 
         // 世界边界
         private readonly double _worldWidthM;
@@ -45,6 +44,12 @@ namespace Graphic
         // ===== 键盘控制状态 =====
         private bool _isMovingForward;  // 是否正在前进
 
+        /// <summary>
+        /// 构造函数，初始化机器人在世界中的位置与运动参数
+        /// </summary>
+        /// <param name="cellSizeM"></param>
+        /// <param name="worldWidthM"></param>
+        /// <param name="worldHeightM"></param>
         public Robot(double cellSizeM, double worldWidthM, double worldHeightM)
         {
             _cellSizeM = cellSizeM;
@@ -53,11 +58,11 @@ namespace Graphic
 
             lock (_lock)
             {
-                X = _cellSizeM / 2;
+                X = _cellSizeM / 2;      // 初始位置在左上角第一个格子中心
                 Y = _cellSizeM / 2;
                 Speed = 0.0;
                 MaxSpeed = 1.5;
-                Acc = 1.5;             // 默认加速度，你也可以用 UI 控制
+                Acc = 0.0;
                 Direction = EnumMoveDirection.Right;
 
                 _orientationAngle = 0.0;   // 初始朝右
@@ -140,6 +145,11 @@ namespace Graphic
 
         #endregion
 
+        /// <summary>
+        /// 角度归一化到 (-π, π] 区间，避免数值越来越大或比较困难
+        /// </summary>
+        /// <param name="angle">任意弧度制角度</param>
+        /// <returns>等价的、位于 (-π, π] 的角度</returns>
         private static double NormalizeAngle(double angle)
         {
             while (angle <= -Math.PI) angle += 2.0 * Math.PI;
@@ -148,14 +158,15 @@ namespace Graphic
         }
 
         /// <summary>
-        /// 根据连续角度更新离散方向（用于保留 EnumMoveDirection）
+        /// 根据连续角度 _orientationAngle 更新离散方向枚举 Direction
+        /// 方便在 UI 或逻辑中按大方向使用 EnumMoveDirection
         /// </summary>
         private void UpdateDiscreteDirection()
         {
             // 把角度映射到 [-PI, PI)
             double a = NormalizeAngle(_orientationAngle);
 
-            // 按象限划分（简单实现，你也可以更精细）
+            // 按象限划分
             // -45°~45° => Right
             // 45°~135° => Down
             // -135°~-45° => Up
@@ -173,25 +184,31 @@ namespace Graphic
         }
 
         /// <summary>
-        /// Update：根据键盘状态更新位置和角度
+        /// 更新机器人状态（由定时器/游戏循环每帧调用）
+        /// - 平滑转向到目标角度
+        /// - 处理前进/停止逻辑与速度变化
+        /// - 按当前朝向与速度更新位置
+        /// - 做世界边界裁剪
+        /// - 更新离散方向枚举
         /// </summary>
+        /// <param name="dt">时间步长（秒），即距离上次 Update 的时间</param>
         public void Update(double dt)
         {
             lock (_lock)
             {
-                // 1. 朝目标角度平滑旋转（转向动画）
-                double delta = NormalizeAngle(_targetAngle - _orientationAngle);
+                double delta = NormalizeAngle(_targetAngle - _orientationAngle);                // 1. 朝目标角度平滑旋转
+
                 double maxStep = _turnSpeed * dt;   // 本帧最大可转角度
 
                 if (Math.Abs(delta) <= maxStep)
                 {
-                    // 已经接近目标，直接对齐
-                    _orientationAngle = _targetAngle;
+                    _orientationAngle = _targetAngle;                    // 已经接近目标，直接对齐
+
                 }
                 else
                 {
-                    // 按固定角速度向目标旋转
-                    if (delta > 0)
+                    if (delta > 0)                    // 按固定角速度向目标旋转
+
                         _orientationAngle += maxStep;
                     else
                         _orientationAngle -= maxStep;
@@ -199,8 +216,7 @@ namespace Graphic
                     _orientationAngle = NormalizeAngle(_orientationAngle);
                 }
 
-                // 2. 前进/速度
-                if (_isMovingForward)
+                if (_isMovingForward)   // 2. 前进/速度
                 {
                     Speed += Acc * dt;
                     if (Speed < 0) Speed = 0;
@@ -208,12 +224,10 @@ namespace Graphic
                 }
                 else
                 {
-                    // 松开前进键：立即停（也可做缓慢减速）
-                    Speed = 0;
+                    Speed = 0;                    // 松开前进键：立即停
                 }
 
-                // 3. 按朝向和速度更新位置
-                if (Speed > 0)
+                if (Speed > 0)                // 3. 按朝向和速度更新位置
                 {
                     double dx = Speed * Math.Cos(_orientationAngle) * dt;
                     double dy = Speed * Math.Sin(_orientationAngle) * dt;
@@ -221,22 +235,26 @@ namespace Graphic
                     X += dx;
                     Y += dy;
 
-                    // 4. 边界夹住，避免走出世界
-                    double half = _cellSizeM / 2.0;
+                    double half = _cellSizeM / 2.0;                    // 4. 边界夹住，避免走出世界
                     if (X < half) X = half;
                     if (Y < half) Y = half;
                     if (X > _worldWidthM - half) X = _worldWidthM - half;
                     if (Y > _worldHeightM - half) Y = _worldHeightM - half;
                 }
 
-                // 5. 更新离散方向枚举（保持 EnumMoveDirection 有意义）
-                UpdateDiscreteDirection();
+                UpdateDiscreteDirection();                // 5. 更新离散方向枚举
+
             }
         }
 
         /// <summary>
-        /// 绘制机器人（与原代码基本一致，只是 orientationAngle 来源不同）
+        /// 绘制机器人：
+        /// - 在网格坐标系下将世界坐标转换为屏幕坐标
+        /// - 画一个圆表示机器人本体
+        /// - 画一条线表示当前朝向箭头
         /// </summary>
+        /// <param name="g">绘图对象（来自 OnPaint 或 Paint 事件）</param>
+        /// <param name="grid">网格对象，用于世界坐标到屏幕坐标转换</param>
         public void Draw(Graphics g, DrawGrid grid)
         {
             double x, y, orientationAngle;
@@ -248,38 +266,38 @@ namespace Graphic
             }
 
             PointF screenPos = grid.WorldToScreen(x, y);
-            float radiusPx = (float)(grid.Scale / 6);
+            float radiusPx = (float)(grid.Scale / 6);           // 机器人半径，约为格子大小的1/3
 
-            RectangleF rect = new RectangleF(
+            RectangleF rect = new RectangleF(         // 机器人本体为圆形
                 screenPos.X - radiusPx,
                 screenPos.Y - radiusPx,
                 radiusPx * 2,
                 radiusPx * 2);
 
-            using (var brush = new SolidBrush(Color.Red))
+            using (var brush = new SolidBrush(Color.Red))              // 画出机器人主体
             using (var pen = new Pen(Color.Black, 1.5f))
             {
                 g.FillEllipse(brush, rect);
                 g.DrawEllipse(pen, rect);
             }
 
-            // 画方向箭头
-            float arrowTotalLen = radiusPx * 1.8f;
-            float arrowStartOffset = radiusPx * 0.3f;
-            float arrowLineWidth = Math.Max(1.0f, radiusPx * 0.12f);
+            // ===== 画方向箭头 =====
+            float arrowTotalLen = radiusPx * 1.8f;      // 箭头总长度
+            float arrowStartOffset = radiusPx * 0.3f;         // 箭头起点距离圆心的偏移
+            float arrowLineWidth = Math.Max(1.0f, radiusPx * 0.12f);      // 箭头线宽
 
-            float dirX = (float)Math.Cos(orientationAngle);
+            float dirX = (float)Math.Cos(orientationAngle);            // 根据朝向角计算单位方向向量
             float dirY = (float)Math.Sin(orientationAngle);
 
-            PointF pStart = new PointF(
+            PointF pStart = new PointF(          //箭头起点
                 screenPos.X + dirX * arrowStartOffset,
                 screenPos.Y + dirY * arrowStartOffset);
 
-            PointF pEnd = new PointF(
+            PointF pEnd = new PointF(         // 箭头终点
                 screenPos.X + dirX * arrowTotalLen,
                 screenPos.Y + dirY * arrowTotalLen);
 
-            using (var arrowPen = new Pen(Color.Black, arrowLineWidth))
+            using (var arrowPen = new Pen(Color.Black, arrowLineWidth))           // 画箭头线
             {
                 arrowPen.StartCap = System.Drawing.Drawing2D.LineCap.Round;
                 arrowPen.EndCap = System.Drawing.Drawing2D.LineCap.Round;
