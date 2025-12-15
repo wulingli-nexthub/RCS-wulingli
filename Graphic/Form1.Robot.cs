@@ -22,6 +22,11 @@ namespace Graphic
                     _robotSpeed = 0;
                 }
 
+                if (_robotSpeed > _robotMaxSpeed)
+                {
+                    _robotSpeed = _robotMaxSpeed;
+                }
+
                 // 根据方向，用 robotSpeed 更新位置
                 switch (_moveDirection)
                 {

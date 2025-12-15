@@ -35,7 +35,8 @@ namespace Graphic
         private double _robotY = CellSizeM / 2;
 
         //机器人的初始速度和加速度
-        private double _robotSpeed = 1.5;
+        private double _robotSpeed = 0;
+        private double _robotMaxSpeed = 1.5;
         private double _robotAcc = 0;
 
         //机器人移动方向枚举
@@ -161,14 +162,6 @@ namespace Graphic
             }
         }
 
-        private void numericVinit_ValueChanged(object sender, EventArgs e)
-        {
-            lock (_robotLock)
-            {
-                _robotSpeed = (double)((NumericUpDown)sender).Value;
-            }
-        }
-
         private void btnReset_Click(object sender, EventArgs e)
         {
             // 将当前缩放和偏移恢复到初始值
@@ -189,6 +182,14 @@ namespace Graphic
             _offsetY = (clientHeight - gridPixelHeight) / 2.0;
 
             this.Invalidate(); // 触发重绘
+        }
+
+        private void numericVmax_ValueChanged(object sender, EventArgs e)
+        {
+            lock (_robotLock)
+            {
+                _robotMaxSpeed = (double)((NumericUpDown)sender).Value;
+            }
         }
     }
 }
