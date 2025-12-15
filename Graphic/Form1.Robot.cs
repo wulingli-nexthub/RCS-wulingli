@@ -27,6 +27,7 @@ namespace Graphic
         public double X { get; private set; }
         public double Y { get; private set; }
         public double Speed { get; private set; }  // m/s，标量
+        public double DesiredSpeed { get; private set; }  // m/s，标量
         public double Acc { get; private set; }    // m/s^2，标量
 
         public EnumMoveDirection Direction { get; private set; }   // 当前运动方向（右→下→左→上循环）。
@@ -37,6 +38,7 @@ namespace Graphic
         private readonly double _cellSizeM;
 
         public EnumMoveDirection TargetDirection { get; private set; }
+        public bool IsMoving { get; private set; }   // 是否正在移动
 
         public double HeadingAngleDeg { get; private set; }
 
@@ -57,10 +59,12 @@ namespace Graphic
                 X = _cellSizeM / 2;
                 Y = _cellSizeM / 2;
                 Speed = 0.0;
+                DesiredSpeed = 1.5;
                 Acc = 0.0;
                 Direction = EnumMoveDirection.Right;
                 TargetDirection = EnumMoveDirection.Right;
                 HeadingAngleDeg = 0.0;
+                IsMoving = false;
             }
         }
         public void TurnLeft()
@@ -113,11 +117,12 @@ namespace Graphic
             }
         }
 
-        public void StartMoving(double speed)
+        public void StartMoving()
         {
             lock (_lock)
             {
-                Speed = 1.5;
+                Speed = DesiredSpeed;
+                IsMoving = true;
             }
         }
 
@@ -126,6 +131,7 @@ namespace Graphic
             lock (_lock)
             {
                 Speed = 0.0;
+                IsMoving = false;
             }
         }
 
@@ -141,7 +147,7 @@ namespace Graphic
         {
             lock (_lock)
             {
-                Speed = speed;
+                DesiredSpeed = speed;
             }
         }
 
@@ -181,6 +187,11 @@ namespace Graphic
             {
                 Speed += Acc * dt;                // 更新速度
                 if (Speed < 0) Speed = 0;
+
+                if (!IsMoving)
+                {
+                    return;
+                }
 
                 switch (Direction)                // 按当前方向移动
                 {

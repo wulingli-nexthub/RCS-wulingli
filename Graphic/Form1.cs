@@ -82,10 +82,8 @@ namespace Graphic
             {
                 case Keys.W:
                 case Keys.Up:
-                    // 按下 W/↑：开始按当前方向前进，
-                    // 使用数值框当前值作为速度（你也可以用固定 1.5）
-                    double v = (double)numericVinit.Value;
-                    _robot.StartMoving(v);
+                    // 按下 W/↑：开始按当前方向前
+                    _robot.StartMoving();
                     break;
 
                 case Keys.A:
