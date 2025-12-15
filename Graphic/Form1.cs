@@ -48,7 +48,6 @@ namespace Graphic
                 }
             });
 
-            // 原本就有的一堆事件...
             Load += Form1_Load;
             Paint += Form1_Paint;
             MouseWheel += Form1_MouseWheel;
@@ -59,8 +58,20 @@ namespace Graphic
             Resize += Form1_Resize;
 
             // 新增：键盘事件
-            this.KeyDown += Form1_KeyDown;
-            this.KeyUp += Form1_KeyUp;
+            KeyDown += Form1_KeyDown;
+            KeyUp += Form1_KeyUp;
+
+            numericAcc.KeyDown += numeric_KeyDown;
+            numericVmax.KeyDown += numeric_KeyDown;
+        }
+
+        private void numeric_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                this.ActiveControl = null; // 焦点离开数值框
+                e.Handled = true;
+            }
         }
 
         private void Form1_KeyDown(object sender, KeyEventArgs e)

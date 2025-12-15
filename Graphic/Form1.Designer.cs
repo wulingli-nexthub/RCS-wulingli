@@ -32,9 +32,9 @@
             this.labelAcc = new System.Windows.Forms.Label();
             this.numericAcc = new System.Windows.Forms.NumericUpDown();
             this.labelVinit = new System.Windows.Forms.Label();
-            this.numericVinit = new System.Windows.Forms.NumericUpDown();
+            this.numericVmax = new System.Windows.Forms.NumericUpDown();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.numericVmax)).BeginInit();
             this.SuspendLayout();
             // 
             // btnReset
@@ -84,39 +84,39 @@
             this.labelVinit.TabIndex = 5;
             this.labelVinit.Text = "最大速度";
             // 
-            // numericVinit
+            // numericVmax
             // 
-            this.numericVinit.DecimalPlaces = 1;
-            this.numericVinit.Increment = new decimal(new int[] {
+            this.numericVmax.DecimalPlaces = 1;
+            this.numericVmax.Increment = new decimal(new int[] {
             1,
             0,
             0,
             65536});
-            this.numericVinit.Location = new System.Drawing.Point(25, 181);
-            this.numericVinit.Name = "numericVinit";
-            this.numericVinit.Size = new System.Drawing.Size(120, 28);
-            this.numericVinit.TabIndex = 6;
-            this.numericVinit.Value = new decimal(new int[] {
+            this.numericVmax.Location = new System.Drawing.Point(25, 181);
+            this.numericVmax.Name = "numericVmax";
+            this.numericVmax.Size = new System.Drawing.Size(120, 28);
+            this.numericVmax.TabIndex = 6;
+            this.numericVmax.Value = new decimal(new int[] {
             15,
             0,
             0,
             65536});
-            this.numericVinit.ValueChanged += new System.EventHandler(this.numericVmax_ValueChanged);
+            this.numericVmax.ValueChanged += new System.EventHandler(this.numericVmax_ValueChanged);
             // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 18F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1221, 774);
-            this.Controls.Add(this.numericVinit);
+            this.Controls.Add(this.numericVmax);
             this.Controls.Add(this.labelVinit);
             this.Controls.Add(this.numericAcc);
             this.Controls.Add(this.labelAcc);
             this.Controls.Add(this.btnReset);
             this.Name = "Form1";
-            this.Text = " RCS Ver2.5.41 吴灵丽";
+            this.Text = " RCS Ver2.5.42 吴灵丽";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.numericVmax)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -128,7 +128,7 @@
         private System.Windows.Forms.Label labelAcc;
         private System.Windows.Forms.NumericUpDown numericAcc;
         private System.Windows.Forms.Label labelVinit;
-        private System.Windows.Forms.NumericUpDown numericVinit;
+        private System.Windows.Forms.NumericUpDown numericVmax;
     }
 }
 
