@@ -32,6 +32,7 @@ namespace Graphic
 
         /// <summary>连续朝向角（弧度）：0 向右，顺时针为正</summary>
         private double _orientationAngle;
+        private double _targetAngle;
 
         // 世界边界
         private readonly double _worldWidthM;
@@ -60,6 +61,7 @@ namespace Graphic
                 Direction = EnumMoveDirection.Right;
 
                 _orientationAngle = 0.0;   // 初始朝右
+                _targetAngle = 0.0;
             }
         }
 
@@ -120,9 +122,9 @@ namespace Graphic
         {
             lock (_lock)
             {
-                _orientationAngle -= Math.PI / 2.0;   // 逆时针 90°
-                _orientationAngle = NormalizeAngle(_orientationAngle);
-                UpdateDiscreteDirection();
+                // 目标角度在当前目标的基础上左转 90°
+                _targetAngle -= Math.PI / 2.0;
+                _targetAngle = NormalizeAngle(_targetAngle);
             }
         }
 
@@ -130,9 +132,9 @@ namespace Graphic
         {
             lock (_lock)
             {
-                _orientationAngle += Math.PI / 2.0;   // 顺时针 90°
-                _orientationAngle = NormalizeAngle(_orientationAngle);
-                UpdateDiscreteDirection();
+                // 目标角度在当前目标的基础上右转 90°
+                _targetAngle += Math.PI / 2.0;
+                _targetAngle = NormalizeAngle(_targetAngle);
             }
         }
 
@@ -177,6 +179,26 @@ namespace Graphic
         {
             lock (_lock)
             {
+                // 1. 朝目标角度平滑旋转（转向动画）
+                double delta = NormalizeAngle(_targetAngle - _orientationAngle);
+                double maxStep = _turnSpeed * dt;   // 本帧最大可转角度
+
+                if (Math.Abs(delta) <= maxStep)
+                {
+                    // 已经接近目标，直接对齐
+                    _orientationAngle = _targetAngle;
+                }
+                else
+                {
+                    // 按固定角速度向目标旋转
+                    if (delta > 0)
+                        _orientationAngle += maxStep;
+                    else
+                        _orientationAngle -= maxStep;
+
+                    _orientationAngle = NormalizeAngle(_orientationAngle);
+                }
+
                 // 2. 前进/速度
                 if (_isMovingForward)
                 {
