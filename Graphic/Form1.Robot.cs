@@ -1,4 +1,5 @@
-﻿using System.Drawing;
+﻿using System;
+using System.Drawing;
 
 namespace Graphic
 {
@@ -31,11 +32,14 @@ namespace Graphic
         public double Acc { get; private set; }    // m/s^2，标量
 
         public EnumMoveDirection Direction { get; private set; }   // 当前运动方向（右→下→左→上循环）。
+        public double _orientationAngle; // 方向角，度为单位，0度向右，顺时针增加。
+        public double _targetAngle;
 
         // 世界边界
         private readonly double _worldWidthM;
         private readonly double _worldHeightM;
         private readonly double _cellSizeM;
+        private readonly double _turnSpeed = Math.PI; // rad/s，转向速度
 
         /// <summary>
         /// 构造函数，读取世界尺寸和单元格大小，确定机器人初始位置/速度/方向
@@ -57,6 +61,10 @@ namespace Graphic
                 MaxSpeed = 1.5;
                 Acc = 0.0;
                 Direction = EnumMoveDirection.Right;
+
+                // 初始时面向右侧
+                _orientationAngle = 0.0;
+                _targetAngle = 0.0;
             }
         }
 
@@ -72,7 +80,42 @@ namespace Graphic
         {
             lock (_lock)
             {
+                if (speed < 0)
+                {
+                    speed = 0;
+                }
+
+                // 避免把速度设置到超过当前最大速度
+                if (speed > MaxSpeed)
+                {
+                    speed = MaxSpeed;
+                }
+
                 Speed = speed;
+            }
+        }
+
+        /// <summary>
+        /// 设置最大速度。如果当前速度大于新的最大速度，会被立刻夹到该上限；
+        /// 否则保持当前速度不变，由 Update 继续按加速度加速到新的上限。
+        /// </summary>
+        /// <param name="maxSpeed">新的最大速度（m/s），小于 0 会被当作 0 处理。</param>
+        public void SetMaxSpeed(double maxSpeed)
+        {
+            if (maxSpeed < 0)
+            {
+                maxSpeed = 0;
+            }
+
+            lock (_lock)
+            {
+                MaxSpeed = maxSpeed;
+
+                // 若当前速度超过新的上限，则立即夹到上限
+                if (Speed > MaxSpeed)
+                {
+                    Speed = MaxSpeed;
+                }
             }
         }
 
@@ -86,6 +129,44 @@ namespace Graphic
             {
                 return (X, Y, Speed, Acc);
             }
+        }
+
+        /// <summary>
+        /// 将离散方向枚举转换为目标朝向角度（弧度）
+        /// </summary>
+        private static double _DirectionToAngle(EnumMoveDirection direction)
+        {
+            switch (direction)
+            {
+                case EnumMoveDirection.Right:
+                    return 0.0;
+                case EnumMoveDirection.Down:
+                    return Math.PI / 2.0;
+                case EnumMoveDirection.Left:
+                    return Math.PI;
+                case EnumMoveDirection.Up:
+                    return -Math.PI / 2.0;
+                default:
+                    return 0.0;
+            }
+        }
+
+        /// <summary>
+        /// 将角度归一化到 (-π, π] 区间，便于计算最短旋转路径
+        /// </summary>
+        private static double _NormalizeAngle(double angle)
+        {
+            while (angle <= -Math.PI)
+            {
+                angle += 2.0 * Math.PI;
+            }
+
+            while (angle > Math.PI)
+            {
+                angle -= 2.0 * Math.PI;
+            }
+
+            return angle;
         }
 
         /// <summary>
@@ -118,39 +199,84 @@ namespace Graphic
                         break;
                 }
 
-                switch (Direction)                // 到达边界时转向（右→下→左→上→右）
+                // 3. 边界检测 + 改变离散方向
+                bool directionChanged = false;
+
+                switch (Direction)
                 {
                     case EnumMoveDirection.Right:
-                        if (X >= _worldWidthM - _cellSizeM / 2)
+                        if (X >= _worldWidthM - _cellSizeM / 2.0)
                         {
-                            X = _worldWidthM - _cellSizeM / 2;
+                            X = _worldWidthM - _cellSizeM / 2.0;
                             Direction = EnumMoveDirection.Down;
+                            directionChanged = true;
                         }
+
                         break;
 
                     case EnumMoveDirection.Down:
-                        if (Y >= _worldHeightM - _cellSizeM / 2)
+                        if (Y >= _worldHeightM - _cellSizeM / 2.0)
                         {
-                            Y = _worldHeightM - _cellSizeM / 2;
+                            Y = _worldHeightM - _cellSizeM / 2.0;
                             Direction = EnumMoveDirection.Left;
+                            directionChanged = true;
                         }
+
                         break;
 
                     case EnumMoveDirection.Left:
-                        if (X <= _cellSizeM / 2)
+                        if (X <= _cellSizeM / 2.0)
                         {
-                            X = _cellSizeM / 2;
+                            X = _cellSizeM / 2.0;
                             Direction = EnumMoveDirection.Up;
+                            directionChanged = true;
                         }
+
                         break;
 
                     case EnumMoveDirection.Up:
-                        if (Y <= _cellSizeM / 2)
+                        if (Y <= _cellSizeM / 2.0)
                         {
-                            Y = _cellSizeM / 2;
+                            Y = _cellSizeM / 2.0;
                             Direction = EnumMoveDirection.Right;
+                            directionChanged = true;
                         }
+
                         break;
+                }
+
+                // 4. 如果方向改变，更新目标角度
+                if (directionChanged)
+                {
+                    _targetAngle = _DirectionToAngle(Direction);
+                    _targetAngle = _NormalizeAngle(_targetAngle);
+                }
+
+                // 5. 将当前朝向角度朝目标角度平滑旋转（转向动画）
+                // 计算当前与目标之间的最短角度差
+                double delta = _NormalizeAngle(_targetAngle - _orientationAngle);
+
+                // 本帧最大可旋转角度
+                double maxStep = _turnSpeed * dt;
+
+                if (Math.Abs(delta) <= maxStep)
+                {
+                    // 已经很接近，直接对齐
+                    _orientationAngle = _targetAngle;
+                }
+                else
+                {
+                    // 按固定角速度向目标旋转
+                    if (delta > 0)
+                    {
+                        _orientationAngle += maxStep;
+                    }
+                    else
+                    {
+                        _orientationAngle -= maxStep;
+                    }
+
+                    _orientationAngle = _NormalizeAngle(_orientationAngle);
                 }
             }
         }
@@ -162,11 +288,12 @@ namespace Graphic
         /// </summary>
         public void Draw(Graphics g, DrawGrid grid)
         {
-            double x, y;
+            double x, y, orientationAngle;
             lock (_lock)
             {
                 x = X;
                 y = Y;
+                orientationAngle = _orientationAngle;
             }
 
             PointF screenPos = grid.WorldToScreen(x, y);
@@ -184,6 +311,37 @@ namespace Graphic
             {
                 g.FillEllipse(brush, rect);
                 g.DrawEllipse(pen, rect);
+            }
+
+            // ===== 画方向箭头：从圆心伸出一条细黑线，并在末端画小箭头头部 =====
+
+            // 箭头总长度：略长于圆半径
+            float arrowTotalLen = radiusPx * 1.8f;
+            // 箭头从圆内起始的位置（略偏外一点，看起来像从圆中伸出）
+            float arrowStartOffset = radiusPx * 0.3f;
+            float arrowLineWidth = Math.Max(1.0f, radiusPx * 0.12f);
+
+            // 面向方向单位向量
+            float dirX = (float)Math.Cos(orientationAngle);
+            float dirY = (float)Math.Sin(orientationAngle);
+
+            // 箭头起点：圆心沿方向正向偏移一段距离
+            PointF pStart = new PointF(
+                screenPos.X + dirX * arrowStartOffset,
+                screenPos.Y + dirY * arrowStartOffset);
+
+            // 箭头终点：比圆半径略长
+            PointF pEnd = new PointF(
+                screenPos.X + dirX * arrowTotalLen,
+                screenPos.Y + dirY * arrowTotalLen);
+
+            using (var arrowPen = new Pen(Color.Black, arrowLineWidth))
+            {
+                arrowPen.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+                arrowPen.StartCap = System.Drawing.Drawing2D.LineCap.Round;
+
+                // 主体箭头线
+                g.DrawLine(arrowPen, pStart, pEnd);
             }
         }
     }

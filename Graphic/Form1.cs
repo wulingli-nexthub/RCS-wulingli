@@ -193,7 +193,7 @@ namespace Graphic
         /// <param name="e"></param>
         private void numericVmax_ValueChanged(object sender, EventArgs e)
         {
-            _robot.SetSpeed((double)((NumericUpDown)sender).Value);
+            _robot.SetMaxSpeed((double)((NumericUpDown)sender).Value);
         }
 
         /// <summary>
