@@ -68,9 +68,19 @@ namespace Graphic
         /// </summary>
         private void _Thread_Loop()
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            double lastTime = 0.0;
+
             while (_isRunning)
             {
-                _robot.Update(_dt);
+                double now = sw.Elapsed.TotalSeconds;
+                double realDt = now - lastTime;
+                lastTime = now;
+
+                // 防止某一帧卡太久导致 dt 过大，可以夹一下
+                if (realDt > 0.1) realDt = 0.1;
+
+                _robot.Update(realDt);
 
                 try
                 {
@@ -78,10 +88,9 @@ namespace Graphic
                 }
                 catch
                 {
-                    // UI 已关闭可能抛异常，简单忽略
                 }
 
-                int sleepMs = (int)(_dt * 1000);
+                int sleepMs = (int)(_dt * 1000); // _dt 只用来控制大致频率
                 if (sleepMs < 1) sleepMs = 1;
                 Thread.Sleep(sleepMs);
             }

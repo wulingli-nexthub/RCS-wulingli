@@ -64,7 +64,7 @@ namespace Graphic
             KeyUp += Form1_KeyUp;
 
             numericAcc.KeyDown += numeric_KeyDown;
-            numericVinit.KeyDown += numeric_KeyDown;
+            numericVmax.KeyDown += numeric_KeyDown;
         }
 
         private void numeric_KeyDown(object sender, KeyEventArgs e)
@@ -238,12 +238,7 @@ namespace Graphic
             _robot.SetAcc((double)((NumericUpDown)sender).Value);
         }
 
-        /// <summary>
-        /// 初速度数值框变更：更新机器人当前速度（m/s）。
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void numericVinit_ValueChanged(object sender, EventArgs e)
+        private void numericVmax_ValueChanged(object sender, EventArgs e)
         {
             _robot.SetSpeed((double)((NumericUpDown)sender).Value);
         }
@@ -259,5 +254,6 @@ namespace Graphic
 
             Invalidate(); // 触发重绘
         }
+
     }
 }

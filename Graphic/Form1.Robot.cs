@@ -27,7 +27,7 @@ namespace Graphic
         public double X { get; private set; }
         public double Y { get; private set; }
         public double Speed { get; private set; }  // m/s，标量
-        public double DesiredSpeed { get; private set; }  // m/s，标量
+        public double MaxSpeed { get; private set; }  // m/s，标量
         public double Acc { get; private set; }    // m/s^2，标量
 
         public EnumMoveDirection Direction { get; private set; }   // 当前运动方向（右→下→左→上循环）。
@@ -59,7 +59,7 @@ namespace Graphic
                 X = _cellSizeM / 2;
                 Y = _cellSizeM / 2;
                 Speed = 0.0;
-                DesiredSpeed = 1.5;
+                MaxSpeed = 1.5;
                 Acc = 0.0;
                 Direction = EnumMoveDirection.Right;
                 TargetDirection = EnumMoveDirection.Right;
@@ -121,7 +121,7 @@ namespace Graphic
         {
             lock (_lock)
             {
-                Speed = DesiredSpeed;
+                Speed = 0.0;
                 IsMoving = true;
             }
         }
@@ -147,7 +147,7 @@ namespace Graphic
         {
             lock (_lock)
             {
-                DesiredSpeed = speed;
+                MaxSpeed = speed;
             }
         }
 
@@ -159,6 +159,8 @@ namespace Graphic
         {
             lock (_lock)
             {
+                // 临时调试：在输出窗口看速度是否还在持续变化
+                System.Diagnostics.Debug.WriteLine($"Speed={Speed:F4}, Acc={Acc:F4}, IsMoving={IsMoving}");
                 return (X, Y, Speed, Acc);
             }
         }
@@ -185,15 +187,42 @@ namespace Graphic
         {
             lock (_lock)
             {
-                Speed += Acc * dt;                // 更新速度
-                if (Speed < 0) Speed = 0;
+                // 1. 无论是否移动，都先更新朝向（支持原地转向）
+                UpdateHeading(dt);
 
+                // 2. 如果当前不在移动状态，则不更新速度/位置
                 if (!IsMoving)
                 {
                     return;
                 }
 
-                switch (Direction)                // 按当前方向移动
+                // 3. 在移动状态下，根据加速度更新速度
+                Speed += Acc * dt;
+
+                // 浮点误差兜底
+                const double epsilon = 1e-6;
+                if (Speed < 0.0 && Speed > -epsilon)
+                {
+                    Speed = 0.0;
+                }
+
+                if (Speed < 0.0)
+                {
+                    Speed = 0.0;
+                }
+
+                if (Speed > MaxSpeed)
+                {
+                    Speed = MaxSpeed;
+                }
+                // 如果速度为 0 且加速度<=0，则认为停下
+                if (Speed <= 0.0 && Acc <= 0.0)
+                {
+                    IsMoving = false;
+                    return;
+                }
+                // 5. 按当前方向和最新速度推进位置
+                switch (Direction)
                 {
                     case EnumMoveDirection.Right:
                         X += Speed * dt;
@@ -209,13 +238,13 @@ namespace Graphic
                         break;
                 }
 
-                switch (Direction)                // 到达边界时转向（右→下→左→上→右）
+                // 6. 边界检测
+                switch (Direction)
                 {
                     case EnumMoveDirection.Right:
                         if (X >= _worldWidthM - _cellSizeM / 2)
                         {
                             X = _worldWidthM - _cellSizeM / 2;
-                            Direction = EnumMoveDirection.Down;
                         }
                         break;
 
@@ -223,7 +252,6 @@ namespace Graphic
                         if (Y >= _worldHeightM - _cellSizeM / 2)
                         {
                             Y = _worldHeightM - _cellSizeM / 2;
-                            Direction = EnumMoveDirection.Left;
                         }
                         break;
 
@@ -231,7 +259,6 @@ namespace Graphic
                         if (X <= _cellSizeM / 2)
                         {
                             X = _cellSizeM / 2;
-                            Direction = EnumMoveDirection.Up;
                         }
                         break;
 
@@ -239,35 +266,37 @@ namespace Graphic
                         if (Y <= _cellSizeM / 2)
                         {
                             Y = _cellSizeM / 2;
-                            Direction = EnumMoveDirection.Right;
                         }
                         break;
                 }
+            }
+        }
 
-                // 4. 朝向动画：HeadingAngleDeg 向目标方向角度平滑逼近
-                double targetAngle = DirectionToAngle(TargetDirection);
-                // 归一化误差到 [-180, 180]
-                double diff = targetAngle - HeadingAngleDeg;
-                while (diff > 180.0) diff -= 360.0;
-                while (diff < -180.0) diff += 360.0;
+        /// <summary>
+        /// 根据 TargetDirection 更新 HeadingAngleDeg，实现平滑转向动画。
+        /// </summary>
+        private void UpdateHeading(double dt)
+        {
+            double targetAngle = DirectionToAngle(TargetDirection);
 
-                // 每秒旋转 180°（半圈），你可以根据需要调整转向速度
-                double turnSpeedDegPerSec = 180.0;
-                double maxStep = turnSpeedDegPerSec * dt;
+            // 归一化误差到 [-180, 180]
+            double diff = targetAngle - HeadingAngleDeg;
+            while (diff > 180.0) diff -= 360.0;
+            while (diff < -180.0) diff += 360.0;
 
-                if (System.Math.Abs(diff) <= maxStep)
-                {
-                    HeadingAngleDeg = targetAngle;
-                    // 当朝向完成后，把真正的运动方向也切成目标方向
-                    Direction = TargetDirection;
-                }
-                else
-                {
-                    HeadingAngleDeg += System.Math.Sign(diff) * maxStep;
-                    // 保持在 0~360
-                    if (HeadingAngleDeg < 0) HeadingAngleDeg += 360.0;
-                    if (HeadingAngleDeg >= 360.0) HeadingAngleDeg -= 360.0;
-                }
+            double turnSpeedDegPerSec = 180.0; // 转向速度（度/秒）
+            double maxStep = turnSpeedDegPerSec * dt;
+
+            if (System.Math.Abs(diff) <= maxStep)
+            {
+                HeadingAngleDeg = targetAngle;
+                Direction = TargetDirection;  // 朝向完成后，同步离散方向
+            }
+            else
+            {
+                HeadingAngleDeg += System.Math.Sign(diff) * maxStep;
+                if (HeadingAngleDeg < 0) HeadingAngleDeg += 360.0;
+                if (HeadingAngleDeg >= 360.0) HeadingAngleDeg -= 360.0;
             }
         }
 
