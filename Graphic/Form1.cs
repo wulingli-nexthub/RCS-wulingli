@@ -191,7 +191,7 @@ namespace Graphic
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void numericVinit_ValueChanged(object sender, EventArgs e)
+        private void numericVmax_ValueChanged(object sender, EventArgs e)
         {
             _robot.SetSpeed((double)((NumericUpDown)sender).Value);
         }

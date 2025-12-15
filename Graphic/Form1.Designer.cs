@@ -82,7 +82,7 @@
             this.labelVinit.Name = "labelVinit";
             this.labelVinit.Size = new System.Drawing.Size(80, 18);
             this.labelVinit.TabIndex = 5;
-            this.labelVinit.Text = "调节速度";
+            this.labelVinit.Text = "最大速度";
             // 
             // numericVinit
             // 
@@ -101,7 +101,7 @@
             0,
             0,
             65536});
-            this.numericVinit.ValueChanged += new System.EventHandler(this.numericVinit_ValueChanged);
+            this.numericVinit.ValueChanged += new System.EventHandler(this.numericVmax_ValueChanged);
             // 
             // Form1
             // 
@@ -114,7 +114,7 @@
             this.Controls.Add(this.labelAcc);
             this.Controls.Add(this.btnReset);
             this.Name = "Form1";
-            this.Text = " RCS Ver2.5.3 吴灵丽";
+            this.Text = " RCS Ver2.5.4 吴灵丽";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
             this.ResumeLayout(false);
