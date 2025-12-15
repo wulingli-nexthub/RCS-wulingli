@@ -86,14 +86,14 @@ namespace Graphic
             // 左转：A 或 Left
             if (e.KeyCode == Keys.A || e.KeyCode == Keys.Left)
             {
-                _robot.StartTurnLeft();
+                _robot.TurnLeft();
                 e.Handled = true;
             }
 
             // 右转：D 或 Right
             if (e.KeyCode == Keys.D || e.KeyCode == Keys.Right)
             {
-                _robot.StartTurnRight();
+                _robot.TurnRight();
                 e.Handled = true;
             }
         }
@@ -104,20 +104,6 @@ namespace Graphic
             if (e.KeyCode == Keys.W || e.KeyCode == Keys.Up)
             {
                 _robot.StopMoveForward();
-                e.Handled = true;
-            }
-
-            // 松开左转键：停止左转
-            if (e.KeyCode == Keys.A || e.KeyCode == Keys.Left)
-            {
-                _robot.StopTurnLeft();
-                e.Handled = true;
-            }
-
-            // 松开右转键：停止右转
-            if (e.KeyCode == Keys.D || e.KeyCode == Keys.Right)
-            {
-                _robot.StopTurnRight();
                 e.Handled = true;
             }
         }

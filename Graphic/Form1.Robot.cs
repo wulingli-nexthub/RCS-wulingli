@@ -43,8 +43,6 @@ namespace Graphic
 
         // ===== 键盘控制状态 =====
         private bool _isMovingForward;  // 是否正在前进
-        private bool _isTurningLeft;    // 是否正在原地左转
-        private bool _isTurningRight;   // 是否正在原地右转
 
         public Robot(double cellSizeM, double worldWidthM, double worldHeightM)
         {
@@ -118,24 +116,24 @@ namespace Graphic
             lock (_lock) { _isMovingForward = false; }
         }
 
-        public void StartTurnLeft()
+        public void TurnLeft()
         {
-            lock (_lock) { _isTurningLeft = true; }
+            lock (_lock)
+            {
+                _orientationAngle -= Math.PI / 2.0;   // 逆时针 90°
+                _orientationAngle = NormalizeAngle(_orientationAngle);
+                UpdateDiscreteDirection();
+            }
         }
 
-        public void StopTurnLeft()
+        public void TurnRight()
         {
-            lock (_lock) { _isTurningLeft = false; }
-        }
-
-        public void StartTurnRight()
-        {
-            lock (_lock) { _isTurningRight = true; }
-        }
-
-        public void StopTurnRight()
-        {
-            lock (_lock) { _isTurningRight = false; }
+            lock (_lock)
+            {
+                _orientationAngle += Math.PI / 2.0;   // 顺时针 90°
+                _orientationAngle = NormalizeAngle(_orientationAngle);
+                UpdateDiscreteDirection();
+            }
         }
 
         #endregion
@@ -179,17 +177,6 @@ namespace Graphic
         {
             lock (_lock)
             {
-                // 1. 处理转向（原地或边走边转）
-                if (_isTurningLeft && !_isTurningRight)
-                {
-                    _orientationAngle -= _turnSpeed * dt;
-                }
-                else if (_isTurningRight && !_isTurningLeft)
-                {
-                    _orientationAngle += _turnSpeed * dt;
-                }
-                _orientationAngle = NormalizeAngle(_orientationAngle);
-
                 // 2. 前进/速度
                 if (_isMovingForward)
                 {
