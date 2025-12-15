@@ -28,19 +28,18 @@ namespace Graphic
         {
             InitializeComponent();
 
-            DoubleBuffered = true;      // 开启双缓冲，减少GDI+重绘闪烁
+            // 让窗体能先收到键盘事件
+            this.KeyPreview = true;
+
+            DoubleBuffered = true;
             SetStyle(ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.UserPaint |
                      ControlStyles.OptimizedDoubleBuffer, true);
 
-
-            _grid = new DrawGrid();       // 组合各个功能类
+            _grid = new DrawGrid();
             _robot = new Robot(_grid.CellSizeM, _grid.WorldWidthM, _grid.WorldHeightM);
             _view = new WorldTransform(_grid);
 
-            // 后台模拟线程，
-            // - 内部线程每 Dt 秒推进一次机器人状态
-            // - 通过回调请求 UI 线程 Invalidate() 重绘
             _simulation = new RobotSimulation(_robot, Dt, () =>
             {
                 if (!IsDisposed)
@@ -49,7 +48,7 @@ namespace Graphic
                 }
             });
 
-            // 事件注册（也可以在 Designer 中绑定）
+            // 原本就有的一堆事件...
             Load += Form1_Load;
             Paint += Form1_Paint;
             MouseWheel += Form1_MouseWheel;
@@ -58,6 +57,58 @@ namespace Graphic
             MouseUp += Form1_MouseUp;
             FormClosing += Form1_FormClosing;
             Resize += Form1_Resize;
+
+            // 新增：键盘事件
+            this.KeyDown += Form1_KeyDown;
+            this.KeyUp += Form1_KeyUp;
+        }
+
+        private void Form1_KeyDown(object sender, KeyEventArgs e)
+        {
+            // 前进：W 或 Up
+            if (e.KeyCode == Keys.W || e.KeyCode == Keys.Up)
+            {
+                _robot.StartMoveForward();
+                e.Handled = true;
+            }
+
+            // 左转：A 或 Left
+            if (e.KeyCode == Keys.A || e.KeyCode == Keys.Left)
+            {
+                _robot.StartTurnLeft();
+                e.Handled = true;
+            }
+
+            // 右转：D 或 Right
+            if (e.KeyCode == Keys.D || e.KeyCode == Keys.Right)
+            {
+                _robot.StartTurnRight();
+                e.Handled = true;
+            }
+        }
+
+        private void Form1_KeyUp(object sender, KeyEventArgs e)
+        {
+            // 松开前进键：停止前进
+            if (e.KeyCode == Keys.W || e.KeyCode == Keys.Up)
+            {
+                _robot.StopMoveForward();
+                e.Handled = true;
+            }
+
+            // 松开左转键：停止左转
+            if (e.KeyCode == Keys.A || e.KeyCode == Keys.Left)
+            {
+                _robot.StopTurnLeft();
+                e.Handled = true;
+            }
+
+            // 松开右转键：停止右转
+            if (e.KeyCode == Keys.D || e.KeyCode == Keys.Right)
+            {
+                _robot.StopTurnRight();
+                e.Handled = true;
+            }
         }
 
         /// <summary>
