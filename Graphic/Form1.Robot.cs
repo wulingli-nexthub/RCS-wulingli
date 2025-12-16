@@ -17,6 +17,11 @@ namespace Graphic
         Up
     }
 
+    public enum EnumControlMode
+    {
+        Manual,
+        AutoCruise
+    }
     public class Robot
     {
         private readonly object _lock = new object();
@@ -45,6 +50,15 @@ namespace Graphic
         private bool _isMovingForward;  // 是否正在前进
         private bool _isTurning;
 
+        public EnumControlMode Mode { get; private set; } = EnumControlMode.Manual;
+
+        // ===== 自动巡航相关 =====
+        private bool _autoEnabled;
+        private (double X, double Y)[] _waypoints;      //路径范围
+        private int _currentWaypointIndex;
+        private bool _autoTurning;     // 是否正在自动转向（到达拐点之后）
+        private double _autoTurnTargetAngle; // 自动转向时的目标角
+
         /// <summary>
         /// 构造函数，初始化机器人在世界中的位置与运动参数
         /// </summary>
@@ -68,6 +82,19 @@ namespace Graphic
 
                 _orientationAngle = 0.0;   // 初始朝右
                 _targetAngle = 0.0;
+
+                // 构造自动巡航路径：左上 -> 右上 -> 右下
+                double half = _cellSizeM / 2.0;
+                _waypoints = new (double X, double Y)[]
+                {
+                (half, half),                             // 起点 左上
+                (_worldWidthM - half, half),             // 右上
+                (_worldWidthM - half, _worldHeightM - half) // 右下
+                };
+
+                _currentWaypointIndex = 0;
+                _autoEnabled = false;
+                _autoTurning = false;
             }
         }
 
@@ -116,23 +143,37 @@ namespace Graphic
         // === 键盘控制：三种动作 ===
         public void StartMoveForward()
         {
-            lock (_lock) { _isMovingForward = true; }
+            lock (_lock)
+            {
+                if (Mode != EnumControlMode.Manual)
+                    return;
+
+                _isMovingForward = true;
+            }
         }
 
         public void StopMoveForward()
         {
-            lock (_lock) { _isMovingForward = false; }
+            lock (_lock)
+            {
+                if (Mode != EnumControlMode.Manual)
+                    return;
+
+                _isMovingForward = false;
+            }
         }
 
         public void TurnLeft()
         {
             lock (_lock)
             {
+                if (Mode != EnumControlMode.Manual)
+                    return;
+
                 // 开始转向：先停下
                 Speed = 0;
                 _isTurning = true;
 
-                // 目标角度在当前“目标角度”的基础上左转 90°
                 _targetAngle -= Math.PI / 2.0;
                 _targetAngle = NormalizeAngle(_targetAngle);
             }
@@ -142,16 +183,59 @@ namespace Graphic
         {
             lock (_lock)
             {
+                if (Mode != EnumControlMode.Manual)
+                    return;
+
                 // 开始转向：先停下
                 Speed = 0;
                 _isTurning = true;
 
-                // 目标角度在当前“目标角度”的基础上右转 90°
                 _targetAngle += Math.PI / 2.0;
                 _targetAngle = NormalizeAngle(_targetAngle);
             }
         }
 
+        public void SetMode(EnumControlMode mode)
+        {
+            lock (_lock)
+            {
+                Mode = mode;
+
+                if (Mode == EnumControlMode.Manual)
+                {
+                    // 切回手动：停止自动
+                    _autoEnabled = false;
+                    _autoTurning = false;
+                    _isMovingForward = false;
+                    Speed = 0;
+                }
+                else
+                {
+                    // 启动自动巡航：从路径起点重新开始
+                    _autoEnabled = true;
+                    _autoTurning = false;
+                    _currentWaypointIndex = 0;
+
+                    // 把机器人位置/角度重置到起点，朝向为向右
+                    double half = _cellSizeM / 2.0;
+                    X = half;
+                    Y = half;
+
+                    _orientationAngle = 0.0;
+                    _targetAngle = 0.0;
+                    Speed = 0.0;
+                    Direction = EnumMoveDirection.Right;
+                }
+            }
+        }
+
+        public EnumControlMode GetMode()
+        {
+            lock (_lock)
+            {
+                return Mode;
+            }
+        }
         #endregion
 
         /// <summary>
@@ -205,63 +289,202 @@ namespace Graphic
         {
             lock (_lock)
             {
-                double delta = NormalizeAngle(_targetAngle - _orientationAngle);                // 1. 朝目标角度平滑旋转
-
-                double maxStep = _turnSpeed * dt;   // 本帧最大可转角度
-
-                if (Math.Abs(delta) <= maxStep)
+                if (Mode == EnumControlMode.Manual)
                 {
-                    _orientationAngle = _targetAngle;                    // 已经接近目标，直接对齐
-                    _isTurning = false;  // 转向结束
+                    UpdateManual(dt);
                 }
                 else
                 {
-                    if (delta > 0)                    // 按固定角速度向目标旋转
+                    UpdateAuto(dt);
+                }
+            }
+        }
 
+        private void UpdateManual(double dt)
+        {
+            double delta = NormalizeAngle(_targetAngle - _orientationAngle);
+
+            double maxStep = _turnSpeed * dt;
+
+            if (Math.Abs(delta) <= maxStep)
+            {
+                _orientationAngle = _targetAngle;
+                _isTurning = false;
+            }
+            else
+            {
+                if (delta > 0)
+                    _orientationAngle += maxStep;
+                else
+                    _orientationAngle -= maxStep;
+
+                _orientationAngle = NormalizeAngle(_orientationAngle);
+                _isTurning = true;
+            }
+
+            if (_isTurning)
+            {
+                Speed = 0;
+                UpdateDiscreteDirection();
+                return;
+            }
+
+            if (_isMovingForward)
+            {
+                Speed += Acc * dt;
+                if (Speed < 0) Speed = 0;
+                if (Speed > MaxSpeed) Speed = MaxSpeed;
+            }
+            else
+            {
+                Speed = 0;
+            }
+
+            if (Speed > 0)
+            {
+                double dx = Speed * Math.Cos(_orientationAngle) * dt;
+                double dy = Speed * Math.Sin(_orientationAngle) * dt;
+
+                X += dx;
+                Y += dy;
+
+                double half = _cellSizeM / 2.0;
+                if (X < half) X = half;
+                if (Y < half) Y = half;
+                if (X > _worldWidthM - half) X = _worldWidthM - half;
+                if (Y > _worldHeightM - half) Y = _worldHeightM - half;
+            }
+
+            UpdateDiscreteDirection();
+        }
+
+        private void UpdateAuto(double dt)
+        {
+            if (!_autoEnabled || _waypoints == null || _waypoints.Length == 0)
+            {
+                // 没有路径，直接当作静止
+                Speed = 0;
+                return;
+            }
+
+            // 1. 当前目标点
+            var target = _waypoints[_currentWaypointIndex];
+
+            // 当前位置与目标点的向量
+            double dxGoal = target.X - X;
+            double dyGoal = target.Y - Y;
+            double distToGoal = Math.Sqrt(dxGoal * dxGoal + dyGoal * dyGoal);
+
+            // 2. 若正在自动转弯（到达拐点之后）
+            if (_autoTurning)
+            {
+                // 和手动转向一样的平滑旋转
+                double delta = NormalizeAngle(_autoTurnTargetAngle - _orientationAngle);
+                double maxStep = _turnSpeed * dt;
+
+                if (Math.Abs(delta) <= maxStep)
+                {
+                    _orientationAngle = _autoTurnTargetAngle;
+                    _autoTurning = false;
+                    _targetAngle = _orientationAngle; // 与内部保持一致
+                }
+                else
+                {
+                    if (delta > 0)
                         _orientationAngle += maxStep;
                     else
                         _orientationAngle -= maxStep;
 
                     _orientationAngle = NormalizeAngle(_orientationAngle);
-                    _isTurning = true;   // 仍在转向
                 }
 
-                if (_isTurning)
+                // 转向过程中保持速度为 0
+                Speed = 0;
+                UpdateDiscreteDirection();
+                return;
+            }
+
+            // 3. 若距离目标点很近，视为到达拐点
+            const double arriveThreshold = 0.01; // 1cm 阈值，可调整
+            if (distToGoal < arriveThreshold)
+            {
+                // 对齐到精确目标
+                X = target.X;
+                Y = target.Y;
+                Speed = 0;
+
+                // 切换到下一个路径点（如果有）
+                int nextIndex = _currentWaypointIndex + 1;
+                if (nextIndex >= _waypoints.Length)
                 {
-                    Speed = 0;                    // 转向时速度为0
+                    // 已经到达终点（右下角）：停止自动
+                    _autoEnabled = false;
                     UpdateDiscreteDirection();
                     return;
                 }
 
-                if (_isMovingForward)   // 2. 前进/速度
+                var nextTarget = _waypoints[nextIndex];
+
+                // 计算从当前点指向下一个目标的角度
+                double ndx = nextTarget.X - X;
+                double ndy = nextTarget.Y - Y;
+                double angleToNext = Math.Atan2(ndy, ndx);
+                angleToNext = NormalizeAngle(angleToNext);
+
+                // 触发自动转向：从当前朝向转向到 angleToNext
+                _autoTurnTargetAngle = angleToNext;
+                _targetAngle = angleToNext;
+                _autoTurning = true;
+
+                // 更新当前路径点索引
+                _currentWaypointIndex = nextIndex;
+
+                UpdateDiscreteDirection();
+                return;
+            }
+
+            // 4. 还在当前段直线上：朝目标点运动
+            // 计算期望朝向角
+            double desiredAngle = Math.Atan2(dyGoal, dxGoal);
+            desiredAngle = NormalizeAngle(desiredAngle);
+
+            // 以“瞬间对齐”的方式修正小的角度偏差（也可以做成逐渐对齐）
+            _orientationAngle = desiredAngle;
+            _targetAngle = desiredAngle;
+
+            // 加速度控制：沿着当前朝向加速前进
+            Speed += Acc * dt;
+            if (Speed < 0) Speed = 0;
+            if (Speed > MaxSpeed) Speed = MaxSpeed;
+
+            // 计算本帧位移
+            if (Speed > 0)
+            {
+                double dx = Speed * Math.Cos(_orientationAngle) * dt;
+                double dy = Speed * Math.Sin(_orientationAngle) * dt;
+
+                // 如果本帧位移会“越过”目标点，则直接到达目标点
+                if (Math.Sqrt(dx * dx + dy * dy) >= distToGoal)
                 {
-                    Speed += Acc * dt;
-                    if (Speed < 0) Speed = 0;
-                    if (Speed > MaxSpeed) Speed = MaxSpeed;
+                    X = target.X;
+                    Y = target.Y;
+                    Speed = 0;
                 }
                 else
                 {
-                    Speed = 0;                    // 松开前进键：立即停
-                }
-
-                if (Speed > 0)                // 3. 按朝向和速度更新位置
-                {
-                    double dx = Speed * Math.Cos(_orientationAngle) * dt;
-                    double dy = Speed * Math.Sin(_orientationAngle) * dt;
-
                     X += dx;
                     Y += dy;
-
-                    double half = _cellSizeM / 2.0;                    // 4. 边界夹住，避免走出世界
-                    if (X < half) X = half;
-                    if (Y < half) Y = half;
-                    if (X > _worldWidthM - half) X = _worldWidthM - half;
-                    if (Y > _worldHeightM - half) Y = _worldHeightM - half;
                 }
-
-                UpdateDiscreteDirection();                // 5. 更新离散方向枚举
-
             }
+
+            // 边界保护（通常不会越界）
+            double halfCell = _cellSizeM / 2.0;
+            if (X < halfCell) X = halfCell;
+            if (Y < halfCell) Y = halfCell;
+            if (X > _worldWidthM - halfCell) X = _worldWidthM - halfCell;
+            if (Y > _worldHeightM - halfCell) Y = _worldHeightM - halfCell;
+
+            UpdateDiscreteDirection();
         }
 
         /// <summary>

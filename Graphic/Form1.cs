@@ -40,6 +40,12 @@ namespace Graphic
             _robot = new Robot(_grid.CellSizeM, _grid.WorldWidthM, _grid.WorldHeightM);
             _view = new WorldTransform(_grid);
 
+            // 初始化模式下拉框
+            cmbMode.Items.Clear();
+            cmbMode.Items.Add("手动控制");
+            cmbMode.Items.Add("自动巡航");
+            cmbMode.SelectedIndex = 0; // 默认手动
+
             // 创建并启动仿真：
             // - 定时调用 Robot.Update(Dt)
             // - 每次更新后通过回调触发界面重绘
@@ -88,6 +94,9 @@ namespace Graphic
         /// </summary>
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
+            if (_robot.GetMode() != EnumControlMode.Manual)
+                return; // 自动模式下忽略键盘
+
             // 前进：W 或 Up
             if (e.KeyCode == Keys.W || e.KeyCode == Keys.Up)
             {
@@ -110,12 +119,11 @@ namespace Graphic
             }
         }
 
-        /// <summary>
-        /// 键盘抬起事件：处理停止前进。
-        /// </summary>
         private void Form1_KeyUp(object sender, KeyEventArgs e)
         {
-            // 松开前进键：停止前进
+            if (_robot.GetMode() != EnumControlMode.Manual)
+                return;
+
             if (e.KeyCode == Keys.W || e.KeyCode == Keys.Up)
             {
                 _robot.StopMoveForward();
@@ -251,7 +259,18 @@ namespace Graphic
 
         private void cmbMode_SelectedIndexChanged(object sender, EventArgs e)
         {
+            if (cmbMode.SelectedIndex == 0)
+            {
+                // 手动控制
+                _robot.SetMode(EnumControlMode.Manual);
+            }
+            else
+            {
+                // 自动巡航
+                _robot.SetMode(EnumControlMode.AutoCruise);
+            }
 
+            Invalidate();
         }
     }
 }
