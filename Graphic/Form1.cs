@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Graphic.Draws;
+using Graphic.WorldView;
+using System;
 using System.Drawing;
 using System.Threading;
 using System.Windows.Forms;
@@ -57,6 +59,56 @@ namespace Graphic
         private volatile bool _isRunning = false;   //线程运行标志
         private readonly object _robotLock = new object();
         //------------------------------机器人相关变量------------------------------//
+
+        private WorldTransform _worldTransform;
+        private DrawGrid _drawGrid;
+        private DrawRobot _drawRobot;
+
+        private void Form1_Paint(object sender, PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+
+            // 由 DrawGrid 绘制网格（内部已经做了抗锯齿和清屏）
+            _drawGrid.Grid(g);
+
+            // 由 DrawRobot 绘制机器人
+            _drawRobot.Robot(g);
+
+            // 在左上角显示当前数据信息（这一段沿用你原来的逻辑）
+            using (var font = new Font("宋体", 10))
+            using (var brush = new SolidBrush(Color.Black))
+            {
+                double robotX;
+                double robotY;
+                double robotV;
+                double robotA;
+
+                lock (_robotLock)
+                {
+                    robotX = _robotX;
+                    robotY = _robotY;
+                    robotV = _robotSpeed;
+                    robotA = _robotAcc;
+                }
+
+                string info = $"Scale: {_scale:F1} px/m   Offset: ({_offsetX:F0}, {_offsetY:F0})";
+                string infoRobot = $"Robot: x={robotX:F2}m, y={robotY:F2}m, v={robotV:F2}m/s, a={robotA:F2}m/s2";
+                g.DrawString(info, font, brush, new PointF(10, 10));
+                g.DrawString(infoRobot, font, brush, new PointF(10, 25));
+            }
+        }
+        // 替换 InitializeDrawing 方法中的 DrawRobot 构造函数调用，修正 lambda 返回类型
+        private void InitializeDrawing()
+        {
+            _worldTransform = new WorldTransform(_scale, (float)_offsetX, (float)_offsetY);
+            _drawGrid = new DrawGrid(_worldTransform, _worldWidthM, _worldHeightM);
+            _drawRobot = new DrawRobot(
+                _worldTransform,
+                _robotLock,
+                () => (_robotX, _robotY), // 保持此行
+                () => _scale              // 新增此行，传递获取 scale 的委托
+            );
+        }
 
         public Form1()
         {
