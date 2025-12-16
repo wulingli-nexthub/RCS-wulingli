@@ -44,7 +44,7 @@ namespace Graphic
         private readonly double _cellSizeM;
 
         // 角速度（转向速度，rad/s）
-        private readonly double _turnSpeed = Math.PI;  // 180°/s，可自行调整
+        private readonly double _turnSpeed = Math.PI * 2;  // 180°/s，可自行调整
 
         // ===== 键盘控制状态 =====
         private bool _isMovingForward;  // 是否正在前进
