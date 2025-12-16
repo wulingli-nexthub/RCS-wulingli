@@ -33,6 +33,7 @@
             this.numericAcc = new System.Windows.Forms.NumericUpDown();
             this.labelVinit = new System.Windows.Forms.Label();
             this.numericVmax = new System.Windows.Forms.NumericUpDown();
+            this.cmbMode = new System.Windows.Forms.ComboBox();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVmax)).BeginInit();
             this.SuspendLayout();
@@ -50,7 +51,7 @@
             // labelAcc
             // 
             this.labelAcc.AutoSize = true;
-            this.labelAcc.Location = new System.Drawing.Point(22, 227);
+            this.labelAcc.Location = new System.Drawing.Point(22, 279);
             this.labelAcc.Name = "labelAcc";
             this.labelAcc.Size = new System.Drawing.Size(98, 18);
             this.labelAcc.TabIndex = 2;
@@ -64,7 +65,7 @@
             0,
             0,
             65536});
-            this.numericAcc.Location = new System.Drawing.Point(25, 262);
+            this.numericAcc.Location = new System.Drawing.Point(25, 314);
             this.numericAcc.Minimum = new decimal(new int[] {
             100,
             0,
@@ -78,7 +79,7 @@
             // labelVinit
             // 
             this.labelVinit.AutoSize = true;
-            this.labelVinit.Location = new System.Drawing.Point(22, 139);
+            this.labelVinit.Location = new System.Drawing.Point(22, 191);
             this.labelVinit.Name = "labelVinit";
             this.labelVinit.Size = new System.Drawing.Size(80, 18);
             this.labelVinit.TabIndex = 5;
@@ -92,7 +93,7 @@
             0,
             0,
             65536});
-            this.numericVmax.Location = new System.Drawing.Point(25, 181);
+            this.numericVmax.Location = new System.Drawing.Point(25, 233);
             this.numericVmax.Name = "numericVmax";
             this.numericVmax.Size = new System.Drawing.Size(120, 28);
             this.numericVmax.TabIndex = 6;
@@ -103,18 +104,32 @@
             65536});
             this.numericVmax.ValueChanged += new System.EventHandler(this.numericVmax_ValueChanged);
             // 
+            // cmbMode
+            // 
+            this.cmbMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cmbMode.FormattingEnabled = true;
+            this.cmbMode.Items.AddRange(new object[] {
+            "手动控制",
+            "自动巡航"});
+            this.cmbMode.Location = new System.Drawing.Point(25, 145);
+            this.cmbMode.Name = "cmbMode";
+            this.cmbMode.Size = new System.Drawing.Size(121, 26);
+            this.cmbMode.TabIndex = 7;
+            this.cmbMode.SelectedIndexChanged += new System.EventHandler(this.cmbMode_SelectedIndexChanged);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 18F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1221, 774);
+            this.Controls.Add(this.cmbMode);
             this.Controls.Add(this.numericVmax);
             this.Controls.Add(this.labelVinit);
             this.Controls.Add(this.numericAcc);
             this.Controls.Add(this.labelAcc);
             this.Controls.Add(this.btnReset);
             this.Name = "Form1";
-            this.Text = " RCS Ver3.1.3 吴灵丽";
+            this.Text = " RCS Ver3.1.4 吴灵丽";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVmax)).EndInit();
             this.ResumeLayout(false);
@@ -129,6 +144,7 @@
         private System.Windows.Forms.NumericUpDown numericAcc;
         private System.Windows.Forms.Label labelVinit;
         private System.Windows.Forms.NumericUpDown numericVmax;
+        private System.Windows.Forms.ComboBox cmbMode;
     }
 }
 

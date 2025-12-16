@@ -248,5 +248,10 @@ namespace Graphic
 
             Invalidate(); // 触发重绘
         }
+
+        private void cmbMode_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+        }
     }
 }
