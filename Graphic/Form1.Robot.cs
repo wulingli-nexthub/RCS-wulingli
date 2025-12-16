@@ -43,6 +43,7 @@ namespace Graphic
 
         // ===== 键盘控制状态 =====
         private bool _isMovingForward;  // 是否正在前进
+        private bool _isTurning;
 
         /// <summary>
         /// 构造函数，初始化机器人在世界中的位置与运动参数
@@ -127,7 +128,11 @@ namespace Graphic
         {
             lock (_lock)
             {
-                // 目标角度在当前目标的基础上左转 90°
+                // 开始转向：先停下
+                Speed = 0;
+                _isTurning = true;
+
+                // 目标角度在当前“目标角度”的基础上左转 90°
                 _targetAngle -= Math.PI / 2.0;
                 _targetAngle = NormalizeAngle(_targetAngle);
             }
@@ -137,7 +142,11 @@ namespace Graphic
         {
             lock (_lock)
             {
-                // 目标角度在当前目标的基础上右转 90°
+                // 开始转向：先停下
+                Speed = 0;
+                _isTurning = true;
+
+                // 目标角度在当前“目标角度”的基础上右转 90°
                 _targetAngle += Math.PI / 2.0;
                 _targetAngle = NormalizeAngle(_targetAngle);
             }
@@ -203,7 +212,7 @@ namespace Graphic
                 if (Math.Abs(delta) <= maxStep)
                 {
                     _orientationAngle = _targetAngle;                    // 已经接近目标，直接对齐
-
+                    _isTurning = false;  // 转向结束
                 }
                 else
                 {
@@ -214,6 +223,14 @@ namespace Graphic
                         _orientationAngle -= maxStep;
 
                     _orientationAngle = NormalizeAngle(_orientationAngle);
+                    _isTurning = true;   // 仍在转向
+                }
+
+                if (_isTurning)
+                {
+                    Speed = 0;                    // 转向时速度为0
+                    UpdateDiscreteDirection();
+                    return;
                 }
 
                 if (_isMovingForward)   // 2. 前进/速度
