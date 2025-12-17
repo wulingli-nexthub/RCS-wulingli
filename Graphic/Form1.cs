@@ -166,7 +166,7 @@ namespace Graphic
             {
                 var state = _robot.GetState();
                 string info = $"Scale: {_grid.Scale:F1} px/m   Offset: ({_grid.OffsetX:F0}, {_grid.OffsetY:F0})";
-                string infoRobot = $"Robot: x={state.X:F2}m, y={state.Y:F2}m, v={state.V:F2}m/s, a={state.A:F2}m/s2";
+                string infoRobot = $"Robot: ({state.X:F2}, {state.Y:F2}), v={state.V:F2}m/s, a={state.A:F2}m/s2";
 
                 g.DrawString(info, font, brush, new PointF(10, 10));
                 g.DrawString(infoRobot, font, brush, new PointF(10, 25));

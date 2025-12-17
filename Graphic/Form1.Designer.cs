@@ -72,7 +72,7 @@
             0,
             -2147483648});
             this.numericAcc.Name = "numericAcc";
-            this.numericAcc.Size = new System.Drawing.Size(120, 28);
+            this.numericAcc.Size = new System.Drawing.Size(121, 28);
             this.numericAcc.TabIndex = 4;
             this.numericAcc.ValueChanged += new System.EventHandler(this.numericAcc_ValueChanged);
             // 
@@ -95,7 +95,7 @@
             65536});
             this.numericVmax.Location = new System.Drawing.Point(25, 233);
             this.numericVmax.Name = "numericVmax";
-            this.numericVmax.Size = new System.Drawing.Size(120, 28);
+            this.numericVmax.Size = new System.Drawing.Size(121, 28);
             this.numericVmax.TabIndex = 6;
             this.numericVmax.Value = new decimal(new int[] {
             15,
