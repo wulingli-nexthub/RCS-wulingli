@@ -1,6 +1,7 @@
 ﻿using Graphic.Draws;
 using Graphic.Events;
 using Graphic.WorldView;
+using Graphic.WorldView.CenterGrid;
 using System;
 using System.Drawing;
 using System.Threading;
@@ -65,6 +66,8 @@ namespace Graphic
         private DrawGrid _drawGrid;
         private DrawRobot _drawRobot;
         private MouseWheel _mouseWheel;
+        private MousePan _mousePan;
+        private CenterGridManager _centerGridManager;
 
         private void Form1_Paint(object sender, PaintEventArgs e)
         {
@@ -125,6 +128,55 @@ namespace Graphic
                 // 更新 WorldTransform
                 updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
             );
+            // 初始化拖动处理器
+            _mousePan = new MousePan(
+                this,
+                // 获取当前 offset 和 scale
+                getState: () => (_offsetX, _offsetY, _scale),
+                // 设置 offset
+                setOffset: (ox, oy) =>
+                {
+                    _offsetX = ox;
+                    _offsetY = oy;
+                },
+                // 更新 WorldTransform
+                updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
+            );
+            var loadCenter = new LoadCenterStrategy(
+                host: this,
+                getWorldWidthM: () => _worldWidthM,
+                getWorldHeightM: () => _worldHeightM,
+                getScale: () => _scale,
+                setScale: s => _scale = s,
+                setOffsetX: x => _offsetX = x,
+                setOffsetY: y => _offsetY = y,
+                setInitialScale: s => _initialScale = s,
+                setInitialOffsetX: x => _initialOffsetX = x,
+                setInitialOffsetY: y => _initialOffsetY = y,
+                updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
+            );
+
+            var resizeCenter = new ResizeCenterStrategy(
+                host: this,
+                getWorldWidthM: () => _worldWidthM,
+                getWorldHeightM: () => _worldHeightM,
+                getScale: () => _scale,
+                setOffsetX: x => _offsetX = x,
+                setOffsetY: y => _offsetY = y,
+                updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
+            );
+
+            var resetCenter = new ResetCenterStrategy(
+                host: this,
+                getWorldWidthM: () => _worldWidthM,
+                getWorldHeightM: () => _worldHeightM,
+                getInitialScale: () => _initialScale,
+                setScale: s => _scale = s,
+                setOffsetX: x => _offsetX = x,
+                setOffsetY: y => _offsetY = y,
+                updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
+            );
+            _centerGridManager = new CenterGridManager(loadCenter, resizeCenter, resetCenter);
         }
 
         public Form1()
@@ -154,7 +206,69 @@ namespace Graphic
             _workerThread.Start();
         }
 
+        /// <summary>
+        /// 鼠标滚轮缩放（以鼠标所在点为缩放中心）
+        /// </summary>
+        private void Form1_MouseWheel(object sender, MouseEventArgs e)
+        {
+            // 把 screen->world 的逻辑通过委托传给 handler
+            _mouseWheel.Wheel(
+                e,
+                screen =>
+                {
+                    // 使用现有的 WorldTransform 做坐标转换
+                    return _worldTransform.ScreenToWorld(screen.X, screen.Y);
+                });
 
+            Invalidate(); // 触发重绘
+        }
+
+        // 鼠标按下：准备拖动
+        private void Form1_MouseDown(object sender, MouseEventArgs e)
+        {
+            _mousePan.MouseDown(e);
+        }
+
+        // 鼠标移动：拖动画布
+        private void Form1_MouseMove(object sender, MouseEventArgs e)
+        {
+            _mousePan.MouseMove(e);
+            Invalidate(); // 触发重绘
+        }
+
+        // 鼠标松开：结束拖动
+        private void Form1_MouseUp(object sender, MouseEventArgs e)
+        {
+            _mousePan.MouseUp(e);
+        }
+
+        // 窗体加载
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            // 原来这几行你可以保留
+            _offsetX = this.ClientSize.Width / 2.0;
+            _offsetY = this.ClientSize.Height / 2.0;
+
+            _initialScale = _scale;
+            _initialOffsetX = _offsetX;
+            _initialOffsetY = _offsetY;
+
+            Initialize();  // 你的原有初始化
+
+            _centerGridManager.LoadCenter.CenterGrid();
+        }
+
+        // 窗口大小改变
+        private void Form1_Resize(object sender, EventArgs e)
+        {
+            _centerGridManager.ResizeCenter.CenterGrid();
+        }
+
+        // Reset 按钮
+        private void btnReset_Click(object sender, EventArgs e)
+        {
+            _centerGridManager.ResetCenter.CenterGrid();
+        }
 
         private void numericAcc_ValueChanged(object sender, EventArgs e)
         {
@@ -163,8 +277,6 @@ namespace Graphic
                 _robotAcc = (double)((NumericUpDown)sender).Value;
             }
         }
-
-
 
         private void numericVmax_ValueChanged(object sender, EventArgs e)
         {

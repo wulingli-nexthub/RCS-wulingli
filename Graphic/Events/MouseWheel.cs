@@ -14,6 +14,15 @@ namespace Graphic.Events
         private readonly Action<double> _setScale;           // 设置 _scale
         private readonly Action<double, float, float> _updateWorldTransform; // _worldTransform.Update
 
+        /// <summary>
+        /// 字段初始化并做空值检查
+        /// </summary>
+        /// <param name="form"></param>
+        /// <param name="getState"></param>
+        /// <param name="setScale"></param>
+        /// <param name="setOffset"></param>
+        /// <param name="updateWorldTransform"></param>
+        /// <exception cref="ArgumentNullException"></exception>
         public MouseWheel(
             Form form,
             Func<(double scale, double offsetX, double offsetY)> getState,
@@ -61,9 +70,6 @@ namespace Graphic.Events
 
             // 4. 同步到 WorldTransform
             _updateWorldTransform(newScale, (float)newOffsetX, (float)newOffsetY);
-
-            // 5. 触发重绘
-            _form.Invalidate();
         }
     }
 }
