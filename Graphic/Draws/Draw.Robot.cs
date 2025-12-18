@@ -26,7 +26,7 @@ namespace Graphic.Draws
             _getScale = getScale;
         }
 
-        internal void Robot(Graphics g)
+        internal void Draw(Graphics g)
         {
             double robotX;
             double robotY;

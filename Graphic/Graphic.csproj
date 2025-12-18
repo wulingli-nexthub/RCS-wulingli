@@ -48,6 +48,8 @@
   <ItemGroup>
     <Compile Include="Draws\Draw.Grid.cs" />
     <Compile Include="Draws\Draw.Robot.cs" />
+    <Compile Include="Events\MousePan.cs" />
+    <Compile Include="Events\MouseWheel.cs" />
     <Compile Include="Form1.CenterGrid.cs">
       <DependentUpon>Form1.cs</DependentUpon>
       <SubType>Form</SubType>

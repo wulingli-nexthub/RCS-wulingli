@@ -1,4 +1,5 @@
 ﻿using Graphic.Draws;
+using Graphic.Events;
 using Graphic.WorldView;
 using System;
 using System.Drawing;
@@ -63,16 +64,17 @@ namespace Graphic
         private WorldTransform _worldTransform;
         private DrawGrid _drawGrid;
         private DrawRobot _drawRobot;
+        private MouseWheel _mouseWheel;
 
         private void Form1_Paint(object sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
 
-            // 由 DrawGrid 绘制网格（内部已经做了抗锯齿和清屏）
-            _drawGrid.Grid(g);
+            // 由 DrawGrid 绘制网格
+            _drawGrid.Draw(g);
 
             // 由 DrawRobot 绘制机器人
-            _drawRobot.Robot(g);
+            _drawRobot.Draw(g);
 
             // 在左上角显示当前数据信息（这一段沿用你原来的逻辑）
             using (var font = new Font("宋体", 10))
@@ -92,13 +94,13 @@ namespace Graphic
                 }
 
                 string info = $"Scale: {_scale:F1} px/m   Offset: ({_offsetX:F0}, {_offsetY:F0})";
-                string infoRobot = $"Robot: x={robotX:F2}m, y={robotY:F2}m, v={robotV:F2}m/s, a={robotA:F2}m/s2";
+                string infoRobot = $"Robot: ({robotX:F2}, {robotY:F2}), v={robotV:F2}m/s, a={robotA:F2}m/s2";
                 g.DrawString(info, font, brush, new PointF(10, 10));
                 g.DrawString(infoRobot, font, brush, new PointF(10, 25));
             }
         }
         // 替换 InitializeDrawing 方法中的 DrawRobot 构造函数调用，修正 lambda 返回类型
-        private void InitializeDrawing()
+        private void Initialize()
         {
             _worldTransform = new WorldTransform(_scale, (float)_offsetX, (float)_offsetY);
             _drawGrid = new DrawGrid(_worldTransform, _worldWidthM, _worldHeightM);
@@ -107,6 +109,21 @@ namespace Graphic
                 _robotLock,
                 () => (_robotX, _robotY), // 保持此行
                 () => _scale              // 新增此行，传递获取 scale 的委托
+            );
+            _mouseWheel = new MouseWheel(
+                this,
+                // 传入获取当前状态的委托
+                getState: () => (_scale, _offsetX, _offsetY),
+                // 设置缩放
+                setScale: s => _scale = s,
+                // 设置偏移
+                setOffset: (ox, oy) =>
+                {
+                    _offsetX = ox;
+                    _offsetY = oy;
+                },
+                // 更新 WorldTransform
+                updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
             );
         }
 

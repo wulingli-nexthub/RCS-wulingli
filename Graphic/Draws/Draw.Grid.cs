@@ -19,7 +19,7 @@ namespace Graphic.Draws
             _worldHeightM = worldHeightM;
         }
 
-        internal void Grid(Graphics g)
+        internal void Draw(Graphics g)
         {
             // 抗锯齿
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;

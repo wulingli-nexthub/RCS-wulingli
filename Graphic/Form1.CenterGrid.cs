@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Drawing;
 using System.Windows.Forms;
 
 namespace Graphic
@@ -18,8 +17,8 @@ namespace Graphic
             _initialOffsetX = _offsetX;
             _initialOffsetY = _offsetY;
 
-            // 初始化世界变换和绘图类
-            InitializeDrawing();
+            // 初始化
+            Initialize();
 
             // 让网格真正居中铺满窗口
             CentreGrid();
@@ -75,35 +74,14 @@ namespace Graphic
         /// </summary>
         private void Form1_MouseWheel(object sender, MouseEventArgs e)
         {
-            // 当前鼠标的屏幕坐标
-            var mouseScreen = new PointF(e.X, e.Y);
-
-            // 使用 WorldTransform 把屏幕坐标转换为缩放前的世界坐标
-            var mouseWorldBefore = _worldTransform.ScreenToWorld(mouseScreen.X, mouseScreen.Y);
-
-            // 计算新的缩放
-            double zoomFactor = (e.Delta > 0) ? 1.1 : 0.9; // e.Delta>0 表示向前滚动
-            double newScale = _scale * zoomFactor;
-
-            // 限制缩放范围
-            if (newScale < 5)
-            {
-                newScale = 5;
-            }
-
-            if (newScale > 200)
-            {
-                newScale = 200;
-            }
-
-            _scale = newScale;
-
-            // 调整 offset，使缩放后，mouseWorldBefore 仍然映射到原来的 mouseScreen
-            _offsetX = mouseScreen.X - mouseWorldBefore.X * _scale;
-            _offsetY = mouseScreen.Y - mouseWorldBefore.Y * _scale;
-
-            // 同步到 WorldTransform
-            _worldTransform.Update(_scale, (float)_offsetX, (float)_offsetY);
+            // 把 screen->world 的逻辑通过委托传给 handler
+            _mouseWheel.Wheel(
+                e,
+                screen =>
+                {
+                    // 使用现有的 WorldTransform 做坐标转换
+                    return _worldTransform.ScreenToWorld(screen.X, screen.Y);
+                });
 
             Invalidate(); // 触发重绘
         }
