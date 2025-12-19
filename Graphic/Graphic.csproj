@@ -60,12 +60,14 @@
     <Compile Include="Form1.Designer.cs">
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
-    <Compile Include="Form1.Robot.cs">
-      <DependentUpon>Form1.cs</DependentUpon>
-      <SubType>Form</SubType>
-    </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="RobotModels\Robot.AutoNavigator.cs" />
+    <Compile Include="RobotModels\Robot.Manual.cs" />
+    <Compile Include="RobotRuns\Robot.cs" />
+    <Compile Include="RobotRuns\Robot.Move.cs" />
+    <Compile Include="RobotRuns\Robot.Simulator.cs" />
+    <Compile Include="RobotRuns\Robot.Turn.cs" />
     <Compile Include="WorldView\CenterGrid\ResetCenterStrategy .cs" />
     <Compile Include="WorldView\CenterGrid\CenterGridManager.cs" />
     <Compile Include="WorldView\CenterGrid\LoadCenterStrategy.cs" />
@@ -97,5 +99,6 @@
   <ItemGroup>
     <None Include="App.config" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

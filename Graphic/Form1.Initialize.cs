@@ -1,5 +1,6 @@
 ﻿using Graphic.Draws;
 using Graphic.Events;
+using Graphic.RobotRuns;
 using Graphic.WorldView;
 using Graphic.WorldView.CenterGrid;
 
@@ -59,6 +60,13 @@ namespace Graphic
                 updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
             );
 
+            // 机器人对象：这里使用当前加速度、最大速度，默认向右运动
+            _robot = new Robot(
+                acc: _robotAcc,
+                maxSpeed: _robotMaxSpeed,
+                direction: EnumMoveDirection.Right
+            );
+
             // 居中策略：加载 / Resize / Reset
             var loadCenter = new LoadCenterStrategy(
                 host: this,
@@ -96,6 +104,29 @@ namespace Graphic
             );
 
             _centerGridManager = new CenterGridManager(loadCenter, resizeCenter, resetCenter);
+            // 以下是一个“常见模式示例”，如果签名不一样，你只需要把参数对一下即可。
+            _robotMove = new RobotMove(
+                robotLock: _robotLock,
+                getRobotX: () => _robotX,
+                setRobotX: x => _robotX = x,
+                getRobotY: () => _robotY,
+                setRobotY: y => _robotY = y,
+                getRobotSpeed: () => _robotSpeed,
+                setRobotSpeed: v => _robotSpeed = v,
+                robot: _robot,
+                getWorldWidthM: () => _worldWidthM,
+                getWorldHeightM: () => _worldHeightM,
+                cellSizeM: CellSizeM,
+                dt: _dt
+            );
+
+            // 创建模拟器，让它在线程里调用 RobotMove.Update()
+            _robotSimulator = new RobotSimulator(
+                host: this,      // 用 Form 作为承载控件
+                motion: _robotMove,
+                dt: _dt
+            );
+            _robotSimulator._Thead_Start();
         }
     }
 }

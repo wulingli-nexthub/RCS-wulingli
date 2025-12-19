@@ -1,5 +1,6 @@
 ﻿using Graphic.Draws;
 using Graphic.Events;
+using Graphic.RobotRuns;
 using Graphic.WorldView;
 using Graphic.WorldView.CenterGrid;
 using System;
@@ -43,17 +44,6 @@ namespace Graphic
         private double _robotMaxSpeed = 1.5;
         private double _robotAcc = 0;
 
-        //机器人移动方向枚举
-        private enum EnumMoveDirection
-        {
-            Right,
-            Left,
-            Down,
-            Up
-        }
-        //机器人当前移动方向
-        private EnumMoveDirection _moveDirection = EnumMoveDirection.Right;
-
         private readonly double _dt = 0.02;  //固定时间模拟步长0.02秒
 
         //自制定时器
@@ -68,6 +58,10 @@ namespace Graphic
         private MouseWheel _mouseWheel;
         private MousePan _mousePan;
         private CenterGridManager _centerGridManager;
+        // 机器人对象：加速度、最大速度、方向
+        private Robot _robot;
+        private RobotMove _robotMove;
+        private RobotSimulator _robotSimulator;
 
         private void Form1_Paint(object sender, PaintEventArgs e)
         {
@@ -123,11 +117,11 @@ namespace Graphic
             this.FormClosing += Form1_FormClosing;
             this.Resize += Form1_Resize;
 
-            // 启动后台线程，用线程＋sleep实现定时器
-            _isRunning = true;
-            _workerThread = new Thread(_Thread_Loop);
-            _workerThread.IsBackground = true;
-            _workerThread.Start();
+            //// 启动后台线程，用线程＋sleep实现定时器
+            //_isRunning = true;
+            //_workerThread = new Thread(_Thread_Loop);
+            //_workerThread.IsBackground = true;
+            //_workerThread.Start();
         }
 
         /// <summary>
@@ -169,7 +163,6 @@ namespace Graphic
         // 窗体加载
         private void Form1_Load(object sender, EventArgs e)
         {
-            // 原来这几行你可以保留
             _offsetX = this.ClientSize.Width / 2.0;
             _offsetY = this.ClientSize.Height / 2.0;
 
@@ -194,11 +187,22 @@ namespace Graphic
             _centerGridManager.ResetCenter.CenterGrid();
         }
 
+        //窗体关闭时，安全停止线程
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            _isRunning = false;
+            if (_workerThread != null && _workerThread.IsAlive)
+            {
+                // 等一会儿退出
+                _workerThread.Join(200);
+            }
+        }
+
         private void numericAcc_ValueChanged(object sender, EventArgs e)
         {
             lock (_robotLock)
             {
-                _robotAcc = (double)((NumericUpDown)sender).Value;
+                _robot.Acc = (double)((NumericUpDown)sender).Value;
             }
         }
 
@@ -206,7 +210,7 @@ namespace Graphic
         {
             lock (_robotLock)
             {
-                _robotMaxSpeed = (double)((NumericUpDown)sender).Value;
+                _robot.MaxSpeed = (double)((NumericUpDown)sender).Value;
             }
         }
     }
