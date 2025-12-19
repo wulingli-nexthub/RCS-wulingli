@@ -119,6 +119,21 @@ namespace Graphic
             this.KeyDown += Form1_KeyDown;
             this.KeyUp += Form1_KeyUp;
             this.KeyPreview = true;                 //确保窗体能接收键盘事件
+
+            // 统一给数值框加 KeyDown 处理（不动 Designer 生成代码）
+            numericAcc.KeyDown += Numeric_KeyDown_OnEnter;
+            numericVinit.KeyDown += Numeric_KeyDown_OnEnter;
+        }
+
+        private void Numeric_KeyDown_OnEnter(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                this.ActiveControl = null;  // 让数值框失去焦点，触发 ValueChanged 事件
+                this.Focus();                 // 焦点回到窗体，W/A/D 立刻可用
+                e.Handled = true;
+                e.SuppressKeyPress = true;    // 防止系统“叮”一声
+            }
         }
 
         /// <summary>
@@ -193,7 +208,7 @@ namespace Graphic
                     lock (_robotLock)
                     {
                         _robot.IsForwardKeyDown = true;
-
+                        e.Handled = true;
                         // 如果当前没有在转向，直接给出数值框配置的加速度
                         if (!_robot.IsTurning)
                         {
