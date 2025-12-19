@@ -213,6 +213,16 @@ namespace Graphic
             Initialize();  // 你的原有初始化
 
             _centerGridManager.LoadCenter.CenterGrid();
+
+            // ① 默认手动控制
+            cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;
+            cmbChooseModel.SelectedIndex = 0;
+            cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
+
+            _robotAutoNavigator.Disable();
+            _robotManual.Enable();
+            ActiveControl = null;
+            BeginInvoke(new Action(() => Focus()));
         }
 
         // 窗口大小改变
