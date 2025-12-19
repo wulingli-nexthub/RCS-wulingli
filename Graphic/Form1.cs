@@ -241,9 +241,7 @@ namespace Graphic
                 lock (_robotLock)
                 {
                     _robot.IsForwardKeyDown = false;
-
-                    // 松开前进键：不再加速
-                    _robotAcc = 0.0;
+                    _robotSpeed = 0.0;
                     _robot.Acc = 0.0;
                 }
             }
