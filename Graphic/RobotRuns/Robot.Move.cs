@@ -4,15 +4,28 @@ namespace Graphic.RobotRuns
 {
     internal sealed class RobotAutoMotionState
     {
-        public static readonly RobotAutoMotionState Disabled = new RobotAutoMotionState(false, EnumMoveDirection.Right, 0.0, false, false);
+        public static readonly RobotAutoMotionState Disabled = new RobotAutoMotionState(
+            enabled: false,
+            direction: EnumMoveDirection.Right,
+            acc: 0.0,
+            suppressEdgeTurning: false,
+            clampOnBounds: false,
+            requestTurnLeft: false);
 
-        public RobotAutoMotionState(bool enabled, EnumMoveDirection direction, double acc, bool suppressEdgeTurning, bool clampOnBounds)
+        public RobotAutoMotionState(
+            bool enabled,
+            EnumMoveDirection direction,
+            double acc,
+            bool suppressEdgeTurning,
+            bool clampOnBounds,
+            bool requestTurnLeft)
         {
             Enabled = enabled;
             Direction = direction;
             Acc = acc;
             SuppressEdgeTurning = suppressEdgeTurning;
             ClampOnBounds = clampOnBounds;
+            RequestTurnLeft = requestTurnLeft;
         }
 
         public bool Enabled { get; }
@@ -20,6 +33,7 @@ namespace Graphic.RobotRuns
         public double Acc { get; }
         public bool SuppressEdgeTurning { get; }
         public bool ClampOnBounds { get; }
+        public bool RequestTurnLeft { get; }
     }
 
     internal class RobotMove
@@ -119,8 +133,15 @@ namespace Graphic.RobotRuns
             {
                 if (autoState.Enabled)
                 {
+                    // 自动模式：方向/加速度由 autoState 控制
                     _robot.Direction = autoState.Direction;
                     _robot.Acc = autoState.Acc;
+
+                    // 若自动模式请求“原地左转”，复用 TurnController 做转向动画
+                    if (autoState.RequestTurnLeft && !_robot.IsTurning)
+                    {
+                        _turnController.StartTurnLeft();
+                    }
                 }
 
                 double v = _getRobotSpeed();
@@ -164,7 +185,7 @@ namespace Graphic.RobotRuns
                         if (y > worldHeight - halfCell) y = worldHeight - halfCell;
                     }
 
-                    // 保留原有“边界自动转向”基础逻辑，但允许自动模式屏蔽
+                    // 夹紧,确保机器人在边界内运动
                     if (!(autoState.Enabled && autoState.SuppressEdgeTurning))
                     {
                         switch (dir)
@@ -173,7 +194,7 @@ namespace Graphic.RobotRuns
                                 if (x >= worldWidth - halfCell)
                                 {
                                     x = worldWidth - halfCell;
-                                    dir = EnumMoveDirection.Down;
+                                    v = 0.0;
                                 }
                                 break;
 
@@ -181,7 +202,7 @@ namespace Graphic.RobotRuns
                                 if (y >= worldHeight - halfCell)
                                 {
                                     y = worldHeight - halfCell;
-                                    dir = EnumMoveDirection.Left;
+                                    v = 0.0;
                                 }
                                 break;
 
@@ -189,7 +210,7 @@ namespace Graphic.RobotRuns
                                 if (x <= 0.0 + halfCell)
                                 {
                                     x = halfCell;
-                                    dir = EnumMoveDirection.Up;
+                                    v = 0.0;
                                 }
                                 break;
 
@@ -197,7 +218,7 @@ namespace Graphic.RobotRuns
                                 if (y <= 0.0 + halfCell)
                                 {
                                     y = halfCell;
-                                    dir = EnumMoveDirection.Right;
+                                    v = 0.0;
                                 }
                                 break;
                         }

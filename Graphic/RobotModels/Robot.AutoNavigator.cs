@@ -16,13 +16,6 @@ namespace Graphic.RobotModels
         private readonly double _cellSizeM;
         private readonly Robot _robot;
 
-        private double _targetX;
-        private double _targetY;
-        private bool _hasTarget;
-
-        // 到达阈值（米）：略大于 dt 带来的一个步长抖动
-        private readonly double _arriveEpsilonM;
-
         public RobotAutoNavigator(
             object robotLock,
             Func<double> getRobotX,
@@ -31,8 +24,7 @@ namespace Graphic.RobotModels
             Func<double> getWorldWidthM,
             Func<double> getWorldHeightM,
             double cellSizeM,
-            Robot robot,
-            double arriveEpsilonM = 0.02)
+            Robot robot)
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
             _getRobotX = getRobotX ?? throw new ArgumentNullException(nameof(getRobotX));
@@ -42,8 +34,6 @@ namespace Graphic.RobotModels
             _getWorldHeightM = getWorldHeightM ?? throw new ArgumentNullException(nameof(getWorldHeightM));
             _cellSizeM = cellSizeM;
             _robot = robot ?? throw new ArgumentNullException(nameof(robot));
-
-            _arriveEpsilonM = arriveEpsilonM;
         }
 
         public bool IsEnabled { get; private set; }
@@ -54,14 +44,13 @@ namespace Graphic.RobotModels
             {
                 IsEnabled = true;
 
-                // 初始化一次目标：右下角（cell 中心点）
-                double halfCell = _cellSizeM / 2.0;
-                _targetX = _getWorldWidthM() - halfCell;
-                _targetY = _getWorldHeightM() - halfCell;
-                _hasTarget = true;
-
-                // 自动模式下视为持续“前进”
+                // 自动模式：保持“当前方向”开始直行（满足“切到自动先沿当前方向走到边界”）
                 _robot.IsForwardKeyDown = true;
+
+                // 修复“箭头与运动方向不一致”：同步角度到当前离散方向
+                double angle = Robot.DirectionToAngle(_robot.Direction);
+                _robot.OrientationAngle = angle;
+                _robot.TargetOrientationAngle = angle;
             }
         }
 
@@ -70,7 +59,6 @@ namespace Graphic.RobotModels
             lock (_robotLock)
             {
                 IsEnabled = false;
-                _hasTarget = false;
 
                 _robot.IsForwardKeyDown = false;
                 _robot.Acc = 0.0;
@@ -87,58 +75,74 @@ namespace Graphic.RobotModels
 
             lock (_robotLock)
             {
-                if (!IsEnabled || !_hasTarget)
+                if (!IsEnabled)
                 {
                     return RobotAutoMotionState.Disabled;
                 }
 
+                double worldWidth = _getWorldWidthM();
+                double worldHeight = _getWorldHeightM();
+                double halfCell = _cellSizeM / 2.0;
+
                 double x = _getRobotX();
                 double y = _getRobotY();
 
-                double dx = _targetX - x;
-                double dy = _targetY - y;
+                EnumMoveDirection dir = _robot.Direction;
 
-                bool arriveX = Math.Abs(dx) <= _arriveEpsilonM;
-                bool arriveY = Math.Abs(dy) <= _arriveEpsilonM;
-
-                if (arriveX && arriveY)
+                // 下一步是否会越界：越界则触发“原地左转”
+                bool willHitBoundary;
+                switch (dir)
                 {
-                    // 到达：停住（仍保持自动模式 enabled，防止被键盘抢控制）
+                    case EnumMoveDirection.Right:
+                        willHitBoundary = x >= worldWidth - halfCell;
+                        break;
+                    case EnumMoveDirection.Down:
+                        willHitBoundary = y >= worldHeight - halfCell;
+                        break;
+                    case EnumMoveDirection.Left:
+                        willHitBoundary = x <= halfCell;
+                        break;
+                    case EnumMoveDirection.Up:
+                        willHitBoundary = y <= halfCell;
+                        break;
+                    default:
+                        willHitBoundary = false;
+                        break;
+                }
+
+                if (willHitBoundary)
+                {
+                    // 到边界：停住 + 请求左转（RobotMove 会调用 TurnController.StartTurnLeft）
+                    _robot.IsForwardKeyDown = true;
                     _robot.Acc = 0.0;
                     _setRobotSpeed(0.0);
-                    _robot.IsForwardKeyDown = false;
 
                     return new RobotAutoMotionState(
                         enabled: true,
-                        direction: _robot.Direction,
+                        direction: dir,
                         acc: 0.0,
-                        suppressEdgeTurning: true,
-                        clampOnBounds: true
-                    );
+                        suppressEdgeTurning: false,
+                        clampOnBounds: true,
+                        requestTurnLeft: true);
                 }
 
-                // 简化策略：先对齐 X，再对齐 Y
-                EnumMoveDirection dir;
-                if (!arriveX)
-                {
-                    dir = dx >= 0 ? EnumMoveDirection.Right : EnumMoveDirection.Left;
-                }
-                else
-                {
-                    dir = dy >= 0 ? EnumMoveDirection.Down : EnumMoveDirection.Up;
-                }
-
+                // 未到边界：持续前进
                 double acc = getForwardAcc();
                 _robot.IsForwardKeyDown = true;
                 _robot.Acc = acc;
+
+                // 自动模式下直接同步角度，保证箭头与运动严格一致
+                double angle2 = Robot.DirectionToAngle(dir);
+                _robot.OrientationAngle = angle2;
+                _robot.TargetOrientationAngle = angle2;
 
                 return new RobotAutoMotionState(
                     enabled: true,
                     direction: dir,
                     acc: acc,
                     suppressEdgeTurning: true,
-                    clampOnBounds: true
-                );
+                    clampOnBounds: true,
+                    requestTurnLeft: false);
             }
         }
     }

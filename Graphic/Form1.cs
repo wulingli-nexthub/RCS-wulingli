@@ -128,7 +128,6 @@ namespace Graphic
 
         private void cmbChooseModel_SelectedIndexChanged(object sender, EventArgs e)
         {
-            // 0: 手动控制，1: 自动巡航（Designer 里就是这个顺序）
             if (cmbChooseModel.SelectedIndex == 1)
             {
                 _robotManual.Disable();
@@ -139,9 +138,19 @@ namespace Graphic
                 cmbChooseModel.SelectedIndex = 0;
                 _robotAutoNavigator.Disable();
                 _robotManual.Enable();
+
+                // ① 修复：切回手动时强制焦点回到窗体
+                this.ActiveControl = null;
+                BeginInvoke(new Action(() => Focus()));
             }
 
-            this.Focus();
+            // 同步一次（②：避免模式切换瞬间出现“箭头与实际方向不同”）
+            lock (_robotLock)
+            {
+                double angle = Robot.DirectionToAngle(_robot.Direction);
+                _robot.OrientationAngle = angle;
+                _robot.TargetOrientationAngle = angle;
+            }
         }
 
         private void Numeric_KeyDown_OnEnter(object sender, KeyEventArgs e)
