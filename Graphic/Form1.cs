@@ -3,6 +3,8 @@ using Graphic.Events;
 using Graphic.RobotRuns;
 using Graphic.WorldView;
 using Graphic.WorldView.CenterGrid;
+using SkiaSharp;
+using SkiaSharp.Views.Desktop;
 using System;
 using System.Drawing;
 using System.Threading;
@@ -63,37 +65,40 @@ namespace Graphic
         private RobotMove _robotMove;
         private RobotSimulator _robotSimulator;
 
-        private void Form1_Paint(object sender, PaintEventArgs e)
+        private void SkControl_PaintSurface(object sender, SKPaintSurfaceEventArgs e)
         {
-            Graphics g = e.Graphics;
+            SKCanvas canvas = e.Surface.Canvas;
 
-            // 由 DrawGrid 绘制网格
-            _drawGrid.Draw(g);
+            _drawGrid.Draw(canvas);
+            _drawRobot.Draw(canvas);
 
-            // 由 DrawRobot 绘制机器人
-            _drawRobot.Draw(g);
+            double robotX;
+            double robotY;
+            double robotV;
+            double robotA;
 
-            // 在左上角显示当前数据信息（这一段沿用你原来的逻辑）
-            using (var font = new Font("宋体", 10))
-            using (var brush = new SolidBrush(Color.Black))
+            lock (_robotLock)
             {
-                double robotX;
-                double robotY;
-                double robotV;
-                double robotA;
+                robotX = _robotX;
+                robotY = _robotY;
+                robotV = _robotSpeed;
+                robotA = _robotAcc;
+            }
 
-                lock (_robotLock)
+            using (var textPaint = new SKPaint
+            {
+                Color = SKColors.Black,
+                IsAntialias = true,
+            })
+            {
+                using (var font = new SKFont())
                 {
-                    robotX = _robotX;
-                    robotY = _robotY;
-                    robotV = _robotSpeed;
-                    robotA = _robotAcc;
+                    font.Size = 15;
+                    //string info = $"Scale: {_scale:F1} px/m   Offset: ({_offsetX:F0}, {_offsetY:F0})";
+                    string infoRobot = $"Robot: ({robotX:F2}, {robotY:F2}), v={robotV:F2}m/s, a={robotA:F2}m/s2";
+                    //canvas.DrawText(info, 10, 25, SKTextAlign.Left, font, textPaint);
+                    canvas.DrawText(infoRobot, 10, 25, SKTextAlign.Left, font, textPaint);
                 }
-
-                string info = $"Scale: {_scale:F1} px/m   Offset: ({_offsetX:F0}, {_offsetY:F0})";
-                string infoRobot = $"Robot: ({robotX:F2}, {robotY:F2}), v={robotV:F2}m/s, a={robotA:F2}m/s2";
-                g.DrawString(info, font, brush, new PointF(10, 10));
-                g.DrawString(infoRobot, font, brush, new PointF(10, 25));
             }
         }
 
@@ -101,26 +106,21 @@ namespace Graphic
         {
             InitializeComponent();
 
-            // 启用双缓冲减少闪烁
-            this.DoubleBuffered = true;
-
-            // 允许 MouseWheel 事件（有时需要设置）
-            this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
-
-            // 注册事件（也可在设计器里绑定）
-            this.Load += Form1_Load;                    //页面加载
-            this.Paint += Form1_Paint;                  //重绘
-            this.MouseWheel += Form1_MouseWheel;        //鼠标滚动
-            this.MouseDown += Form1_MouseDown;          //鼠标按下
-            this.MouseMove += Form1_MouseMove;          //鼠标移动
-            this.MouseUp += Form1_MouseUp;              //鼠标弹起
+            this.Load += Form1_Load;
             this.FormClosing += Form1_FormClosing;
             this.Resize += Form1_Resize;
             this.KeyDown += Form1_KeyDown;
             this.KeyUp += Form1_KeyUp;
-            this.KeyPreview = true;                 //确保窗体能接收键盘事件
+            this.KeyPreview = true;
 
-            // 统一给数值框加 KeyDown 处理
+            // 鼠标事件应绑定到 skControl，否则在画布上操作可能不会触发 Form 的鼠标事件
+            this.skControl.MouseWheel += Form1_MouseWheel;
+            this.skControl.MouseDown += Form1_MouseDown;
+            this.skControl.MouseMove += Form1_MouseMove;
+            this.skControl.MouseUp += Form1_MouseUp;
+
+            this.skControl.PaintSurface += SkControl_PaintSurface;
+
             numericAcc.KeyDown += Numeric_KeyDown_OnEnter;
             numericVinit.KeyDown += Numeric_KeyDown_OnEnter;
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
@@ -169,16 +169,11 @@ namespace Graphic
         /// </summary>
         private void Form1_MouseWheel(object sender, MouseEventArgs e)
         {
-            // 把 screen->world 的逻辑通过委托传给 handler
             _mouseWheel.Wheel(
                 e,
-                screen =>
-                {
-                    // 使用现有的 WorldTransform 做坐标转换
-                    return _worldTransform.ScreenToWorld(screen.X, screen.Y);
-                });
+                screen => _worldTransform.ScreenToWorld(screen.X, screen.Y));
 
-            Invalidate(); // 触发重绘
+            skControl.Invalidate();
         }
 
         // 鼠标按下：准备拖动
@@ -191,7 +186,7 @@ namespace Graphic
         private void Form1_MouseMove(object sender, MouseEventArgs e)
         {
             _mousePan.MouseMove(e);
-            Invalidate(); // 触发重绘
+            skControl.Invalidate();
         }
 
         // 鼠标松开：结束拖动
@@ -231,7 +226,6 @@ namespace Graphic
             _centerGridManager.ResizeCenter.CenterGrid();
         }
 
-        // W/A/D 控制
         // W/A/D 控制
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
@@ -294,12 +288,7 @@ namespace Graphic
         //窗体关闭时，安全停止线程
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
-            _isRunning = false;
-            if (_workerThread != null && _workerThread.IsAlive)
-            {
-                // 等一会儿退出
-                _workerThread.Join(200);
-            }
+            _robotSimulator?._Thead_Stop();
         }
 
         private void numericAcc_ValueChanged(object sender, EventArgs e)

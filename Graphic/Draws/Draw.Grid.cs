@@ -1,12 +1,12 @@
 ﻿using Graphic.WorldView;
-using System.Drawing;
+using SkiaSharp;
 
 namespace Graphic.Draws
 {
     internal class DrawGrid
     {
-        private const int GridCount = 30;      // 网格数30
-        private const double CellSizeM = 0.55; // 一格代表距离0.55米
+        private const int GridCount = 30;
+        private const double CellSizeM = 0.55;
 
         private readonly WorldTransform _transform;
         private readonly double _worldWidthM;
@@ -19,38 +19,43 @@ namespace Graphic.Draws
             _worldHeightM = worldHeightM;
         }
 
-        internal void Draw(Graphics g)
+        internal void Draw(SKCanvas canvas)
         {
-            // 抗锯齿
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            canvas.Clear(SKColors.White);
 
-            // 清屏
-            g.Clear(Color.White);
-
-            // 绘制网格（世界坐标 → 屏幕坐标）
-            using (var thinPen = new Pen(Color.LightGray, 1f))
-            using (var thickPen = new Pen(Color.Gray, 1.5f))
+            using (var thinPaint = new SKPaint
             {
-                // 画竖线
+                Color = new SKColor(211, 211, 211),
+                StrokeWidth = 1f,
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke
+            })
+            using (var thickPaint = new SKPaint
+            {
+                Color = SKColors.Gray,
+                StrokeWidth = 1.5f,
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke
+            })
+            {
                 for (int i = 0; i <= GridCount; i++)
                 {
                     double xWorld = i * CellSizeM;
-                    PointF p1 = _transform.WorldToScreen(xWorld, 0);
-                    PointF p2 = _transform.WorldToScreen(xWorld, _worldHeightM);
+                    var p1 = _transform.WorldToScreen(xWorld, 0);
+                    var p2 = _transform.WorldToScreen(xWorld, _worldHeightM);
 
-                    Pen pen = (i % 5 == 0) ? thickPen : thinPen; // 区分每五格线
-                    g.DrawLine(pen, p1, p2);
+                    SKPaint paint = (i % 5 == 0) ? thickPaint : thinPaint;
+                    canvas.DrawLine(p1.X, p1.Y, p2.X, p2.Y, paint);
                 }
 
-                // 画横线
                 for (int j = 0; j <= GridCount; j++)
                 {
                     double yWorld = j * CellSizeM;
-                    PointF p1 = _transform.WorldToScreen(0, yWorld);
-                    PointF p2 = _transform.WorldToScreen(_worldWidthM, yWorld);
+                    var p1 = _transform.WorldToScreen(0, yWorld);
+                    var p2 = _transform.WorldToScreen(_worldWidthM, yWorld);
 
-                    Pen pen = (j % 5 == 0) ? thickPen : thinPen;
-                    g.DrawLine(pen, p1, p2);
+                    SKPaint paint = (j % 5 == 0) ? thickPaint : thinPaint;
+                    canvas.DrawLine(p1.X, p1.Y, p2.X, p2.Y, paint);
                 }
             }
         }

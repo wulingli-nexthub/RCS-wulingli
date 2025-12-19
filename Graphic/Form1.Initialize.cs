@@ -55,7 +55,7 @@ namespace Graphic
             );
 
             var loadCenter = new LoadCenterStrategy(
-                host: this,
+                host: skControl,
                 getWorldWidthM: () => _worldWidthM,
                 getWorldHeightM: () => _worldHeightM,
                 getScale: () => _scale,
@@ -69,7 +69,7 @@ namespace Graphic
             );
 
             var resizeCenter = new ResizeCenterStrategy(
-                host: this,
+                host: skControl,
                 getWorldWidthM: () => _worldWidthM,
                 getWorldHeightM: () => _worldHeightM,
                 getScale: () => _scale,
@@ -79,7 +79,7 @@ namespace Graphic
             );
 
             var resetCenter = new ResetCenterStrategy(
-                host: this,
+                host: skControl,
                 getWorldWidthM: () => _worldWidthM,
                 getWorldHeightM: () => _worldHeightM,
                 getInitialScale: () => _initialScale,
@@ -129,7 +129,7 @@ namespace Graphic
             );
 
             _robotSimulator = new RobotSimulator(
-                host: this,
+                host: skControl,
                 motion: _robotMove,
                 dt: _dt
             );

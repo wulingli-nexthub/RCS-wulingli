@@ -20,14 +20,11 @@
             base.Dispose(disposing);
         }
 
-        #region Windows 窗体设计器生成的代码
+            #region Windows 窗体设计器生成的代码
 
-        /// <summary>
-        /// 设计器支持所需的方法 - 不要修改
-        /// 使用代码编辑器修改此方法的内容。
-        /// </summary>
         private void InitializeComponent()
         {
+            this.skControl = new SkiaSharp.Views.Desktop.SKControl();
             this.btnReset = new System.Windows.Forms.Button();
             this.labelAcc = new System.Windows.Forms.Label();
             this.numericAcc = new System.Windows.Forms.NumericUpDown();
@@ -37,6 +34,14 @@
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).BeginInit();
             this.SuspendLayout();
+            // 
+            // skControl
+            // 
+            this.skControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.skControl.Location = new System.Drawing.Point(0, 0);
+            this.skControl.Name = "skControl";
+            this.skControl.Size = new System.Drawing.Size(1221, 774);
+            this.skControl.TabIndex = 8;
             // 
             // btnReset
             // 
@@ -121,6 +126,7 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 18F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1221, 774);
+            this.Controls.Add(this.skControl);
             this.Controls.Add(this.cmbChooseModel);
             this.Controls.Add(this.numericVinit);
             this.Controls.Add(this.labelVinit);
@@ -128,7 +134,7 @@
             this.Controls.Add(this.labelAcc);
             this.Controls.Add(this.btnReset);
             this.Name = "Form1";
-            this.Text = " RCS Ver 3.8.0 吴灵丽";
+            this.Text = " RCS Ver 4.0.1 吴灵丽";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
             this.ResumeLayout(false);
@@ -138,6 +144,7 @@
 
         #endregion
 
+        private SkiaSharp.Views.Desktop.SKControl skControl;
         private System.Windows.Forms.Button btnReset;
         private System.Windows.Forms.Label labelAcc;
         private System.Windows.Forms.NumericUpDown numericAcc;
