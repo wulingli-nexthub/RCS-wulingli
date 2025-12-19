@@ -12,30 +12,34 @@ namespace Graphic.Draws
         // 动态获取机器人位置和当前缩放
         private readonly Func<(double X, double Y)> _getRobotPosition;
         private readonly Func<double> _getScale;
-        private double orientationAngle;
+        private readonly Func<double> _getOrientationAngle;
 
         internal DrawRobot(
             WorldTransform transform,
             object robotLock,
             Func<(double X, double Y)> getRobotPosition,
-            Func<double> getScale)
+            Func<double> getScale,
+            Func<double> getOrientationAngle)
         {
             _transform = transform;
             _robotLock = robotLock;
             _getRobotPosition = getRobotPosition;
             _getScale = getScale;
+            _getOrientationAngle = getOrientationAngle;
         }
 
         internal void Draw(Graphics g)
         {
             double robotX;
             double robotY;
+            double angle;
 
             lock (_robotLock)
             {
                 var pos = _getRobotPosition();
                 robotX = pos.X;
                 robotY = pos.Y;
+                angle = _getOrientationAngle();
             }
 
             PointF screenPos = _transform.WorldToScreen(robotX, robotY);
@@ -64,8 +68,8 @@ namespace Graphic.Draws
             float arrowStartOffset = radiusPx * 0.3f;         // 箭头起点距离圆心的偏移
             float arrowLineWidth = Math.Max(1.0f, radiusPx * 0.12f);      // 箭头线宽
 
-            float dirX = (float)Math.Cos(orientationAngle);            // 根据朝向角计算单位方向向量
-            float dirY = (float)Math.Sin(orientationAngle);
+            float dirX = (float)Math.Cos(angle);
+            float dirY = (float)Math.Sin(angle);
 
             PointF pStart = new PointF(          //箭头起点
                 screenPos.X + dirX * arrowStartOffset,

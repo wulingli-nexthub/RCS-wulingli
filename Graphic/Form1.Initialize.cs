@@ -25,7 +25,8 @@ namespace Graphic
                 _worldTransform,
                 _robotLock,
                 () => (_robotX, _robotY),
-                () => _scale
+                () => _scale,
+                () => _robot.OrientationAngle
             );
 
             // 鼠标滚轮缩放
@@ -104,7 +105,6 @@ namespace Graphic
             );
 
             _centerGridManager = new CenterGridManager(loadCenter, resizeCenter, resetCenter);
-            // 以下是一个“常见模式示例”，如果签名不一样，你只需要把参数对一下即可。
             _robotMove = new RobotMove(
                 robotLock: _robotLock,
                 getRobotX: () => _robotX,
@@ -117,7 +117,8 @@ namespace Graphic
                 getWorldWidthM: () => _worldWidthM,
                 getWorldHeightM: () => _worldHeightM,
                 cellSizeM: CellSizeM,
-                dt: _dt
+                dt: _dt,
+                getForwardAcc: () => _robotAcc   // 新增这一项
             );
 
             // 创建模拟器，让它在线程里调用 RobotMove.Update()

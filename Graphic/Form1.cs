@@ -116,12 +116,9 @@ namespace Graphic
             this.MouseUp += Form1_MouseUp;              //鼠标弹起
             this.FormClosing += Form1_FormClosing;
             this.Resize += Form1_Resize;
-
-            //// 启动后台线程，用线程＋sleep实现定时器
-            //_isRunning = true;
-            //_workerThread = new Thread(_Thread_Loop);
-            //_workerThread.IsBackground = true;
-            //_workerThread.Start();
+            this.KeyDown += Form1_KeyDown;
+            this.KeyUp += Form1_KeyUp;
+            this.KeyPreview = true;                 //确保窗体能接收键盘事件
         }
 
         /// <summary>
@@ -181,6 +178,62 @@ namespace Graphic
             _centerGridManager.ResizeCenter.CenterGrid();
         }
 
+        // W/A/D 控制
+        // W/A/D 控制
+        private void Form1_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (_robot == null || _robotMove == null)
+            {
+                return;
+            }
+
+            switch (e.KeyCode)
+            {
+                case Keys.W:
+                    lock (_robotLock)
+                    {
+                        _robot.IsForwardKeyDown = true;
+
+                        // 如果当前没有在转向，直接给出数值框配置的加速度
+                        if (!_robot.IsTurning)
+                        {
+                            _robot.Acc = _robotAcc;
+                        }
+                    }
+                    break;
+
+                case Keys.A:
+                    _robotMove.TurnController.StartTurnLeft();
+                    e.Handled = true;
+                    break;
+
+                case Keys.D:
+                    _robotMove.TurnController.StartTurnRight();
+                    e.Handled = true;
+                    break;
+            }
+        }
+
+        private void Form1_KeyUp(object sender, KeyEventArgs e)
+        {
+            if (_robot == null)
+            {
+                return;
+            }
+
+            if (e.KeyCode == Keys.W)
+            {
+                lock (_robotLock)
+                {
+                    _robot.IsForwardKeyDown = false;
+
+                    // 松开前进键：不再加速
+                    _robotAcc = 0.0;
+                    _robot.Acc = 0.0;
+                }
+            }
+        }
+
         // Reset 按钮
         private void btnReset_Click(object sender, EventArgs e)
         {
@@ -202,7 +255,14 @@ namespace Graphic
         {
             lock (_robotLock)
             {
-                _robot.Acc = (double)((NumericUpDown)sender).Value;
+                // 数值框决定“前进时使用的加速度”
+                _robotAcc = (double)((NumericUpDown)sender).Value;
+
+                // 如果此时前进键按着且没有在转向，可以立即更新当前加速度
+                if (_robot != null && _robot.IsForwardKeyDown && !_robot.IsTurning)
+                {
+                    _robot.Acc = _robotAcc;
+                }
             }
         }
 
