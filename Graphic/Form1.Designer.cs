@@ -33,6 +33,7 @@
             this.numericAcc = new System.Windows.Forms.NumericUpDown();
             this.labelVinit = new System.Windows.Forms.Label();
             this.numericVinit = new System.Windows.Forms.NumericUpDown();
+            this.cmbChooseModel = new System.Windows.Forms.ComboBox();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).BeginInit();
             this.SuspendLayout();
@@ -50,7 +51,7 @@
             // labelAcc
             // 
             this.labelAcc.AutoSize = true;
-            this.labelAcc.Location = new System.Drawing.Point(22, 227);
+            this.labelAcc.Location = new System.Drawing.Point(22, 298);
             this.labelAcc.Name = "labelAcc";
             this.labelAcc.Size = new System.Drawing.Size(98, 18);
             this.labelAcc.TabIndex = 2;
@@ -64,7 +65,7 @@
             0,
             0,
             65536});
-            this.numericAcc.Location = new System.Drawing.Point(25, 262);
+            this.numericAcc.Location = new System.Drawing.Point(25, 333);
             this.numericAcc.Minimum = new decimal(new int[] {
             100,
             0,
@@ -78,7 +79,7 @@
             // labelVinit
             // 
             this.labelVinit.AutoSize = true;
-            this.labelVinit.Location = new System.Drawing.Point(22, 139);
+            this.labelVinit.Location = new System.Drawing.Point(22, 210);
             this.labelVinit.Name = "labelVinit";
             this.labelVinit.Size = new System.Drawing.Size(80, 18);
             this.labelVinit.TabIndex = 5;
@@ -92,7 +93,7 @@
             0,
             0,
             65536});
-            this.numericVinit.Location = new System.Drawing.Point(25, 181);
+            this.numericVinit.Location = new System.Drawing.Point(25, 252);
             this.numericVinit.Name = "numericVinit";
             this.numericVinit.Size = new System.Drawing.Size(120, 28);
             this.numericVinit.TabIndex = 6;
@@ -103,11 +104,24 @@
             65536});
             this.numericVinit.ValueChanged += new System.EventHandler(this.numericVmax_ValueChanged);
             // 
+            // cmbChooseModel
+            // 
+            this.cmbChooseModel.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cmbChooseModel.FormattingEnabled = true;
+            this.cmbChooseModel.Items.AddRange(new object[] {
+            "手动控制",
+            "自动巡航"});
+            this.cmbChooseModel.Location = new System.Drawing.Point(25, 159);
+            this.cmbChooseModel.Name = "cmbChooseModel";
+            this.cmbChooseModel.Size = new System.Drawing.Size(121, 26);
+            this.cmbChooseModel.TabIndex = 7;
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 18F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1221, 774);
+            this.Controls.Add(this.cmbChooseModel);
             this.Controls.Add(this.numericVinit);
             this.Controls.Add(this.labelVinit);
             this.Controls.Add(this.numericAcc);
@@ -129,6 +143,7 @@
         private System.Windows.Forms.NumericUpDown numericAcc;
         private System.Windows.Forms.Label labelVinit;
         private System.Windows.Forms.NumericUpDown numericVinit;
+        private System.Windows.Forms.ComboBox cmbChooseModel;
     }
 }
 

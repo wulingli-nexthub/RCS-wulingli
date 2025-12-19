@@ -120,9 +120,28 @@ namespace Graphic
             this.KeyUp += Form1_KeyUp;
             this.KeyPreview = true;                 //确保窗体能接收键盘事件
 
-            // 统一给数值框加 KeyDown 处理（不动 Designer 生成代码）
+            // 统一给数值框加 KeyDown 处理
             numericAcc.KeyDown += Numeric_KeyDown_OnEnter;
             numericVinit.KeyDown += Numeric_KeyDown_OnEnter;
+            cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
+        }
+
+        private void cmbChooseModel_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            // 0: 手动控制，1: 自动巡航（Designer 里就是这个顺序）
+            if (cmbChooseModel.SelectedIndex == 1)
+            {
+                _robotManual.Disable();
+                _robotAutoNavigator.Enable();
+            }
+            else
+            {
+                cmbChooseModel.SelectedIndex = 0;
+                _robotAutoNavigator.Disable();
+                _robotManual.Enable();
+            }
+
+            this.Focus();
         }
 
         private void Numeric_KeyDown_OnEnter(object sender, KeyEventArgs e)

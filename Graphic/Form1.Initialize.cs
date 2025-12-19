@@ -1,5 +1,6 @@
 ﻿using Graphic.Draws;
 using Graphic.Events;
+using Graphic.RobotModels;
 using Graphic.RobotRuns;
 using Graphic.WorldView;
 using Graphic.WorldView.CenterGrid;
@@ -8,19 +9,14 @@ namespace Graphic
 {
     public partial class Form1
     {
-        /// <summary>
-        /// 初始化所有与绘图、交互相关的组件：
-        /// WorldTransform / DrawGrid / DrawRobot / MouseWheel / MousePan / CenterGridManager
-        /// </summary>
+        private RobotManual _robotManual;
+        private RobotAutoNavigator _robotAutoNavigator;
+
         private void Initialize()
         {
-            // World 变换
             _worldTransform = new WorldTransform(_scale, (float)_offsetX, (float)_offsetY);
-
-            // 网格
             _drawGrid = new DrawGrid(_worldTransform, _worldWidthM, _worldHeightM);
 
-            // 机器人
             _drawRobot = new DrawRobot(
                 _worldTransform,
                 _robotLock,
@@ -29,46 +25,35 @@ namespace Graphic
                 () => _robot.OrientationAngle
             );
 
-            // 鼠标滚轮缩放
             _mouseWheel = new MouseWheel(
                 this,
-                // 传入获取当前状态的委托
                 getState: () => (_scale, _offsetX, _offsetY),
-                // 设置缩放
                 setScale: s => _scale = s,
-                // 设置偏移
                 setOffset: (ox, oy) =>
                 {
                     _offsetX = ox;
                     _offsetY = oy;
                 },
-                // 更新 WorldTransform
                 updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
             );
 
-            // 鼠标拖动
             _mousePan = new MousePan(
                 this,
-                // 获取当前 offset 和 scale
                 getState: () => (_offsetX, _offsetY, _scale),
-                // 设置 offset
                 setOffset: (ox, oy) =>
                 {
                     _offsetX = ox;
                     _offsetY = oy;
                 },
-                // 更新 WorldTransform
                 updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
             );
 
-            // 机器人对象：这里使用当前加速度、最大速度，默认向右运动
             _robot = new Robot(
                 acc: _robotAcc,
                 maxSpeed: _robotMaxSpeed,
                 direction: EnumMoveDirection.Right
             );
 
-            // 居中策略：加载 / Resize / Reset
             var loadCenter = new LoadCenterStrategy(
                 host: this,
                 getWorldWidthM: () => _worldWidthM,
@@ -105,6 +90,19 @@ namespace Graphic
             );
 
             _centerGridManager = new CenterGridManager(loadCenter, resizeCenter, resetCenter);
+
+            // 先创建 move（需要 auto 回调，因此先创建 auto 实例或延迟回调）
+            _robotAutoNavigator = new RobotAutoNavigator(
+                robotLock: _robotLock,
+                getRobotX: () => _robotX,
+                getRobotY: () => _robotY,
+                setRobotSpeed: v => _robotSpeed = v,
+                getWorldWidthM: () => _worldWidthM,
+                getWorldHeightM: () => _worldHeightM,
+                cellSizeM: CellSizeM,
+                robot: _robot
+            );
+
             _robotMove = new RobotMove(
                 robotLock: _robotLock,
                 getRobotX: () => _robotX,
@@ -118,12 +116,20 @@ namespace Graphic
                 getWorldHeightM: () => _worldHeightM,
                 cellSizeM: CellSizeM,
                 dt: _dt,
-                getForwardAcc: () => _robotAcc   // 新增这一项
+                getForwardAcc: () => _robotAcc,
+                getAutoMotionState: () => _robotAutoNavigator.GetAutoMotionState(() => _robotAcc)
             );
 
-            // 创建模拟器，让它在线程里调用 RobotMove.Update()
+            _robotManual = new RobotManual(
+                robotLock: _robotLock,
+                getForwardAcc: () => _robotAcc,
+                setRobotSpeed: v => _robotSpeed = v,
+                robot: _robot,
+                turn: _robotMove.TurnController
+            );
+
             _robotSimulator = new RobotSimulator(
-                host: this,      // 用 Form 作为承载控件
+                host: this,
                 motion: _robotMove,
                 dt: _dt
             );
