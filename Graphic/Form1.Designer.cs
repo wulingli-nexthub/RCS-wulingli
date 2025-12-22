@@ -126,13 +126,13 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 18F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1221, 774);
-            this.Controls.Add(this.skControl);
             this.Controls.Add(this.cmbChooseModel);
             this.Controls.Add(this.numericVinit);
             this.Controls.Add(this.labelVinit);
             this.Controls.Add(this.numericAcc);
             this.Controls.Add(this.labelAcc);
             this.Controls.Add(this.btnReset);
+            this.Controls.Add(this.skControl);
             this.Name = "Form1";
             this.Text = " RCS Ver 4.0.1 吴灵丽";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
