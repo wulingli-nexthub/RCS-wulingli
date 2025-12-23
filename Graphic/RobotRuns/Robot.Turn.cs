@@ -74,6 +74,30 @@ namespace Graphic.RobotRuns
             StartTurnInternal(System.Math.PI / 2.0);
         }
 
+        public void StartTurnTo(EnumMoveDirection targetDirection)
+        {
+            lock (_robotLock)
+            {
+                if (_robot.IsTurning)
+                {
+                    return;
+                }
+
+                double targetAngle = Robot.DirectionToAngle(targetDirection);
+
+                // 以当前朝向为准，生成“等价目标角”（避免从 +pi 转到 -pi 产生大角度旋转）
+                double cur = _robot.OrientationAngle;
+                double delta = NormalizeAngle(targetAngle - cur);
+                double finalTarget = cur + delta;
+
+                // 原地转向：立即把速度清零并停止加速
+                _move.StopForTurn();
+
+                _robot.TargetOrientationAngle = finalTarget;
+                _robot.IsTurning = true;
+            }
+        }
+
         private void StartTurnInternal(double deltaAngle)
         {
             lock (_robotLock)

@@ -10,7 +10,8 @@ namespace Graphic.RobotRuns
             acc: 0.0,
             suppressEdgeTurning: false,
             clampOnBounds: false,
-            requestTurnLeft: false);
+            requestTurnLeft: false,
+            requestTurnToDirection: null);
 
         public RobotAutoMotionState(
             bool enabled,
@@ -18,7 +19,8 @@ namespace Graphic.RobotRuns
             double acc,
             bool suppressEdgeTurning,
             bool clampOnBounds,
-            bool requestTurnLeft)
+            bool requestTurnLeft,
+            EnumMoveDirection? requestTurnToDirection)
         {
             Enabled = enabled;
             Direction = direction;
@@ -26,6 +28,7 @@ namespace Graphic.RobotRuns
             SuppressEdgeTurning = suppressEdgeTurning;
             ClampOnBounds = clampOnBounds;
             RequestTurnLeft = requestTurnLeft;
+            RequestTurnToDirection = requestTurnToDirection;
         }
 
         public bool Enabled { get; }
@@ -34,6 +37,7 @@ namespace Graphic.RobotRuns
         public bool SuppressEdgeTurning { get; }
         public bool ClampOnBounds { get; }
         public bool RequestTurnLeft { get; }
+        public EnumMoveDirection? RequestTurnToDirection { get; }
     }
 
     internal class RobotMove
@@ -134,13 +138,17 @@ namespace Graphic.RobotRuns
                 if (autoState.Enabled)
                 {
                     // 自动模式：方向/加速度由 autoState 控制
-                    _robot.Direction = autoState.Direction;
+                    // 自动模式：默认加速度由 autoState 控制
                     _robot.Acc = autoState.Acc;
 
-                    // 若自动模式请求“原地左转”，复用 TurnController 做转向动画
                     if (autoState.RequestTurnLeft && !_robot.IsTurning)
                     {
                         _turnController.StartTurnLeft();
+                    }
+
+                    if (autoState.RequestTurnToDirection.HasValue && !_robot.IsTurning)
+                    {
+                        _turnController.StartTurnTo(autoState.RequestTurnToDirection.Value);
                     }
                 }
 

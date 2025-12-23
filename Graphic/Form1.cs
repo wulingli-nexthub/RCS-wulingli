@@ -240,6 +240,12 @@ namespace Graphic
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
             _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
 
+            // 默认寻路算法：A*
+            cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;
+            cmbPathAlgorithm.SelectedIndex = 1; // 0=Dijkstra, 1=A*
+            cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
+            _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
+
             _robotAutoNavigator.Disable();
             _robotManual.Enable();
             ActiveControl = null;

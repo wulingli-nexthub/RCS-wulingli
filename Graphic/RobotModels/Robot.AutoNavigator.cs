@@ -135,7 +135,8 @@ namespace Graphic.RobotModels
                         acc: 0.0,
                         suppressEdgeTurning: true,
                         clampOnBounds: true,
-                        requestTurnLeft: false);
+                        requestTurnLeft: false,
+                        requestTurnToDirection: null);
                 }
 
                 double x = _getRobotX();
@@ -155,7 +156,8 @@ namespace Graphic.RobotModels
                         acc: 0.0,
                         suppressEdgeTurning: true,
                         clampOnBounds: true,
-                        requestTurnLeft: false);
+                        requestTurnLeft: false,
+                        requestTurnToDirection: null);
                 }
 
                 GridPos next = _path[_pathIndex];
@@ -166,21 +168,34 @@ namespace Graphic.RobotModels
 
                 double acc = getForwardAcc();
 
+                // 需要转向：触发转向动画（原地转），转完再继续前进
+                if (!_robot.IsTurning && dir != _robot.Direction)
+                {
+                    _robot.IsForwardKeyDown = true;
+                    _robot.Acc = 0.0;
+
+                    return new RobotAutoMotionState(
+                        enabled: true,
+                        direction: _robot.Direction,
+                        acc: 0.0,
+                        suppressEdgeTurning: true,
+                        clampOnBounds: true,
+                        requestTurnLeft: false,
+                        requestTurnToDirection: dir);
+                }
+
+                // 不需要转向：正常前进（朝向由 RobotTurn 保持/或已对齐）
                 _robot.IsForwardKeyDown = true;
                 _robot.Acc = acc;
-                _robot.Direction = dir;
-
-                double angle = Robot.DirectionToAngle(dir);
-                _robot.OrientationAngle = angle;
-                _robot.TargetOrientationAngle = angle;
 
                 return new RobotAutoMotionState(
                     enabled: true,
-                    direction: dir,
+                    direction: _robot.Direction,
                     acc: acc,
                     suppressEdgeTurning: true,
                     clampOnBounds: true,
-                    requestTurnLeft: false);
+                    requestTurnLeft: false,
+                    requestTurnToDirection: null);
             }
         }
 
