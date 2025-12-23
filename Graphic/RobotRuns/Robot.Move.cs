@@ -138,7 +138,6 @@ namespace Graphic.RobotRuns
                 if (autoState.Enabled)
                 {
                     // 自动模式：方向/加速度由 autoState 控制
-                    // 自动模式：默认加速度由 autoState 控制
                     _robot.Acc = autoState.Acc;
 
                     if (autoState.RequestTurnLeft && !_robot.IsTurning)
@@ -184,6 +183,27 @@ namespace Graphic.RobotRuns
                     double worldWidth = _getWorldWidthM();
                     double worldHeight = _getWorldHeightM();
                     double halfCell = _cellSizeM / 2.0;
+
+                    // 关键：运动时吸附到网格中心线，避免沿网格线（边界）滑行
+                    // 水平运动锁定 y 到当前格子中心；垂直运动锁定 x 到当前格子中心
+                    if (dir == EnumMoveDirection.Right || dir == EnumMoveDirection.Left)
+                    {
+                        int gy = (int)System.Math.Floor((y - halfCell) / _cellSizeM);
+                        if (gy < 0) gy = 0;
+                        int maxGy = (int)System.Math.Floor((worldHeight - halfCell) / _cellSizeM);
+                        if (gy > maxGy) gy = maxGy;
+
+                        y = gy * _cellSizeM + halfCell;
+                    }
+                    else if (dir == EnumMoveDirection.Up || dir == EnumMoveDirection.Down)
+                    {
+                        int gx = (int)System.Math.Floor((x - halfCell) / _cellSizeM);
+                        if (gx < 0) gx = 0;
+                        int maxGx = (int)System.Math.Floor((worldWidth - halfCell) / _cellSizeM);
+                        if (gx > maxGx) gx = maxGx;
+
+                        x = gx * _cellSizeM + halfCell;
+                    }
 
                     if (autoState.Enabled && autoState.ClampOnBounds)
                     {
