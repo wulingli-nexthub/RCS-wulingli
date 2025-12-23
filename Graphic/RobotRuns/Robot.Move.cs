@@ -232,6 +232,26 @@ namespace Graphic.RobotRuns
                         }
                     }
 
+                    // ------------------------- 核心：网格中心线约束 -------------------------
+                    // 横向移动：Y 必须落在“某一行格子中心”
+                    // 纵向移动：X 必须落在“某一列格子中心”
+                    double snapX = SnapToCellCenter(x);
+                    double snapY = SnapToCellCenter(y);
+
+                    switch (dir)
+                    {
+                        case EnumMoveDirection.Right:
+                        case EnumMoveDirection.Left:
+                            y = snapY;
+                            break;
+
+                        case EnumMoveDirection.Down:
+                        case EnumMoveDirection.Up:
+                            x = snapX;
+                            break;
+                    }
+                    // ----------------------------------------------------------------------
+
                     _setRobotSpeed(v);
                     _setRobotX(x);
                     _setRobotY(y);
@@ -240,6 +260,14 @@ namespace Graphic.RobotRuns
             }
 
             _turnController.Update();
+        }
+
+        private double SnapToCellCenter(double w)
+        {
+            // 将任意世界坐标吸附到最近的格子中心：k*cell + halfCell
+            double halfCell = _cellSizeM / 2.0;
+            double k = Math.Round((w - halfCell) / _cellSizeM);
+            return k * _cellSizeM + halfCell;
         }
     }
 }
