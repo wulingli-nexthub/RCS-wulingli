@@ -11,6 +11,7 @@ namespace Graphic
     {
         private RobotManual _robotManual;
         private RobotAutoNavigator _robotAutoNavigator;
+        private DrawPath _drawPath;
 
         private void Initialize()
         {
@@ -101,6 +102,13 @@ namespace Graphic
                 getWorldHeightM: () => _worldHeightM,
                 cellSizeM: CellSizeM,
                 robot: _robot
+            );
+
+            _drawPath = new DrawPath(
+                _worldTransform,
+                _robotLock,
+                getPathPointsSnapshot: () => _robotAutoNavigator.GetPathWorldPointsSnapshot(),
+                getPathIndexSnapshot: () => _robotAutoNavigator.GetPathIndexSnapshot()
             );
 
             _robotMove = new RobotMove(

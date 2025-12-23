@@ -107,6 +107,29 @@ namespace Graphic.RobotModels
             }
         }
 
+        public List<(double X, double Y)> GetPathWorldPointsSnapshot()
+        {
+            lock (_robotLock)
+            {
+                var points = new List<(double X, double Y)>(_path.Count);
+                for (int i = 0; i < _path.Count; i++)
+                {
+                    GridPos p = _path[i];
+                    points.Add((GridToCenterWorldX(p.X), GridToCenterWorldY(p.Y)));
+                }
+
+                return points;
+            }
+        }
+
+        public int GetPathIndexSnapshot()
+        {
+            lock (_robotLock)
+            {
+                return _pathIndex;
+            }
+        }
+
         public RobotAutoMotionState GetAutoMotionState(Func<double> getForwardAcc)
         {
             if (getForwardAcc == null) throw new ArgumentNullException(nameof(getForwardAcc));

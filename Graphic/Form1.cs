@@ -71,6 +71,7 @@ namespace Graphic
             SKCanvas canvas = e.Surface.Canvas;
 
             _drawGrid.Draw(canvas);
+            _drawPath.Draw(canvas);
             _drawRobot.Draw(canvas);
 
             double robotX;
@@ -169,12 +170,16 @@ namespace Graphic
                 BeginInvoke(new Action(() => Focus()));
             }
 
-            // 同步一次（②：避免模式切换瞬间出现“箭头与实际方向不同”）
+            // 同步一次（确保方向一致）
             lock (_robotLock)
             {
+                // 使用当前实际方向计算角度
                 double angle = Robot.DirectionToAngle(_robot.Direction);
                 _robot.OrientationAngle = angle;
                 _robot.TargetOrientationAngle = angle;
+
+                // 确保转向状态重置
+                _robot.IsTurning = false;
             }
         }
 

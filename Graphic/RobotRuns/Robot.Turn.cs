@@ -33,9 +33,24 @@ namespace Graphic.RobotRuns
                 double target = _robot.TargetOrientationAngle;
                 double maxStep = _robot.TurnAngularSpeed * _dt;
 
-                double delta = NormalizeAngle(target - cur);
+                // 确保角度在 [0, 2π) 范围内计算
+                cur = NormalizeAngle(cur);
+                target = NormalizeAngle(target);
 
-                if (System.Math.Abs(delta) <= maxStep)
+                // 计算最短旋转角度
+                double delta = target - cur;
+
+                // 选择最短旋转方向
+                if (delta > Math.PI)
+                {
+                    delta -= 2 * Math.PI;
+                }
+                else if (delta < -Math.PI)
+                {
+                    delta += 2 * Math.PI;
+                }
+
+                if (Math.Abs(delta) <= maxStep)
                 {
                     // 旋转完成
                     _robot.OrientationAngle = target;
@@ -54,7 +69,7 @@ namespace Graphic.RobotRuns
                 }
 
                 double step = delta > 0 ? maxStep : -maxStep;
-                _robot.OrientationAngle = cur + step;
+                _robot.OrientationAngle = NormalizeAngle(cur + step);
             }
         }
 
@@ -83,12 +98,41 @@ namespace Graphic.RobotRuns
                     return;
                 }
 
-                double targetAngle = Robot.DirectionToAngle(targetDirection);
+                // 获取当前方向
+                EnumMoveDirection currentDir = _robot.Direction;
 
-                // 以当前朝向为准，生成“等价目标角”（避免从 +pi 转到 -pi 产生大角度旋转）
-                double cur = _robot.OrientationAngle;
-                double delta = NormalizeAngle(targetAngle - cur);
-                double finalTarget = cur + delta;
+                // 如果目标方向与当前方向相同，不需要转向
+                if (currentDir == targetDirection)
+                {
+                    return;
+                }
+
+                double currentAngle = NormalizeAngle(_robot.OrientationAngle);
+                double targetAngle = NormalizeAngle(Robot.DirectionToAngle(targetDirection));
+
+                // 计算两个方向的旋转差值（选择最短路径）
+                double delta = targetAngle - currentAngle;
+
+                // 选择最短旋转方向
+                if (delta > Math.PI)
+                {
+                    delta -= 2 * Math.PI;
+                }
+                else if (delta < -Math.PI)
+                {
+                    delta += 2 * Math.PI;
+                }
+
+                // 如果旋转角度很小，直接设置方向，不进行动画
+                if (Math.Abs(delta) < 0.01) // 约0.57度
+                {
+                    _robot.OrientationAngle = targetAngle;
+                    _robot.TargetOrientationAngle = targetAngle;
+                    _robot.Direction = targetDirection;
+                    return;
+                }
+
+                double finalTarget = currentAngle + delta;
 
                 // 原地转向：立即把速度清零并停止加速
                 _move.StopForTurn();
@@ -111,42 +155,56 @@ namespace Graphic.RobotRuns
                 // 原地转向：立即把速度清零并停止加速
                 _move.StopForTurn();
 
-                // 以当前 "目标角" 为基准叠加 90°
-                double curTarget = _robot.TargetOrientationAngle;
-                _robot.TargetOrientationAngle = curTarget + deltaAngle;
+                // 获取当前角度并归一化
+                double currentAngle = NormalizeAngle(_robot.OrientationAngle);
+
+                // 计算新角度并归一化
+                double newTarget = NormalizeAngle(currentAngle + deltaAngle);
+
+                _robot.TargetOrientationAngle = newTarget;
                 _robot.IsTurning = true;
             }
         }
 
         private static double NormalizeAngle(double angle)
         {
-            while (angle > System.Math.PI) angle -= 2 * System.Math.PI;
-            while (angle < -System.Math.PI) angle += 2 * System.Math.PI;
+            // 归一化到 [0, 2π) 范围，避免负角度带来的复杂性
+            angle = angle % (2 * Math.PI);
+            if (angle < 0) angle += 2 * Math.PI;
             return angle;
         }
 
         private static EnumMoveDirection AngleToDirection(double angle)
         {
-            // 将角度归一化到 [-pi, pi]
+            // 归一化到 [0, 2π)
             angle = NormalizeAngle(angle);
 
-            // 按象限粗略映射到 4 个方向
-            if (angle >= -System.Math.PI / 4 && angle < System.Math.PI / 4)
+            // 简化逻辑：使用固定的45度边界来划分4个方向
+            // 右方向: [337.5°, 22.5°)
+            if (angle >= 15 * Math.PI / 8 || angle < Math.PI / 8)
             {
                 return EnumMoveDirection.Right;
             }
-
-            if (angle >= System.Math.PI / 4 && angle < 3 * System.Math.PI / 4)
+            // 下方向: [22.5°, 112.5°)
+            else if (angle >= Math.PI / 8 && angle < 5 * Math.PI / 8)
             {
                 return EnumMoveDirection.Down;
             }
-
-            if (angle <= -System.Math.PI / 4 && angle > -3 * System.Math.PI / 4)
+            // 左方向: [112.5°, 202.5°)
+            else if (angle >= 5 * Math.PI / 8 && angle < 9 * Math.PI / 8)
+            {
+                return EnumMoveDirection.Left;
+            }
+            // 上方向: [202.5°, 292.5°)
+            else if (angle >= 9 * Math.PI / 8 && angle < 13 * Math.PI / 8)
             {
                 return EnumMoveDirection.Up;
             }
-
-            return EnumMoveDirection.Left;
+            // 右方向: [292.5°, 337.5°)
+            else
+            {
+                return EnumMoveDirection.Right;
+            }
         }
     }
 }

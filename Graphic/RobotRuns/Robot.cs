@@ -1,4 +1,6 @@
-﻿namespace Graphic.RobotRuns
+﻿using System;
+
+namespace Graphic.RobotRuns
 {
     public enum EnumMoveDirection
     {
@@ -60,16 +62,11 @@
         {
             switch (dir)
             {
-                case EnumMoveDirection.Right:
-                    return 0.0;
-                case EnumMoveDirection.Down:
-                    return System.Math.PI / 2.0;
-                case EnumMoveDirection.Left:
-                    return System.Math.PI;
-                case EnumMoveDirection.Up:
-                    return -System.Math.PI / 2.0;
-                default:
-                    return 0.0;
+                case EnumMoveDirection.Right: return 0;
+                case EnumMoveDirection.Down: return Math.PI / 2;
+                case EnumMoveDirection.Left: return Math.PI;
+                case EnumMoveDirection.Up: return 3 * Math.PI / 2;
+                default: return 0;
             }
         }
     }
