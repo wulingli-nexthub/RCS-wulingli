@@ -31,6 +31,7 @@
             this.labelVinit = new System.Windows.Forms.Label();
             this.numericVinit = new System.Windows.Forms.NumericUpDown();
             this.cmbChooseModel = new System.Windows.Forms.ComboBox();
+            this.cmbPathAlgorithm = new System.Windows.Forms.ComboBox();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).BeginInit();
             this.SuspendLayout();
@@ -121,11 +122,24 @@
             this.cmbChooseModel.Size = new System.Drawing.Size(121, 26);
             this.cmbChooseModel.TabIndex = 7;
             // 
+            // cmbPathAlgorithm
+            // 
+            this.cmbPathAlgorithm.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cmbPathAlgorithm.FormattingEnabled = true;
+            this.cmbPathAlgorithm.Items.AddRange(new object[] {
+            "Dijkstra",
+            "A*"});
+            this.cmbPathAlgorithm.Location = new System.Drawing.Point(24, 401);
+            this.cmbPathAlgorithm.Name = "cmbPathAlgorithm";
+            this.cmbPathAlgorithm.Size = new System.Drawing.Size(121, 26);
+            this.cmbPathAlgorithm.TabIndex = 9;
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 18F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1221, 774);
+            this.Controls.Add(this.cmbPathAlgorithm);
             this.Controls.Add(this.cmbChooseModel);
             this.Controls.Add(this.numericVinit);
             this.Controls.Add(this.labelVinit);
@@ -134,7 +148,7 @@
             this.Controls.Add(this.btnReset);
             this.Controls.Add(this.skControl);
             this.Name = "Form1";
-            this.Text = " RCS Ver 4.1.0 吴灵丽";
+            this.Text = " RCS Ver 4.1.1 吴灵丽";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
             this.ResumeLayout(false);
@@ -151,6 +165,7 @@
         private System.Windows.Forms.Label labelVinit;
         private System.Windows.Forms.NumericUpDown numericVinit;
         private System.Windows.Forms.ComboBox cmbChooseModel;
+        private System.Windows.Forms.ComboBox cmbPathAlgorithm;
     }
 }
 

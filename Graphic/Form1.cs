@@ -1,5 +1,6 @@
 ﻿using Graphic.Draws;
 using Graphic.Events;
+using Graphic.RobotModels.Pathfinding;
 using Graphic.RobotRuns;
 using Graphic.WorldView;
 using Graphic.WorldView.CenterGrid;
@@ -124,6 +125,30 @@ namespace Graphic
             numericAcc.KeyDown += Numeric_KeyDown_OnEnter;
             numericVinit.KeyDown += Numeric_KeyDown_OnEnter;
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
+            cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
+        }
+
+        private void cmbPathAlgorithm_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (_robotAutoNavigator == null)
+            {
+                return;
+            }
+
+            if (cmbPathAlgorithm.SelectedIndex == 0)
+            {
+                _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.Dijkstra;
+            }
+            else
+            {
+                _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
+            }
+
+            // 自动巡航中：立刻用新算法重新规划（否则可能沿用旧路径/已结束路径导致停住）
+            if (_robotAutoNavigator.IsEnabled)
+            {
+                _robotAutoNavigator.RebuildPath();
+            }
         }
 
         private void cmbChooseModel_SelectedIndexChanged(object sender, EventArgs e)
@@ -213,6 +238,7 @@ namespace Graphic
             cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;
             cmbChooseModel.SelectedIndex = 0;
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
+            _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
 
             _robotAutoNavigator.Disable();
             _robotManual.Enable();

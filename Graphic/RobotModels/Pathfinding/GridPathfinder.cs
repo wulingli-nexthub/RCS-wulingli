@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Graphic.RobotModels.Pathfinding
 {
-    internal enum PathfindingAlgorithm
+    internal enum EnumPathfindingAlgorithm
     {
         Dijkstra = 0,
         AStar = 1
@@ -43,7 +43,7 @@ namespace Graphic.RobotModels.Pathfinding
             GridPos start,
             GridPos goal,
             Func<GridPos, bool> isWalkable,
-            PathfindingAlgorithm algorithm)
+            EnumPathfindingAlgorithm algorithm)
         {
             if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
             if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
@@ -102,7 +102,7 @@ namespace Graphic.RobotModels.Pathfinding
                     cameFrom[next] = current;
                     gScore[next] = tentativeG;
 
-                    int h = (algorithm == PathfindingAlgorithm.AStar) ? Manhattan(next, goal) : 0;
+                    int h = (algorithm == EnumPathfindingAlgorithm.AStar) ? Manhattan(next, goal) : 0;
                     int f = tentativeG + h;
 
                     open.Push(next, f);

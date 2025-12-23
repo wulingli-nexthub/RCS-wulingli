@@ -23,6 +23,8 @@ namespace Graphic.RobotModels
         private readonly List<GridPos> _path = new List<GridPos>();
         private int _pathIndex;
 
+        private EnumPathfindingAlgorithm _algorithm = EnumPathfindingAlgorithm.AStar;
+
         public RobotAutoNavigator(
             object robotLock,
             Func<double> getRobotX,
@@ -45,7 +47,34 @@ namespace Graphic.RobotModels
 
         public bool IsEnabled { get; private set; }
 
-        public PathfindingAlgorithm Algorithm { get; set; } = PathfindingAlgorithm.AStar;
+        public EnumPathfindingAlgorithm Algorithm
+        {
+            get { return _algorithm; }
+            set
+            {
+                lock (_robotLock)
+                {
+                    if (_algorithm == value)
+                    {
+                        return;
+                    }
+
+                    _algorithm = value;
+
+                    // 算法变化后，清空路径，等待下一帧/或外部调用 RebuildPath 立即重算
+                    _path.Clear();
+                    _pathIndex = 0;
+                }
+            }
+        }
+
+        public void RebuildPath()
+        {
+            lock (_robotLock)
+            {
+                RebuildPath_NoLock();
+            }
+        }
 
         public void Enable()
         {
@@ -96,7 +125,6 @@ namespace Graphic.RobotModels
 
                 if (_path.Count == 0)
                 {
-                    // 无路可走：停
                     _robot.IsForwardKeyDown = false;
                     _robot.Acc = 0.0;
                     _setRobotSpeed(0.0);
@@ -113,10 +141,8 @@ namespace Graphic.RobotModels
                 double x = _getRobotX();
                 double y = _getRobotY();
 
-                // 如果 pathIndex 指向的点已到达，则推进
                 AdvanceWaypointIfArrived_NoLock(x, y);
 
-                // 到终点：停
                 if (_pathIndex >= _path.Count)
                 {
                     _robot.IsForwardKeyDown = false;
@@ -138,7 +164,6 @@ namespace Graphic.RobotModels
 
                 EnumMoveDirection dir = ChooseDirectionToTarget(x, y, targetX, targetY);
 
-                // 让机器人始终贴合“中心线”：当已经对齐 X（或 Y）时，只沿另一个轴走
                 double acc = getForwardAcc();
 
                 _robot.IsForwardKeyDown = true;
@@ -170,7 +195,6 @@ namespace Graphic.RobotModels
             GridPos start = WorldToGrid(_getRobotX(), _getRobotY(), gridW, gridH);
             GridPos goal = new GridPos(gridW - 1, gridH - 1);
 
-            // TODO: 这里接入障碍物数据：return false 表示不可走
             Func<GridPos, bool> isWalkable = p => true;
 
             List<GridPos> path = GridPathfinder.FindPath(
@@ -179,13 +203,12 @@ namespace Graphic.RobotModels
                 start: start,
                 goal: goal,
                 isWalkable: isWalkable,
-                algorithm: Algorithm);
+                algorithm: _algorithm);
 
             _path.Clear();
             _path.AddRange(path);
 
             _pathIndex = 0;
-            // 如果第一点就是 start，推进到下一个点（避免“原地对准”抖动）
             if (_path.Count > 0 && _path[0].Equals(start))
             {
                 _pathIndex = Math.Min(1, _path.Count);
@@ -233,7 +256,6 @@ namespace Graphic.RobotModels
             double dx = tx - x;
             double dy = ty - y;
 
-            // 优先纠正“偏离中心线”的轴：谁偏差大先走谁
             if (Math.Abs(dx) >= Math.Abs(dy))
             {
                 return dx >= 0 ? EnumMoveDirection.Right : EnumMoveDirection.Left;
