@@ -92,6 +92,7 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="RobotModels\Pathfinding\GridPathfinder.cs" />
     <Compile Include="RobotModels\Robot.AutoNavigator.cs" />
     <Compile Include="RobotModels\Robot.Manual.cs" />
     <Compile Include="RobotRuns\Robot.cs" />

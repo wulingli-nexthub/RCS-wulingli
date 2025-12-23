@@ -134,7 +134,7 @@
             this.Controls.Add(this.btnReset);
             this.Controls.Add(this.skControl);
             this.Name = "Form1";
-            this.Text = " RCS Ver 4.0.1 吴灵丽";
+            this.Text = " RCS Ver 4.1.0 吴灵丽";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
             this.ResumeLayout(false);

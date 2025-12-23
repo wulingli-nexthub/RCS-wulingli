@@ -1,5 +1,7 @@
-﻿using Graphic.RobotRuns;
+﻿using Graphic.RobotModels.Pathfinding;
+using Graphic.RobotRuns;
 using System;
+using System.Collections.Generic;
 
 namespace Graphic.RobotModels
 {
@@ -17,6 +19,9 @@ namespace Graphic.RobotModels
         private readonly Robot _robot;
 
         private const double ArriveEpsilonM = 0.02;
+
+        private readonly List<GridPos> _path = new List<GridPos>();
+        private int _pathIndex;
 
         public RobotAutoNavigator(
             object robotLock,
@@ -40,6 +45,8 @@ namespace Graphic.RobotModels
 
         public bool IsEnabled { get; private set; }
 
+        public PathfindingAlgorithm Algorithm { get; set; } = PathfindingAlgorithm.AStar;
+
         public void Enable()
         {
             lock (_robotLock)
@@ -47,6 +54,8 @@ namespace Graphic.RobotModels
                 IsEnabled = true;
 
                 _robot.IsForwardKeyDown = true;
+
+                RebuildPath_NoLock();
 
                 double angle = Robot.DirectionToAngle(_robot.Direction);
                 _robot.OrientationAngle = angle;
@@ -59,6 +68,9 @@ namespace Graphic.RobotModels
             lock (_robotLock)
             {
                 IsEnabled = false;
+
+                _path.Clear();
+                _pathIndex = 0;
 
                 _robot.IsForwardKeyDown = false;
                 _robot.Acc = 0.0;
@@ -77,21 +89,35 @@ namespace Graphic.RobotModels
                     return RobotAutoMotionState.Disabled;
                 }
 
-                double worldWidth = _getWorldWidthM();
-                double worldHeight = _getWorldHeightM();
-                double halfCell = _cellSizeM / 2.0;
+                if (_path.Count == 0)
+                {
+                    RebuildPath_NoLock();
+                }
+
+                if (_path.Count == 0)
+                {
+                    // 无路可走：停
+                    _robot.IsForwardKeyDown = false;
+                    _robot.Acc = 0.0;
+                    _setRobotSpeed(0.0);
+
+                    return new RobotAutoMotionState(
+                        enabled: true,
+                        direction: _robot.Direction,
+                        acc: 0.0,
+                        suppressEdgeTurning: true,
+                        clampOnBounds: true,
+                        requestTurnLeft: false);
+                }
 
                 double x = _getRobotX();
                 double y = _getRobotY();
 
-                // ② 到右下角自动停止（右下角 cell 中心点）
-                double targetX = worldWidth - halfCell;
-                double targetY = worldHeight - halfCell;
+                // 如果 pathIndex 指向的点已到达，则推进
+                AdvanceWaypointIfArrived_NoLock(x, y);
 
-                bool arriveX = Math.Abs(x - targetX) <= ArriveEpsilonM;
-                bool arriveY = Math.Abs(y - targetY) <= ArriveEpsilonM;
-
-                if (arriveX && arriveY)
+                // 到终点：停
+                if (_pathIndex >= _path.Count)
                 {
                     _robot.IsForwardKeyDown = false;
                     _robot.Acc = 0.0;
@@ -106,50 +132,22 @@ namespace Graphic.RobotModels
                         requestTurnLeft: false);
                 }
 
-                EnumMoveDirection dir = _robot.Direction;
+                GridPos next = _path[_pathIndex];
+                double targetX = GridToCenterWorldX(next.X);
+                double targetY = GridToCenterWorldY(next.Y);
 
-                bool willHitBoundary;
-                switch (dir)
-                {
-                    case EnumMoveDirection.Right:
-                        willHitBoundary = x >= worldWidth - halfCell;
-                        break;
-                    case EnumMoveDirection.Down:
-                        willHitBoundary = y >= worldHeight - halfCell;
-                        break;
-                    case EnumMoveDirection.Left:
-                        willHitBoundary = x <= halfCell;
-                        break;
-                    case EnumMoveDirection.Up:
-                        willHitBoundary = y <= halfCell;
-                        break;
-                    default:
-                        willHitBoundary = false;
-                        break;
-                }
+                EnumMoveDirection dir = ChooseDirectionToTarget(x, y, targetX, targetY);
 
-                if (willHitBoundary)
-                {
-                    _robot.IsForwardKeyDown = true;
-                    _robot.Acc = 0.0;
-                    _setRobotSpeed(0.0);
-
-                    return new RobotAutoMotionState(
-                        enabled: true,
-                        direction: dir,
-                        acc: 0.0,
-                        suppressEdgeTurning: false,
-                        clampOnBounds: true,
-                        requestTurnLeft: true);
-                }
-
+                // 让机器人始终贴合“中心线”：当已经对齐 X（或 Y）时，只沿另一个轴走
                 double acc = getForwardAcc();
+
                 _robot.IsForwardKeyDown = true;
                 _robot.Acc = acc;
+                _robot.Direction = dir;
 
-                double angle2 = Robot.DirectionToAngle(dir);
-                _robot.OrientationAngle = angle2;
-                _robot.TargetOrientationAngle = angle2;
+                double angle = Robot.DirectionToAngle(dir);
+                _robot.OrientationAngle = angle;
+                _robot.TargetOrientationAngle = angle;
 
                 return new RobotAutoMotionState(
                     enabled: true,
@@ -159,6 +157,89 @@ namespace Graphic.RobotModels
                     clampOnBounds: true,
                     requestTurnLeft: false);
             }
+        }
+
+        private void RebuildPath_NoLock()
+        {
+            double worldWidth = _getWorldWidthM();
+            double worldHeight = _getWorldHeightM();
+
+            int gridW = Math.Max(1, (int)Math.Round(worldWidth / _cellSizeM));
+            int gridH = Math.Max(1, (int)Math.Round(worldHeight / _cellSizeM));
+
+            GridPos start = WorldToGrid(_getRobotX(), _getRobotY(), gridW, gridH);
+            GridPos goal = new GridPos(gridW - 1, gridH - 1);
+
+            // TODO: 这里接入障碍物数据：return false 表示不可走
+            Func<GridPos, bool> isWalkable = p => true;
+
+            List<GridPos> path = GridPathfinder.FindPath(
+                width: gridW,
+                height: gridH,
+                start: start,
+                goal: goal,
+                isWalkable: isWalkable,
+                algorithm: Algorithm);
+
+            _path.Clear();
+            _path.AddRange(path);
+
+            _pathIndex = 0;
+            // 如果第一点就是 start，推进到下一个点（避免“原地对准”抖动）
+            if (_path.Count > 0 && _path[0].Equals(start))
+            {
+                _pathIndex = Math.Min(1, _path.Count);
+            }
+        }
+
+        private void AdvanceWaypointIfArrived_NoLock(double robotX, double robotY)
+        {
+            while (_pathIndex < _path.Count)
+            {
+                GridPos p = _path[_pathIndex];
+                double tx = GridToCenterWorldX(p.X);
+                double ty = GridToCenterWorldY(p.Y);
+
+                bool arriveX = Math.Abs(robotX - tx) <= ArriveEpsilonM;
+                bool arriveY = Math.Abs(robotY - ty) <= ArriveEpsilonM;
+
+                if (!(arriveX && arriveY))
+                {
+                    break;
+                }
+
+                _pathIndex++;
+            }
+        }
+
+        private GridPos WorldToGrid(double wx, double wy, int gridW, int gridH)
+        {
+            int gx = (int)Math.Floor(wx / _cellSizeM);
+            int gy = (int)Math.Floor(wy / _cellSizeM);
+
+            if (gx < 0) gx = 0;
+            if (gy < 0) gy = 0;
+            if (gx >= gridW) gx = gridW - 1;
+            if (gy >= gridH) gy = gridH - 1;
+
+            return new GridPos(gx, gy);
+        }
+
+        private double GridToCenterWorldX(int gx) => gx * _cellSizeM + _cellSizeM / 2.0;
+        private double GridToCenterWorldY(int gy) => gy * _cellSizeM + _cellSizeM / 2.0;
+
+        private static EnumMoveDirection ChooseDirectionToTarget(double x, double y, double tx, double ty)
+        {
+            double dx = tx - x;
+            double dy = ty - y;
+
+            // 优先纠正“偏离中心线”的轴：谁偏差大先走谁
+            if (Math.Abs(dx) >= Math.Abs(dy))
+            {
+                return dx >= 0 ? EnumMoveDirection.Right : EnumMoveDirection.Left;
+            }
+
+            return dy >= 0 ? EnumMoveDirection.Down : EnumMoveDirection.Up;
         }
     }
 }
