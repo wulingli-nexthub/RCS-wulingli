@@ -18,7 +18,7 @@ namespace Graphic.RobotModels
         private readonly double _cellSizeM;
         private readonly Robot _robot;
 
-        private const double ArriveEpsilonM = 0.02;
+        private const double ArriveEpsilonM = 0.05;
 
         private readonly List<GridPos> _path = new List<GridPos>();
         private int _pathIndex;
