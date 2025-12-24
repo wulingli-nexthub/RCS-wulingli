@@ -1,9 +1,9 @@
-﻿using Graphic.WorldView;
+﻿using GridDemo.WorldView;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
 
-namespace Graphic.Draws
+namespace GridDemo.Draws
 {
     internal sealed class DrawPath
     {

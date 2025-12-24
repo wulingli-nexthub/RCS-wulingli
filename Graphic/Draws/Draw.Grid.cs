@@ -1,7 +1,7 @@
-﻿using Graphic.WorldView;
+﻿using GridDemo.WorldView;
 using SkiaSharp;
 
-namespace Graphic.Draws
+namespace GridDemo.Draws
 {
     internal class DrawGrid
     {

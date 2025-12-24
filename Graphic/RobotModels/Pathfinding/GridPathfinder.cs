@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace Graphic.RobotModels.Pathfinding
+namespace GridDemo.RobotModels.Pathfinding
 {
     internal enum EnumPathfindingAlgorithm
     {

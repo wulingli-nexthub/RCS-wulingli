@@ -1,4 +1,4 @@
-﻿namespace Graphic.WorldView.CenterGrid
+﻿namespace GridDemo.WorldView.CenterGrid
 {
     internal interface ICenterStrategy
     {

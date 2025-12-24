@@ -1,8 +1,8 @@
-﻿using Graphic.RobotRuns;
+﻿using GridDemo.RobotRuns;
 using System;
 using System.Windows.Forms;
 
-namespace Graphic.RobotModels
+namespace GridDemo.RobotModels
 {
     internal sealed class RobotManual
     {

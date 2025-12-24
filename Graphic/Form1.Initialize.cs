@@ -1,11 +1,11 @@
-﻿using Graphic.Draws;
-using Graphic.Events;
-using Graphic.RobotModels;
-using Graphic.RobotRuns;
-using Graphic.WorldView;
-using Graphic.WorldView.CenterGrid;
+﻿using GridDemo.Draws;
+using GridDemo.Events;
+using GridDemo.RobotModels;
+using GridDemo.RobotRuns;
+using GridDemo.WorldView;
+using GridDemo.WorldView.CenterGrid;
 
-namespace Graphic
+namespace GridDemo
 {
     public partial class Form1
     {

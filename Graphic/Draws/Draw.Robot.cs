@@ -1,8 +1,8 @@
-﻿using Graphic.WorldView;
+﻿using GridDemo.WorldView;
 using SkiaSharp;
 using System;
 
-namespace Graphic.Draws
+namespace GridDemo.Draws
 {
     internal class DrawRobot
     {

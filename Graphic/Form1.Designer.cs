@@ -1,4 +1,4 @@
-﻿namespace Graphic
+﻿namespace GridDemo
 {
     partial class Form1
     {

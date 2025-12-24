@@ -1,9 +1,9 @@
-﻿using Graphic.RobotModels.Pathfinding;
-using Graphic.RobotRuns;
+﻿using GridDemo.RobotModels.Pathfinding;
+using GridDemo.RobotRuns;
 using System;
 using System.Collections.Generic;
 
-namespace Graphic.RobotModels
+namespace GridDemo.RobotModels
 {
     /// <summary>
     /// 机器人自动导航器：

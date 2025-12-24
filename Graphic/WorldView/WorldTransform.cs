@@ -1,6 +1,6 @@
 ﻿using System.Drawing;
 
-namespace Graphic.WorldView
+namespace GridDemo.WorldView
 {
     internal class WorldTransform
     {

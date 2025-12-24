@@ -2,7 +2,7 @@
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace Graphic.Events
+namespace GridDemo.Events
 {
     internal class MousePan
     {

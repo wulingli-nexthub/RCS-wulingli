@@ -2,7 +2,7 @@
 using System.Threading;
 using System.Windows.Forms;
 
-namespace Graphic.RobotRuns
+namespace GridDemo.RobotRuns
 {
     internal class RobotSimulator
     {

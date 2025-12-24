@@ -1,9 +1,9 @@
-﻿using Graphic.Draws;
-using Graphic.Events;
-using Graphic.RobotModels.Pathfinding;
-using Graphic.RobotRuns;
-using Graphic.WorldView;
-using Graphic.WorldView.CenterGrid;
+﻿using GridDemo.Draws;
+using GridDemo.Events;
+using GridDemo.RobotModels.Pathfinding;
+using GridDemo.RobotRuns;
+using GridDemo.WorldView;
+using GridDemo.WorldView.CenterGrid;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using System;
@@ -11,7 +11,7 @@ using System.Drawing;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace Graphic
+namespace GridDemo
 {
     public partial class Form1 : Form
     {

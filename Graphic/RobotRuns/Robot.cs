@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Graphic.RobotRuns
+namespace GridDemo.RobotRuns
 {
     public enum EnumMoveDirection
     {

@@ -1,10 +1,10 @@
-﻿using Graphic.RobotModels;
-using Graphic.RobotModels.Pathfinding;
-using Graphic.WorldView;
+﻿using GridDemo.RobotModels;
+using GridDemo.RobotModels.Pathfinding;
+using GridDemo.WorldView;
 using System;
 using System.Windows.Forms;
 
-namespace Graphic.Events
+namespace GridDemo.Events
 {
     internal sealed class DestinationPicker
     {
