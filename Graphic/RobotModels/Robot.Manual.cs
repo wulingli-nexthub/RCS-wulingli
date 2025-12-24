@@ -1,9 +1,16 @@
 ﻿using GridDemo.RobotRuns;
 using System;
-using System.Windows.Forms;
 
 namespace GridDemo.RobotModels
 {
+    /// <summary>
+    /// 机器人手动控制器（键盘）：
+    /// - 负责把键盘事件（W/A/D）翻译成机器人状态的改变；
+    /// - W：前进（设置 <see cref="Robot.IsForwardKeyDown"/>，并在非转向时设置加速度 <see cref="Robot.Acc"/>）；
+    /// - A/D：触发 90° 左/右转（通过 <see cref="RobotTurn"/>）。
+    /// 线程安全：
+    /// - 通过 <see cref="_robotLock"/> 与仿真/绘制线程同步访问机器人状态。
+    /// </summary>
     internal sealed class RobotManual
     {
         private readonly object _robotLock;
@@ -26,8 +33,14 @@ namespace GridDemo.RobotModels
             _turn = turn ?? throw new ArgumentNullException(nameof(turn));
         }
 
-        public bool IsEnabled { get; private set; }
+        public bool IsEnabled { get; private set; }         // 是否启用手动控制
 
+        /// <summary>
+        /// 启用手动模式：
+        /// - 打开启用标志；
+        /// - 清除“前进按键按下”状态；
+        /// - 清零加速度并强制速度归零，确保进入手动模式时机器人处于可控且静止的初始状态。
+        /// </summary>
         public void Enable()
         {
             lock (_robotLock)
@@ -39,6 +52,11 @@ namespace GridDemo.RobotModels
             }
         }
 
+        /// <summary>
+        /// 禁用手动模式：
+        /// - 关闭启用标志；
+        /// - 同样清除按键状态并刹停，避免切换模式时机器人“带着速度/加速度”继续运动。
+        /// </summary>
         public void Disable()
         {
             lock (_robotLock)
@@ -47,54 +65,6 @@ namespace GridDemo.RobotModels
                 _robot.IsForwardKeyDown = false;
                 _robot.Acc = 0.0;
                 _setRobotSpeed(0.0);
-            }
-        }
-
-        public void OnKeyDown(KeyEventArgs e)
-        {
-            if (e == null) throw new ArgumentNullException(nameof(e));
-            if (!IsEnabled) return;
-
-            switch (e.KeyCode)
-            {
-                case Keys.W:
-                    lock (_robotLock)
-                    {
-                        _robot.IsForwardKeyDown = true;
-                        if (!_robot.IsTurning)
-                        {
-                            _robot.Acc = _getForwardAcc();
-                        }
-                    }
-                    e.Handled = true;
-                    break;
-
-                case Keys.A:
-                    _turn.StartTurnLeft();
-                    e.Handled = true;
-                    break;
-
-                case Keys.D:
-                    _turn.StartTurnRight();
-                    e.Handled = true;
-                    break;
-            }
-        }
-
-        public void OnKeyUp(KeyEventArgs e)
-        {
-            if (e == null) throw new ArgumentNullException(nameof(e));
-            if (!IsEnabled) return;
-
-            if (e.KeyCode == Keys.W)
-            {
-                lock (_robotLock)
-                {
-                    _robot.IsForwardKeyDown = false;
-                    _setRobotSpeed(0.0);
-                    _robot.Acc = 0.0;
-                }
-                e.Handled = true;
             }
         }
     }

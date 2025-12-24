@@ -106,7 +106,6 @@ namespace GridDemo
 
             _drawPath = new DrawPath(
                 _worldTransform,
-                _robotLock,
                 getPathPointsSnapshot: () => _robotAutoNavigator.GetPathWorldPointsSnapshot(),
                 getPathIndexSnapshot: () => _robotAutoNavigator.GetPathIndexSnapshot()
             );

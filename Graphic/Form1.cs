@@ -7,8 +7,6 @@ using GridDemo.WorldView.CenterGrid;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using System;
-using System.Drawing;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace GridDemo
@@ -33,10 +31,6 @@ namespace GridDemo
         private double _offsetX;
         private double _offsetY;
 
-        // 拖动(pan)相关
-        private bool _isPanning = false;
-        private Point _lastMousePos;                    //鼠标当前位置
-
         //------------------------------机器人相关变量------------------------------//
         //机器人初始世界坐标
         private double _robotX = CellSizeM / 2;
@@ -49,9 +43,6 @@ namespace GridDemo
 
         private readonly double _dt = 0.02;  //固定时间模拟步长0.02秒
 
-        //自制定时器
-        private Thread _workerThread;
-        private volatile bool _isRunning = false;   //线程运行标志
         private readonly object _robotLock = new object();
         //------------------------------机器人相关变量------------------------------//
 

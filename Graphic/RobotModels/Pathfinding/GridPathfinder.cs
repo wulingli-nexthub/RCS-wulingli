@@ -27,10 +27,6 @@ namespace GridDemo.RobotModels.Pathfinding
         public int Y { get; }
 
         public bool Equals(GridPos other) => X == other.X && Y == other.Y;              // 比较两个坐标是否相等
-        // 重写 Equals 当以 object 调用时，先判断类型是不是 GridPos，是的话再调用上面的类型安全版本。
-        //public override bool Equals(object obj) => obj is GridPos other && Equals(other);    
-        //public override int GetHashCode() => (X * 397) ^ Y;
-        //public override string ToString() => "(" + X + "," + Y + ")";
     }
 
     internal static class GridPathfinder
@@ -252,7 +248,8 @@ namespace GridDemo.RobotModels.Pathfinding
                 {
                     int l = i * 2 + 1;
                     int r = l + 1;
-                    if (l >= n) break;
+                    if (l >= n)
+                        break;
 
                     // 找到左右子节点中 priority 较小的那个
                     int min = (r < n && _heap[r].priority < _heap[l].priority) ? r : l;

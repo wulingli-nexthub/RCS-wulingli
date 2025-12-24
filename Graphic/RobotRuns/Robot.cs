@@ -16,6 +16,10 @@ namespace GridDemo.RobotRuns
         Moving
     }
 
+    /// <summary>
+    /// 机器人基础运动模型（加速度/速度上限/方向/朝向）。
+    /// 与渲染/控制分离：该类保存运动相关的状态与约定。
+    /// </summary>
     internal class Robot
     {
         public double Acc { get; set; }
@@ -46,7 +50,9 @@ namespace GridDemo.RobotRuns
         // 当前是否在“试图前进”（W 是否按着）
         public bool IsForwardKeyDown { get; set; }
 
-
+        /// <summary>
+        /// 创建机器人并根据初始离散方向初始化朝向角度。
+        /// </summary>
         public Robot(double acc, double maxSpeed, EnumMoveDirection direction)
         {
             Acc = acc;
@@ -58,6 +64,9 @@ namespace GridDemo.RobotRuns
             TargetOrientationAngle = OrientationAngle;
         }
 
+        /// <summary>
+        /// 将离散方向转换为弧度角度（用于 <see cref="OrientationAngle"/> 的约定）。
+        /// </summary>
         public static double DirectionToAngle(EnumMoveDirection dir)
         {
             switch (dir)

@@ -97,7 +97,6 @@ namespace GridDemo.RobotRuns
             _dt = dt;
             _getForwardAcc = getForwardAcc ?? throw new ArgumentNullException(nameof(getForwardAcc));
             _getAutoMotionState = getAutoMotionState ?? throw new ArgumentNullException(nameof(getAutoMotionState));
-
             _turnController = new RobotTurn(_robotLock, _robot, this, _dt);
         }
 

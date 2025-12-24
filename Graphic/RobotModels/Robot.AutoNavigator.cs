@@ -94,20 +94,6 @@ namespace GridDemo.RobotModels
             }
         }
 
-        public (double X, double Y)? GetGoalWorldPointSnapshot()
-        {
-            lock (_robotLock)
-            {
-                if (!_goal.HasValue)
-                {
-                    return null;
-                }
-
-                GridPos g = _goal.Value;
-                return (GridToCenterWorldX(g.X), GridToCenterWorldY(g.Y));
-            }
-        }
-
         /// <summary>
         /// 立即重建路径。
         /// </summary>
