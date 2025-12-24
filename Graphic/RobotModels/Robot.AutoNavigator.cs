@@ -243,6 +243,7 @@ namespace GridDemo.RobotModels
                     _robot.IsForwardKeyDown = false;
                     _robot.Acc = 0.0;
                     _setRobotSpeed(0.0);
+                    _path.Clear();
 
                     return new RobotAutoMotionState(
                         enabled: true,
