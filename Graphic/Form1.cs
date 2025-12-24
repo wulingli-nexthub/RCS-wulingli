@@ -65,7 +65,6 @@ namespace Graphic
         private Robot _robot;
         private RobotMove _robotMove;
         private RobotSimulator _robotSimulator;
-        private DestinationPicker _destinationPicker;
 
         private void SkControl_PaintSurface(object sender, SKPaintSurfaceEventArgs e)
         {
@@ -210,12 +209,6 @@ namespace Graphic
         // 鼠标按下：准备拖动
         private void Form1_MouseDown(object sender, MouseEventArgs e)
         {
-            if (_destinationPicker != null && _destinationPicker.TryPick(e))
-            {
-                skControl.Invalidate();
-                return;
-            }
-
             _mousePan.MouseDown(e);
         }
 

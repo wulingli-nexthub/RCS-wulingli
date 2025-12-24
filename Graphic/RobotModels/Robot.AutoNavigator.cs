@@ -30,7 +30,6 @@ namespace Graphic.RobotModels
         private int _pathIndex;           // 当前路径点索引，指向 _path 中的下一个目标点。
 
         private EnumPathfindingAlgorithm _algorithm = EnumPathfindingAlgorithm.AStar;          // 寻路算法类型，默认为 A* 算法。
-        private GridPos? _goal;
 
         public RobotAutoNavigator(
             object robotLock,
@@ -75,36 +74,6 @@ namespace Graphic.RobotModels
                     _path.Clear();
                     _pathIndex = 0;
                 }
-            }
-        }
-
-        public void SetGoal(GridPos goal, bool rebuildIfEnabled)
-        {
-            lock (_robotLock)
-            {
-                _goal = goal;
-
-                _path.Clear();
-                _pathIndex = 0;
-
-                if (rebuildIfEnabled && IsEnabled)
-                {
-                    RebuildPath_NoLock();
-                }
-            }
-        }
-
-        public (double X, double Y)? GetGoalWorldPointSnapshot()
-        {
-            lock (_robotLock)
-            {
-                if (!_goal.HasValue)
-                {
-                    return null;
-                }
-
-                GridPos g = _goal.Value;
-                return (GridToCenterWorldX(g.X), GridToCenterWorldY(g.Y));
             }
         }
 
@@ -307,16 +276,7 @@ namespace Graphic.RobotModels
             int gridH = Math.Max(1, (int)Math.Round(worldHeight / _cellSizeM));
 
             GridPos start = WorldToGrid(_getRobotX(), _getRobotY(), gridW, gridH);            // 获取当前机器人位置的网格坐标
-
-            // 未设置目的地：不生成路径（保持停住/等待外部 SetGoal）
-            if (!_goal.HasValue)
-            {
-                _path.Clear();
-                _pathIndex = 0;
-                return;
-            }
-
-            GridPos goal = _goal.Value;
+            GridPos goal = new GridPos(gridW - 1, gridH - 1);              // 目标点为右下角格子（gridW-1, gridH-1）
 
             Func<GridPos, bool> isWalkable = p => true;                 // 假设所有格子都是可通行的（可根据实际情况修改）
 
