@@ -142,6 +142,13 @@ namespace Graphic
                 dt: _dt
             );
             _robotSimulator._Thead_Start();
+
+            _destinationPicker = new DestinationPicker(
+                transform: _worldTransform,
+                navigator: _robotAutoNavigator,
+                getWorldWidthM: () => _worldWidthM,
+                getWorldHeightM: () => _worldHeightM,
+                cellSizeM: CellSizeM);
         }
     }
 }
