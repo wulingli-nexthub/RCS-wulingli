@@ -59,6 +59,13 @@ namespace GridDemo.RobotRuns
     /// </summary>
     internal class RobotMove
     {
+        // “渐进吸附”参数：值越大，回正越快；建议 8~20 之间。
+        // 物理含义近似为：每秒按一定比例把偏差拉回中心线（指数衰减）。
+        private const double CenterlineSnapStrengthPerSec = 12.0;
+
+        // 防止在中心线附近产生细小抖动：当误差小于该值时直接置为目标中心线。
+        private const double CenterlineSnapEpsilonM = 0.001;
+
         private readonly object _robotLock;
         private readonly Func<double> _getRobotX;
         private readonly Action<double> _setRobotX;
@@ -262,22 +269,19 @@ namespace GridDemo.RobotRuns
                         }
                     }
 
-                    // ------------------------- 核心：网格中心线约束 -------------------------
-                    // 横向移动：Y 必须落在“某一行格子中心”
-                    // 纵向移动：X 必须落在“某一列格子中心”
-                    double snapX = SnapToCellCenter(x);
-                    double snapY = SnapToCellCenter(y);
-
+                    // ------------------------- 核心：网格中心线“渐进吸附” -------------------------
+                    // 横向移动：Y 向最近的“行中心线”渐进回正
+                    // 纵向移动：X 向最近的“列中心线”渐进回正
                     switch (dir)
                     {
                         case EnumMoveDirection.Right:
                         case EnumMoveDirection.Left:
-                            y = snapY;
+                            y = ApproachToCellCenterLine(y);
                             break;
 
                         case EnumMoveDirection.Down:
                         case EnumMoveDirection.Up:
-                            x = snapX;
+                            x = ApproachToCellCenterLine(x);
                             break;
                     }
                     // ----------------------------------------------------------------------
@@ -293,12 +297,31 @@ namespace GridDemo.RobotRuns
         }
 
         /// <summary>
+        /// 找到最近的格子中心线（k*cell + halfCell），然后按指数平滑方式逼近。
+        /// 这样避免 Math.Round 的“硬跳变”，移动更自然。
+        /// </summary>
+        private double ApproachToCellCenterLine(double w)
+        {
+            double target = SnapToCellCenter(w);
+
+            double delta = target - w;
+            if (Math.Abs(delta) <= CenterlineSnapEpsilonM)
+            {
+                return target;
+            }
+
+            // 指数衰减：factor = 1 - exp(-k*dt)，dt 越小也能保持一致的“每秒回正强度”
+            double factor = 1.0 - Math.Exp(-CenterlineSnapStrengthPerSec * _dt);
+
+            return w + delta * factor;
+        }
+
+        /// <summary>
         /// 吸附到最近的网格中心：
         /// 目标中心坐标为 k*cell + halfCell（k 为整数）。
         /// </summary>
         private double SnapToCellCenter(double w)
         {
-            // 将任意世界坐标吸附到最近的格子中心：k*cell + halfCell
             double halfCell = _cellSizeM / 2.0;
             double k = Math.Round((w - halfCell) / _cellSizeM);
             return k * _cellSizeM + halfCell;

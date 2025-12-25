@@ -9,15 +9,13 @@ namespace GridDemo
 {
     public partial class Form1 : Form
     {
-
         private const int GridCount = 30;               // 网格数30
         private const double CellSizeM = 0.55;          // 一格代表距离0.55米
 
         private double _worldWidthM = GridCount * CellSizeM;        // 网格在世界坐标中的总宽高（米）
         private double _worldHeightM = GridCount * CellSizeM;
 
-        private double _scale = 30.0;                   // 1米 = 30像素
-
+        private double _scale;
         private double _offsetX;        //世界坐标对应屏幕坐标偏移量
         private double _offsetY;
 
