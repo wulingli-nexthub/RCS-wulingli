@@ -65,16 +65,8 @@ namespace GridDemo
         /// </summary>
         private void Form1_Load(object sender, EventArgs e)
         {
-            //_offsetX = this.ClientSize.Width / 2.0;
-            //_offsetY = this.ClientSize.Height / 2.0;
-
-            //_initialScale = _scale;
-            //_initialOffsetX = _offsetX;
-            //_initialOffsetY = _offsetY;
-
             Initialize();  // 初始化
-
-            _centerGridManager.ResizeCenter.CenterGrid();
+            _centerGrid.Center();    // 加载居中
 
             cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;            // 默认手动控制
             cmbChooseModel.SelectedIndex = 0;
@@ -106,7 +98,7 @@ namespace GridDemo
         /// </summary>
         private void Form1_Resize(object sender, EventArgs e)
         {
-            _centerGridManager.ResizeCenter.CenterGrid();
+            _centerGrid.Center();
         }
 
         /// <summary>
@@ -370,7 +362,7 @@ namespace GridDemo
         /// </summary>
         private void btnReset_Click(object sender, EventArgs e)
         {
-            _centerGridManager.ResizeCenter.CenterGrid();
+            _centerGrid.Center();
         }
     }
 }

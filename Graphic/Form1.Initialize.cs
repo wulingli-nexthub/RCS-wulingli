@@ -17,7 +17,7 @@ namespace GridDemo
         private DrawRobot _drawRobot;
         private MouseWheel _mouseWheel;
         private MousePan _mousePan;
-        private CenterGridManager _centerGridManager;
+        private CenterGrid _centerGrid;
         private Robot _robot;
         private RobotMove _robotMove;
         private RobotSimulator _robotSimulator;
@@ -65,7 +65,7 @@ namespace GridDemo
                 direction: EnumMoveDirection.Right
             );
 
-            var resizeCenter = new ResizeCenterStrategy(
+            _centerGrid = new CenterGrid(
                 host: skControl,
                 getWorldWidthM: () => _worldWidthM,
                 getWorldHeightM: () => _worldHeightM,
@@ -74,8 +74,6 @@ namespace GridDemo
                 setOffsetY: y => _offsetY = y,
                 updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
             );
-
-            _centerGridManager = new CenterGridManager(resizeCenter);
 
             // 先创建 move（需要 auto 回调，因此先创建 auto 实例或延迟回调）
             _robotAutoNavigator = new RobotAutoNavigator(

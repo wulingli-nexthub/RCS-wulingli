@@ -9,7 +9,7 @@ namespace GridDemo.WorldView.CenterGrid
     /// - 让整个世界网格尽量完整地显示在视口内，并留出一定边距；
     /// - 同时重新计算 offset，使网格始终居中显示。
     /// </summary>
-    internal class ResizeCenterStrategy : ICenterStrategy
+    internal class CenterGrid
     {
         private readonly Control _host;
 
@@ -22,7 +22,7 @@ namespace GridDemo.WorldView.CenterGrid
 
         private readonly Action<double, float, float> _updateWorldTransform;
 
-        public ResizeCenterStrategy(
+        public CenterGrid(
             Control host,
             Func<double> getWorldWidthM,
             Func<double> getWorldHeightM,
@@ -48,7 +48,7 @@ namespace GridDemo.WorldView.CenterGrid
         /// - 重新计算 offset，使世界居中；
         /// - 更新 WorldTransform 并触发重绘。
         /// </summary>
-        public void CenterGrid()
+        public void Center()
         {
             int clientWidth = _host.ClientSize.Width;
             int clientHeight = _host.ClientSize.Height;
