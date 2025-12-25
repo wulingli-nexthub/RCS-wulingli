@@ -108,7 +108,7 @@ namespace GridDemo
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
             if (_robot == null || _robotMove == null)
-            {
+            { // 空值检查
                 return;
             }
 
@@ -117,10 +117,10 @@ namespace GridDemo
                 case Keys.W:
                     lock (_robotLock)
                     {
-                        _robot.IsForwardKeyDown = true;
-                        e.Handled = true;
-                        if (!_robot.IsTurning)                        // 如果当前没有在转向，直接给出数值框配置的加速度
-                        {
+                        _robot.IsForwardKeyDown = true;         // 标记前进按键按下
+                        e.Handled = true;             // 标记事件已处理
+                        if (!_robot.IsTurning)
+                        { // 如果当前没有在转向，直接给出数值框配置的加速度
                             _robot.Acc = _robotAcc;
                         }
                     }

@@ -222,13 +222,21 @@ namespace GridDemo.RobotRuns
                     if (autoState.Enabled && autoState.ClampOnBounds)                  // 边界夹紧
                     {
                         if (x < halfCell)
+                        {
                             x = halfCell;
+                        }
                         if (y < halfCell)
+                        {
                             y = halfCell;
+                        }
                         if (x > worldWidth - halfCell)
+                        {
                             x = worldWidth - halfCell;
+                        }
                         if (y > worldHeight - halfCell)
+                        {
                             y = worldHeight - halfCell;
+                        }
                     }
 
                     if (!(autoState.Enabled && autoState.SuppressEdgeTurning))                    // 夹紧,确保机器人在边界内运动
