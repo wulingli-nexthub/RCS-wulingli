@@ -12,6 +12,16 @@ namespace GridDemo
         private RobotManual _robotManual;
         private RobotAutoNavigator _robotAutoNavigator;
         private DrawPath _drawPath;
+        private WorldTransform _worldTransform;
+        private DrawGrid _drawGrid;
+        private DrawRobot _drawRobot;
+        private MouseWheel _mouseWheel;
+        private MousePan _mousePan;
+        private CenterGridManager _centerGridManager;
+        private Robot _robot;
+        private RobotMove _robotMove;
+        private RobotSimulator _robotSimulator;
+        private DestinationPicker _destinationPicker;
 
         private void Initialize()
         {

@@ -2,8 +2,18 @@
 
 namespace GridDemo.RobotRuns
 {
+    /// <summary>
+    /// 自动导航/自动运行提供给运动层的“指令快照”。
+    /// 设计目的：
+    /// - 将自动模式的决策（方向、加速度、是否允许边界处理、是否请求转向）与运动学更新解耦；
+    /// - 每次 <see cref="RobotMove.Update"/> 读取一次，避免在一次物理帧内多处查询导致的不一致。
+    /// </summary>
     internal sealed class RobotAutoMotionState
     {
+        /// <summary>
+        /// 关闭自动模式时的默认状态。
+        /// 注意：此处 direction 只是占位，不应在 Disabled 状态下被使用来驱动移动。
+        /// </summary>
         public static readonly RobotAutoMotionState Disabled = new RobotAutoMotionState(
             enabled: false,
             direction: EnumMoveDirection.Right,
@@ -13,6 +23,9 @@ namespace GridDemo.RobotRuns
             requestTurnLeft: false,
             requestTurnToDirection: null);
 
+        /// <summary>
+        /// 构造一个自动运动状态。
+        /// </summary>
         public RobotAutoMotionState(
             bool enabled,
             EnumMoveDirection direction,
@@ -31,40 +44,35 @@ namespace GridDemo.RobotRuns
             RequestTurnToDirection = requestTurnToDirection;
         }
 
-        public bool Enabled { get; }
-        public EnumMoveDirection Direction { get; }
-        public double Acc { get; }
-        public bool SuppressEdgeTurning { get; }
-        public bool ClampOnBounds { get; }
-        public bool RequestTurnLeft { get; }
-        public EnumMoveDirection? RequestTurnToDirection { get; }
+        public bool Enabled { get; }                   // 是否启用自动模式
+        public EnumMoveDirection Direction { get; }       // 自动模式下的移动方向
+        public double Acc { get; }                      // 自动模式下的加速度
+        public bool SuppressEdgeTurning { get; }             // 是否抑制边界转向
+        public bool ClampOnBounds { get; }            // 是否夹紧在边界内
+        public bool RequestTurnLeft { get; }              // 是否请求左转
+        public EnumMoveDirection? RequestTurnToDirection { get; }                // 请求转向到指定方向
     }
 
+    /// <summary>
+    /// 机器人运动更新（离散方向 + 速度/加速度 + 边界约束 + 网格中心线吸附）。
+    /// 该类不负责输入/寻路决策，仅消费外部提供的状态与指令。
+    /// </summary>
     internal class RobotMove
     {
         private readonly object _robotLock;
-
         private readonly Func<double> _getRobotX;
         private readonly Action<double> _setRobotX;
-
         private readonly Func<double> _getRobotY;
         private readonly Action<double> _setRobotY;
-
         private readonly Func<double> _getRobotSpeed;
         private readonly Action<double> _setRobotSpeed;
-
         private readonly Robot _robot;
-
         private readonly Func<double> _getWorldWidthM;
         private readonly Func<double> _getWorldHeightM;
-
         private readonly double _cellSizeM;
         private readonly double _dt;
-
         private readonly RobotTurn _turnController;
-
         private readonly Func<double> _getForwardAcc;
-
         private readonly Func<RobotAutoMotionState> _getAutoMotionState;
 
         public RobotMove(
@@ -100,11 +108,17 @@ namespace GridDemo.RobotRuns
             _turnController = new RobotTurn(_robotLock, _robot, this, _dt);
         }
 
+        /// <summary>
+        /// 对外暴露转向控制器（例如手动控制或自动导航触发转向）。
+        /// </summary>
         public RobotTurn TurnController
         {
             get { return _turnController; }
         }
 
+        /// <summary>
+        /// 转向前的制动：将速度归零，并取消加速度，避免“边转边滑”。
+        /// </summary>
         public void StopForTurn()
         {
             lock (_robotLock)
@@ -114,6 +128,10 @@ namespace GridDemo.RobotRuns
             }
         }
 
+        /// <summary>
+        /// 转向结束后恢复前进加速度。
+        /// 注意：仅当用户仍保持“前进按键按下”时才恢复，以贴合手动控制手感。
+        /// </summary>
         public void ResumeForwardAfterTurn()
         {
             lock (_robotLock)
@@ -128,6 +146,14 @@ namespace GridDemo.RobotRuns
             }
         }
 
+        /// <summary>
+        /// 每帧更新运动学：
+        /// - 读取自动模式指令并应用（加速度、转向请求等）；
+        /// - 积分更新速度与位置；
+        /// - 根据世界边界进行夹紧/停止处理；
+        /// - 进行“网格中心线吸附”，确保沿格子中心线移动；
+        /// - 最后更新转向控制器（转向插值等）。
+        /// </summary>
         public void Update()
         {
             RobotAutoMotionState autoState = _getAutoMotionState();
@@ -137,20 +163,22 @@ namespace GridDemo.RobotRuns
                 if (autoState.Enabled)
                 {
                     // 自动模式：方向/加速度由 autoState 控制
-                    // 自动模式：默认加速度由 autoState 控制
                     _robot.Acc = autoState.Acc;
 
+                    // 自动模式可提出“左转”请求：仅在当前未处于转向动画时触发。
                     if (autoState.RequestTurnLeft && !_robot.IsTurning)
                     {
                         _turnController.StartTurnLeft();
                     }
 
+                    // 自动模式可提出“转到指定方向”的请求：同样仅在未转向时触发。
                     if (autoState.RequestTurnToDirection.HasValue && !_robot.IsTurning)
                     {
                         _turnController.StartTurnTo(autoState.RequestTurnToDirection.Value);
                     }
                 }
 
+                // 读取当前状态
                 double v = _getRobotSpeed();
                 double a = _robot.Acc;
                 double vmax = _robot.MaxSpeed;
@@ -158,13 +186,13 @@ namespace GridDemo.RobotRuns
                 double y = _getRobotY();
                 EnumMoveDirection dir = _robot.Direction;
 
-                if (!_robot.IsTurning)
+                if (!_robot.IsTurning)          // 转向动画期间不更新位移，原地转向
                 {
                     v += a * _dt;
                     if (v < 0) v = 0;
                     if (v > vmax) v = vmax;
 
-                    switch (dir)
+                    switch (dir)                   // 根据离散方向推进（世界坐标）
                     {
                         case EnumMoveDirection.Right:
                             x += v * _dt;
@@ -184,16 +212,19 @@ namespace GridDemo.RobotRuns
                     double worldHeight = _getWorldHeightM();
                     double halfCell = _cellSizeM / 2.0;
 
-                    if (autoState.Enabled && autoState.ClampOnBounds)
+                    if (autoState.Enabled && autoState.ClampOnBounds)                  // 边界夹紧
                     {
-                        if (x < halfCell) x = halfCell;
-                        if (y < halfCell) y = halfCell;
-                        if (x > worldWidth - halfCell) x = worldWidth - halfCell;
-                        if (y > worldHeight - halfCell) y = worldHeight - halfCell;
+                        if (x < halfCell)
+                            x = halfCell;
+                        if (y < halfCell)
+                            y = halfCell;
+                        if (x > worldWidth - halfCell)
+                            x = worldWidth - halfCell;
+                        if (y > worldHeight - halfCell)
+                            y = worldHeight - halfCell;
                     }
 
-                    // 夹紧,确保机器人在边界内运动
-                    if (!(autoState.Enabled && autoState.SuppressEdgeTurning))
+                    if (!(autoState.Enabled && autoState.SuppressEdgeTurning))                    // 夹紧,确保机器人在边界内运动
                     {
                         switch (dir)
                         {
@@ -261,6 +292,10 @@ namespace GridDemo.RobotRuns
             _turnController.Update();
         }
 
+        /// <summary>
+        /// 吸附到最近的网格中心：
+        /// 目标中心坐标为 k*cell + halfCell（k 为整数）。
+        /// </summary>
         private double SnapToCellCenter(double w)
         {
             // 将任意世界坐标吸附到最近的格子中心：k*cell + halfCell

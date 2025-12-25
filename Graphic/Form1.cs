@@ -1,9 +1,5 @@
-﻿using GridDemo.Draws;
-using GridDemo.Events;
-using GridDemo.RobotModels.Pathfinding;
+﻿using GridDemo.RobotModels.Pathfinding;
 using GridDemo.RobotRuns;
-using GridDemo.WorldView;
-using GridDemo.WorldView.CenterGrid;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using System;
@@ -13,56 +9,223 @@ namespace GridDemo
 {
     public partial class Form1 : Form
     {
-        //记录初始的缩放大小和偏移量，方便后续重置
-        private double _initialScale;
+        private double _initialScale;        //记录初始的缩放大小和偏移量，方便后续重置
         private double _initialOffsetX;
         private double _initialOffsetY;
 
         private const int GridCount = 30;               // 网格数30
         private const double CellSizeM = 0.55;          // 一格代表距离0.55米
 
-        // 网格在世界坐标中的总宽高（米）
-        private double _worldWidthM = GridCount * CellSizeM;
+        private double _worldWidthM = GridCount * CellSizeM;        // 网格在世界坐标中的总宽高（米）
         private double _worldHeightM = GridCount * CellSizeM;
 
         private double _scale = 30.0;                   // 1米 = 30像素
 
-        //世界坐标对应屏幕坐标偏移量
-        private double _offsetX;
+        private double _offsetX;        //世界坐标对应屏幕坐标偏移量
         private double _offsetY;
 
-        //------------------------------机器人相关变量------------------------------//
-        //机器人初始世界坐标
-        private double _robotX = CellSizeM / 2;
+        private double _robotX = CellSizeM / 2;        //机器人初始世界坐标
         private double _robotY = CellSizeM / 2;
 
-        //机器人的初始速度和加速度
-        private double _robotSpeed = 0;
+        private double _robotSpeed = 0;        //机器人的初始速度和加速度
         private double _robotMaxSpeed = 1.5;
         private double _robotAcc = 0;
 
-        private readonly double _dt = 0.02;  //固定时间模拟步长0.02秒
+        private readonly double _dt = 0.02;      //固定时间模拟步长0.02秒：用于仿真线程按固定频率推进运动更新
+        private readonly object _robotLock = new object();   // 机器人共享状态锁：保护 _robotX/_robotY/_robotSpeed/_robotAcc/_robot 等多线程读写
 
-        private readonly object _robotLock = new object();
-        //------------------------------机器人相关变量------------------------------//
+        public Form1()
+        {
+            InitializeComponent();
 
-        private WorldTransform _worldTransform;
-        private DrawGrid _drawGrid;
-        private DrawRobot _drawRobot;
-        private MouseWheel _mouseWheel;
-        private MousePan _mousePan;
-        private CenterGridManager _centerGridManager;
-        // 机器人对象：加速度、最大速度、方向
-        private Robot _robot;
-        private RobotMove _robotMove;
-        private RobotSimulator _robotSimulator;
-        private DestinationPicker _destinationPicker;
+            this.Load += Form1_Load;
+            this.FormClosing += Form1_FormClosing;
+            this.Resize += Form1_Resize;
+            this.KeyDown += Form1_KeyDown;
+            this.KeyUp += Form1_KeyUp;
+            this.KeyPreview = true;     // 允许窗体截获按键，即使当前焦点在子控件
 
+            this.skControl.MouseWheel += Form1_MouseWheel;
+            this.skControl.MouseDown += Form1_MouseDown;
+            this.skControl.MouseMove += Form1_MouseMove;
+            this.skControl.MouseUp += Form1_MouseUp;
+
+            this.skControl.PaintSurface += SkControl_PaintSurface;
+
+            numericAcc.KeyDown += Numeric_KeyDown_OnEnter;
+            numericVinit.KeyDown += Numeric_KeyDown_OnEnter;
+            cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
+            cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
+        }
+
+        /// <summary>
+        /// 窗体加载：
+        /// - 初始化偏移/初始视图数据；
+        /// - 调用 Initialize() 创建各模块；
+        /// - 执行加载居中；
+        /// - 设置默认控制模式与默认寻路算法；
+        /// - 将焦点切回窗体，确保键盘控制可用。
+        /// </summary>
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            _offsetX = this.ClientSize.Width / 2.0;
+            _offsetY = this.ClientSize.Height / 2.0;
+
+            _initialScale = _scale;
+            _initialOffsetX = _offsetX;
+            _initialOffsetY = _offsetY;
+
+            Initialize();  // 初始化
+
+            _centerGridManager.LoadCenter.CenterGrid();
+
+            cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;            // 默认手动控制
+            cmbChooseModel.SelectedIndex = 0;
+            cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
+            _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
+
+            cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;            // 默认寻路算法：A*
+            cmbPathAlgorithm.SelectedIndex = 1; // 0=Dijkstra, 1=A*
+            cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
+            _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
+
+            _robotAutoNavigator.Disable();
+            _robotManual.Enable();
+
+            ActiveControl = null;      // 把焦点回到窗体（避免下拉框/数值框占用焦点导致按键无效）
+            BeginInvoke(new Action(() => Focus()));
+        }
+
+        /// <summary>
+        /// 窗体关闭：安全停止仿真线程，避免后台线程访问已释放的控件。
+        /// </summary>
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            _robotSimulator?._Thead_Stop();
+        }
+
+        /// <summary>
+        /// 窗口大小改变：保持当前缩放不变，重新计算 offset 实现居中。
+        /// </summary>
+        private void Form1_Resize(object sender, EventArgs e)
+        {
+            _centerGridManager.ResizeCenter.CenterGrid();
+        }
+
+        /// <summary>
+        /// 键盘按下：W/A/D 控制。
+        /// - W：开始前进（设置 IsForwardKeyDown，并在未转向时施加加速度）
+        /// - A：左转（通过 RobotTurn 启动转向动画）
+        /// - D：右转（通过 RobotTurn 启动转向动画）
+        /// </summary>
+        private void Form1_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (_robot == null || _robotMove == null)
+            {
+                return;
+            }
+
+            switch (e.KeyCode)
+            {
+                case Keys.W:
+                    lock (_robotLock)
+                    {
+                        _robot.IsForwardKeyDown = true;
+                        e.Handled = true;
+                        if (!_robot.IsTurning)                        // 如果当前没有在转向，直接给出数值框配置的加速度
+                        {
+                            _robot.Acc = _robotAcc;
+                        }
+                    }
+                    break;
+
+                case Keys.A:
+                    _robotMove.TurnController.StartTurnLeft();
+                    e.Handled = true;
+                    break;
+
+                case Keys.D:
+                    _robotMove.TurnController.StartTurnRight();
+                    e.Handled = true;
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// 键盘抬起：松开 W 则停止前进（清零速度与加速度）。
+        /// </summary>
+        private void Form1_KeyUp(object sender, KeyEventArgs e)
+        {
+            if (_robot == null)
+            {
+                return;
+            }
+
+            if (e.KeyCode == Keys.W)
+            {
+                lock (_robotLock)
+                {
+                    _robot.IsForwardKeyDown = false;
+                    _robotSpeed = 0.0;
+                    _robot.Acc = 0.0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 鼠标滚轮缩放（以鼠标所在点为缩放中心）
+        /// </summary>
+        private void Form1_MouseWheel(object sender, MouseEventArgs e)
+        {
+            _mouseWheel.Wheel(
+                e,
+                screen => _worldTransform.ScreenToWorld(screen.X, screen.Y));
+
+            skControl.Invalidate();
+        }
+
+        /// <summary>
+        /// 鼠标按下：
+        /// - 若在自动模式下用于拾取目的地（DestinationPicker），则优先处理并触发重绘；
+        /// - 否则进入拖拽平移模式（MousePan）。
+        /// </summary>
+        private void Form1_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (_destinationPicker != null && _destinationPicker.TryPick(e))
+            {
+                skControl.Invalidate();
+                return;
+            }
+
+            _mousePan.MouseDown(e);
+        }
+
+        /// <summary>
+        /// 鼠标移动：拖拽平移画布（若 MousePan 处于拖拽状态才会生效）。
+        /// </summary>
+        private void Form1_MouseMove(object sender, MouseEventArgs e)
+        {
+            _mousePan.MouseMove(e);
+            skControl.Invalidate();
+        }
+
+        /// <summary>
+        /// 鼠标松开：结束拖拽平移。
+        /// </summary>
+        private void Form1_MouseUp(object sender, MouseEventArgs e)
+        {
+            _mousePan.MouseUp(e);
+        }
+
+        /// <summary>
+        /// Skia 绘制回调：绘制当前帧。
+        /// 注意：绘制过程中会读取机器人位置/速度等共享状态，因此通过 _robotLock 保证一致性。
+        /// </summary>
         private void SkControl_PaintSurface(object sender, SKPaintSurfaceEventArgs e)
         {
             SKCanvas canvas = e.Surface.Canvas;
 
-            _drawGrid.Draw(canvas);
+            _drawGrid.Draw(canvas);             // 绘制顺序：先网格，再路径，再机器人，保证“路径/机器人盖在网格之上”
             _drawPath.Draw(canvas);
             _drawRobot.Draw(canvas);
 
@@ -79,7 +242,7 @@ namespace GridDemo
                 robotA = _robotAcc;
             }
 
-            using (var textPaint = new SKPaint
+            using (var textPaint = new SKPaint              // 绘制文本样式（机器人坐标、速度、加速度）
             {
                 Color = SKColors.Black,
                 IsAntialias = true,
@@ -96,31 +259,92 @@ namespace GridDemo
             }
         }
 
-        public Form1()
+        /// <summary>
+        /// 加速度数值变更：更新“前进时使用的加速度”。
+        /// 若此时 W 正按着且不在转向中，则立即作用到当前 Acc。
+        /// </summary>
+        private void numericAcc_ValueChanged(object sender, EventArgs e)
         {
-            InitializeComponent();
+            lock (_robotLock)
+            {
+                // 数值框决定“前进时使用的加速度”
+                _robotAcc = (double)((NumericUpDown)sender).Value;
 
-            this.Load += Form1_Load;
-            this.FormClosing += Form1_FormClosing;
-            this.Resize += Form1_Resize;
-            this.KeyDown += Form1_KeyDown;
-            this.KeyUp += Form1_KeyUp;
-            this.KeyPreview = true;
-
-            // 鼠标事件应绑定到 skControl，否则在画布上操作可能不会触发 Form 的鼠标事件
-            this.skControl.MouseWheel += Form1_MouseWheel;
-            this.skControl.MouseDown += Form1_MouseDown;
-            this.skControl.MouseMove += Form1_MouseMove;
-            this.skControl.MouseUp += Form1_MouseUp;
-
-            this.skControl.PaintSurface += SkControl_PaintSurface;
-
-            numericAcc.KeyDown += Numeric_KeyDown_OnEnter;
-            numericVinit.KeyDown += Numeric_KeyDown_OnEnter;
-            cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
-            cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
+                // 如果此时前进键按着且没有在转向，可以立即更新当前加速度
+                if (_robot != null && _robot.IsForwardKeyDown && !_robot.IsTurning)
+                {
+                    _robot.Acc = _robotAcc;
+                }
+            }
         }
 
+        /// <summary>
+        /// 最大速度数值变更：实时更新 Robot 的 MaxSpeed（影响后续速度夹紧）。
+        /// </summary>
+        private void numericVmax_ValueChanged(object sender, EventArgs e)
+        {
+            lock (_robotLock)
+            {
+                _robot.MaxSpeed = (double)((NumericUpDown)sender).Value;
+            }
+        }
+
+        /// <summary>
+        /// NumericUpDown 在按 Enter 时主动失焦：
+        /// - 保证 ValueChanged 能触发并应用参数；
+        /// - 将焦点还给窗体，确保 W/A/D 键立即可用；
+        /// - suppressKeyPress 防止系统“叮”的提示音。
+        /// </summary>
+        private void Numeric_KeyDown_OnEnter(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                this.ActiveControl = null;  // 让数值框失去焦点，触发 ValueChanged 事件
+                this.Focus();                 // 焦点回到窗体，W/A/D 立刻可用
+                e.Handled = true;
+                e.SuppressKeyPress = true;    // 防止系统“叮”一声
+            }
+        }
+
+        /// <summary>
+        /// 控制模式切换：手动/自动。
+        /// - 自动：禁用手动控制，启用自动导航
+        /// - 手动：禁用自动导航，启用手动控制，并把焦点回到窗体以便按键立即生效
+        /// </summary>
+        private void cmbChooseModel_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (cmbChooseModel.SelectedIndex == 1)
+            {
+                _robotManual.Disable();
+                _robotAutoNavigator.Enable();
+            }
+            else
+            {
+                cmbChooseModel.SelectedIndex = 0;
+                _robotAutoNavigator.Disable();
+                _robotManual.Enable();
+
+                // 切回手动时强制焦点回到窗体
+                this.ActiveControl = null;
+                BeginInvoke(new Action(() => Focus()));
+            }
+
+            // 同步一次（确保方向一致）
+            lock (_robotLock)
+            {
+                // 使用当前实际方向计算角度
+                double angle = Robot.DirectionToAngle(_robot.Direction);
+                _robot.OrientationAngle = angle;
+                _robot.TargetOrientationAngle = angle;
+
+                // 确保转向状态重置
+                _robot.IsTurning = false;
+            }
+        }
+
+        /// <summary>
+        /// 寻路算法下拉框切换：更新自动导航模块使用的算法，并在自动模式下即时重规划路径。
+        /// </summary>
         private void cmbPathAlgorithm_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (_robotAutoNavigator == null)
@@ -144,209 +368,12 @@ namespace GridDemo
             }
         }
 
-        private void cmbChooseModel_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            if (cmbChooseModel.SelectedIndex == 1)
-            {
-                _robotManual.Disable();
-                _robotAutoNavigator.Enable();
-            }
-            else
-            {
-                cmbChooseModel.SelectedIndex = 0;
-                _robotAutoNavigator.Disable();
-                _robotManual.Enable();
-
-                // ① 修复：切回手动时强制焦点回到窗体
-                this.ActiveControl = null;
-                BeginInvoke(new Action(() => Focus()));
-            }
-
-            // 同步一次（确保方向一致）
-            lock (_robotLock)
-            {
-                // 使用当前实际方向计算角度
-                double angle = Robot.DirectionToAngle(_robot.Direction);
-                _robot.OrientationAngle = angle;
-                _robot.TargetOrientationAngle = angle;
-
-                // 确保转向状态重置
-                _robot.IsTurning = false;
-            }
-        }
-
-        private void Numeric_KeyDown_OnEnter(object sender, KeyEventArgs e)
-        {
-            if (e.KeyCode == Keys.Enter)
-            {
-                this.ActiveControl = null;  // 让数值框失去焦点，触发 ValueChanged 事件
-                this.Focus();                 // 焦点回到窗体，W/A/D 立刻可用
-                e.Handled = true;
-                e.SuppressKeyPress = true;    // 防止系统“叮”一声
-            }
-        }
-
         /// <summary>
-        /// 鼠标滚轮缩放（以鼠标所在点为缩放中心）
+        /// Reset 按钮：将视图恢复到初始缩放并居中显示。
         /// </summary>
-        private void Form1_MouseWheel(object sender, MouseEventArgs e)
-        {
-            _mouseWheel.Wheel(
-                e,
-                screen => _worldTransform.ScreenToWorld(screen.X, screen.Y));
-
-            skControl.Invalidate();
-        }
-
-        // 鼠标按下：准备拖动
-        private void Form1_MouseDown(object sender, MouseEventArgs e)
-        {
-            if (_destinationPicker != null && _destinationPicker.TryPick(e))
-            {
-                skControl.Invalidate();
-                return;
-            }
-
-            _mousePan.MouseDown(e);
-        }
-
-        // 鼠标移动：拖动画布
-        private void Form1_MouseMove(object sender, MouseEventArgs e)
-        {
-            _mousePan.MouseMove(e);
-            skControl.Invalidate();
-        }
-
-        // 鼠标松开：结束拖动
-        private void Form1_MouseUp(object sender, MouseEventArgs e)
-        {
-            _mousePan.MouseUp(e);
-        }
-
-        // 窗体加载
-        private void Form1_Load(object sender, EventArgs e)
-        {
-            _offsetX = this.ClientSize.Width / 2.0;
-            _offsetY = this.ClientSize.Height / 2.0;
-
-            _initialScale = _scale;
-            _initialOffsetX = _offsetX;
-            _initialOffsetY = _offsetY;
-
-            Initialize();  // 你的原有初始化
-
-            _centerGridManager.LoadCenter.CenterGrid();
-
-            // ① 默认手动控制
-            cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;
-            cmbChooseModel.SelectedIndex = 0;
-            cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
-            _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
-
-            // 默认寻路算法：A*
-            cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;
-            cmbPathAlgorithm.SelectedIndex = 1; // 0=Dijkstra, 1=A*
-            cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
-            _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
-
-            _robotAutoNavigator.Disable();
-            _robotManual.Enable();
-            ActiveControl = null;
-            BeginInvoke(new Action(() => Focus()));
-        }
-
-        // 窗口大小改变
-        private void Form1_Resize(object sender, EventArgs e)
-        {
-            _centerGridManager.ResizeCenter.CenterGrid();
-        }
-
-        // W/A/D 控制
-        private void Form1_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (_robot == null || _robotMove == null)
-            {
-                return;
-            }
-
-            switch (e.KeyCode)
-            {
-                case Keys.W:
-                    lock (_robotLock)
-                    {
-                        _robot.IsForwardKeyDown = true;
-                        e.Handled = true;
-                        // 如果当前没有在转向，直接给出数值框配置的加速度
-                        if (!_robot.IsTurning)
-                        {
-                            _robot.Acc = _robotAcc;
-                        }
-                    }
-                    break;
-
-                case Keys.A:
-                    _robotMove.TurnController.StartTurnLeft();
-                    e.Handled = true;
-                    break;
-
-                case Keys.D:
-                    _robotMove.TurnController.StartTurnRight();
-                    e.Handled = true;
-                    break;
-            }
-        }
-
-        private void Form1_KeyUp(object sender, KeyEventArgs e)
-        {
-            if (_robot == null)
-            {
-                return;
-            }
-
-            if (e.KeyCode == Keys.W)
-            {
-                lock (_robotLock)
-                {
-                    _robot.IsForwardKeyDown = false;
-                    _robotSpeed = 0.0;
-                    _robot.Acc = 0.0;
-                }
-            }
-        }
-
-        // Reset 按钮
         private void btnReset_Click(object sender, EventArgs e)
         {
             _centerGridManager.ResetCenter.CenterGrid();
-        }
-
-        //窗体关闭时，安全停止线程
-        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            _robotSimulator?._Thead_Stop();
-        }
-
-        private void numericAcc_ValueChanged(object sender, EventArgs e)
-        {
-            lock (_robotLock)
-            {
-                // 数值框决定“前进时使用的加速度”
-                _robotAcc = (double)((NumericUpDown)sender).Value;
-
-                // 如果此时前进键按着且没有在转向，可以立即更新当前加速度
-                if (_robot != null && _robot.IsForwardKeyDown && !_robot.IsTurning)
-                {
-                    _robot.Acc = _robotAcc;
-                }
-            }
-        }
-
-        private void numericVmax_ValueChanged(object sender, EventArgs e)
-        {
-            lock (_robotLock)
-            {
-                _robot.MaxSpeed = (double)((NumericUpDown)sender).Value;
-            }
         }
     }
 }

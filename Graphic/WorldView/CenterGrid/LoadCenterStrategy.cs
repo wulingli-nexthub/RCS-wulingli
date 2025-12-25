@@ -3,6 +3,11 @@ using System.Windows.Forms;
 
 namespace GridDemo.WorldView.CenterGrid
 {
+    /// <summary>
+    /// 加载时的网格居中策略：在首次显示/初始化时，根据宿主控件大小计算合适的缩放与偏移，
+    /// 让整个世界网格尽量完整地显示在视口内，并留出一定边距。
+    /// 同时会记录“初始视图状态”（initial scale/offset），供后续 ResetCenter 使用。
+    /// </summary>
     internal class LoadCenterStrategy : ICenterStrategy
     {
         private readonly Control _host;
@@ -48,6 +53,13 @@ namespace GridDemo.WorldView.CenterGrid
             _updateWorldTransform = updateWorldTransform ?? throw new ArgumentNullException(nameof(updateWorldTransform));
         }
 
+        /// <summary>
+        /// 执行一次加载居中：
+        /// - 计算 newScale：保证世界网格在视口内完整显示，并留出 margin；
+        /// - 计算 newOffsetX/newOffsetY：使网格像素矩形居中；
+        /// - 写入 scale/offset，并记录 initial；
+        /// - 更新 WorldTransform 并触发重绘。
+        /// </summary>
         public void CenterGrid()
         {
             int clientWidth = _host.ClientSize.Width;
@@ -59,8 +71,9 @@ namespace GridDemo.WorldView.CenterGrid
             double worldWidth = _getWorldWidthM();
             double worldHeight = _getWorldHeightM();
 
-            // 边距，避免网格顶到边缘
-            double margin = 40;
+            double margin = 40;            // 边距，避免网格顶到边缘
+
+            // 分别计算横向/纵向能容纳完整世界的缩放，取较小者保证完全显示。
             double scaleX = (clientWidth - margin * 2) / worldWidth;
             double scaleY = (clientHeight - margin * 2) / worldHeight;
             double newScale = Math.Min(scaleX, scaleY);
@@ -82,9 +95,9 @@ namespace GridDemo.WorldView.CenterGrid
             _setInitialOffsetX(newOffsetX);
             _setInitialOffsetY(newOffsetY);
 
-            _updateWorldTransform(newScale, (float)newOffsetX, (float)newOffsetY);
+            _updateWorldTransform(newScale, (float)newOffsetX, (float)newOffsetY);    // 将计算结果同步到 WorldTransform
 
-            _host.Invalidate();
+            _host.Invalidate();    // 触发重绘
         }
     }
 }

@@ -3,6 +3,10 @@ using System.Windows.Forms;
 
 namespace GridDemo.WorldView.CenterGrid
 {
+    /// <summary>
+    /// 尺寸变化时的网格居中策略：在宿主控件尺寸发生变化（Resize）后，保持当前缩放比例不变，
+    /// 仅重新计算 offset，使整个世界网格在新的视口尺寸下继续居中显示。
+    /// </summary>
     internal class ResizeCenterStrategy : ICenterStrategy
     {
         private readonly Control _host;
@@ -34,6 +38,14 @@ namespace GridDemo.WorldView.CenterGrid
             _updateWorldTransform = updateWorldTransform ?? throw new ArgumentNullException(nameof(updateWorldTransform));
         }
 
+        /// <summary>
+        /// 在控件尺寸变化后执行居中：
+        /// - 读取当前视口尺寸；
+        /// - 读取世界尺寸与当前 scale；
+        /// - 计算世界在屏幕上的像素尺寸；
+        /// - 重新计算 offset，使世界居中；
+        /// - 更新 WorldTransform 并触发重绘。
+        /// </summary>
         public void CenterGrid()
         {
             int clientWidth = _host.ClientSize.Width;
@@ -44,7 +56,7 @@ namespace GridDemo.WorldView.CenterGrid
 
             double worldWidth = _getWorldWidthM();
             double worldHeight = _getWorldHeightM();
-            double scale = _getScale();
+            double scale = _getScale();               // Resize 不改变缩放：仅保持当前 scale 并重算 offset
 
             double gridPixelWidth = worldWidth * scale;
             double gridPixelHeight = worldHeight * scale;
@@ -55,9 +67,9 @@ namespace GridDemo.WorldView.CenterGrid
             _setOffsetX(newOffsetX);
             _setOffsetY(newOffsetY);
 
-            _updateWorldTransform(scale, (float)newOffsetX, (float)newOffsetY);
+            _updateWorldTransform(scale, (float)newOffsetX, (float)newOffsetY);              // 更新 WorldTransform
 
-            _host.Invalidate();
+            _host.Invalidate();            // 触发重绘
         }
     }
 }
