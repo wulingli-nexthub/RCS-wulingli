@@ -9,9 +9,6 @@ namespace GridDemo
 {
     public partial class Form1 : Form
     {
-        private double _initialScale;        //记录初始的缩放大小和偏移量，方便后续重置
-        private double _initialOffsetX;
-        private double _initialOffsetY;
 
         private const int GridCount = 30;               // 网格数30
         private const double CellSizeM = 0.55;          // 一格代表距离0.55米
@@ -68,16 +65,16 @@ namespace GridDemo
         /// </summary>
         private void Form1_Load(object sender, EventArgs e)
         {
-            _offsetX = this.ClientSize.Width / 2.0;
-            _offsetY = this.ClientSize.Height / 2.0;
+            //_offsetX = this.ClientSize.Width / 2.0;
+            //_offsetY = this.ClientSize.Height / 2.0;
 
-            _initialScale = _scale;
-            _initialOffsetX = _offsetX;
-            _initialOffsetY = _offsetY;
+            //_initialScale = _scale;
+            //_initialOffsetX = _offsetX;
+            //_initialOffsetY = _offsetY;
 
             Initialize();  // 初始化
 
-            _centerGridManager.LoadCenter.CenterGrid();
+            _centerGridManager.ResizeCenter.CenterGrid();
 
             cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;            // 默认手动控制
             cmbChooseModel.SelectedIndex = 0;
@@ -373,7 +370,7 @@ namespace GridDemo
         /// </summary>
         private void btnReset_Click(object sender, EventArgs e)
         {
-            _centerGridManager.ResetCenter.CenterGrid();
+            _centerGridManager.ResizeCenter.CenterGrid();
         }
     }
 }

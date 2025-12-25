@@ -65,42 +65,17 @@ namespace GridDemo
                 direction: EnumMoveDirection.Right
             );
 
-            var loadCenter = new LoadCenterStrategy(
-                host: skControl,
-                getWorldWidthM: () => _worldWidthM,
-                getWorldHeightM: () => _worldHeightM,
-                getScale: () => _scale,
-                setScale: s => _scale = s,
-                setOffsetX: x => _offsetX = x,
-                setOffsetY: y => _offsetY = y,
-                setInitialScale: s => _initialScale = s,
-                setInitialOffsetX: x => _initialOffsetX = x,
-                setInitialOffsetY: y => _initialOffsetY = y,
-                updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
-            );
-
             var resizeCenter = new ResizeCenterStrategy(
                 host: skControl,
                 getWorldWidthM: () => _worldWidthM,
                 getWorldHeightM: () => _worldHeightM,
-                getScale: () => _scale,
-                setOffsetX: x => _offsetX = x,
-                setOffsetY: y => _offsetY = y,
-                updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
-            );
-
-            var resetCenter = new ResetCenterStrategy(
-                host: skControl,
-                getWorldWidthM: () => _worldWidthM,
-                getWorldHeightM: () => _worldHeightM,
-                getInitialScale: () => _initialScale,
                 setScale: s => _scale = s,
                 setOffsetX: x => _offsetX = x,
                 setOffsetY: y => _offsetY = y,
                 updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
             );
 
-            _centerGridManager = new CenterGridManager(loadCenter, resizeCenter, resetCenter);
+            _centerGridManager = new CenterGridManager(resizeCenter);
 
             // 先创建 move（需要 auto 回调，因此先创建 auto 实例或延迟回调）
             _robotAutoNavigator = new RobotAutoNavigator(

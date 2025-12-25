@@ -7,18 +7,16 @@
     /// </summary>
     internal class CenterGridManager
     {
-        public ICenterStrategy LoadCenter { get; }
+        //public ICenterStrategy LoadCenter { get; }
         public ICenterStrategy ResizeCenter { get; }
-        public ICenterStrategy ResetCenter { get; }
+        //public ICenterStrategy ResetCenter { get; }
 
         public CenterGridManager(
-            ICenterStrategy loadCenter,
-            ICenterStrategy resizeCenter,
-            ICenterStrategy resetCenter)
+            ICenterStrategy resizeCenter)
         {
-            LoadCenter = loadCenter;
+            //LoadCenter = loadCenter;
             ResizeCenter = resizeCenter;
-            ResetCenter = resetCenter;
+            //ResetCenter = resetCenter;
         }
     }
 }

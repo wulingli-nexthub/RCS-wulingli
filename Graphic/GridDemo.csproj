@@ -101,9 +101,7 @@
     <Compile Include="RobotRuns\Robot.Move.cs" />
     <Compile Include="RobotRuns\Robot.Simulator.cs" />
     <Compile Include="RobotRuns\Robot.Turn.cs" />
-    <Compile Include="WorldView\CenterGrid\ResetCenterStrategy .cs" />
     <Compile Include="WorldView\CenterGrid\CenterGridManager.cs" />
-    <Compile Include="WorldView\CenterGrid\LoadCenterStrategy.cs" />
     <Compile Include="WorldView\CenterGrid\ResizeCenterStrategy .cs" />
     <Compile Include="WorldView\CenterGrid\ICenterStrategy.cs" />
     <Compile Include="WorldView\WorldTransform.cs" />
