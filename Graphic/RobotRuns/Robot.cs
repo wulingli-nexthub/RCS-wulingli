@@ -12,7 +12,8 @@ namespace GridDemo.RobotRuns
 
     public enum EnumRobotStatus
     {
-        Turning,
+        TurningLeft,
+        TurningRight,
         Moving
     }
 

@@ -59,13 +59,6 @@ namespace GridDemo.RobotRuns
     /// </summary>
     internal class RobotMove
     {
-        // “渐进吸附”参数：值越大，回正越快；建议 8~20 之间。
-        // 物理含义近似为：每秒按一定比例把偏差拉回中心线（指数衰减）。
-        private const double CenterlineSnapStrengthPerSec = 12.0;
-
-        // 防止在中心线附近产生细小抖动：当误差小于该值时直接置为目标中心线。
-        private const double CenterlineSnapEpsilonM = 0.001;
-
         private readonly object _robotLock;
         private readonly Func<double> _getRobotX;
         private readonly Action<double> _setRobotX;
@@ -158,7 +151,6 @@ namespace GridDemo.RobotRuns
         /// - 读取自动模式指令并应用（加速度、转向请求等）；
         /// - 积分更新速度与位置；
         /// - 根据世界边界进行夹紧/停止处理；
-        /// - 进行“网格中心线吸附”，确保沿格子中心线移动；
         /// - 最后更新转向控制器（转向插值等）。
         /// </summary>
         public void Update()
@@ -172,15 +164,13 @@ namespace GridDemo.RobotRuns
                     // 自动模式：方向/加速度由 autoState 控制
                     _robot.Acc = autoState.Acc;
 
-                    // 自动模式可提出“左转”请求：仅在当前未处于转向动画时触发。
                     if (autoState.RequestTurnLeft && !_robot.IsTurning)
-                    {
+                    { // 自动模式可提出“左转”请求：仅在当前未处于转向动画时触发。
                         _turnController.StartTurnLeft();
                     }
 
-                    // 自动模式可提出“转到指定方向”的请求：同样仅在未转向时触发。
                     if (autoState.RequestTurnToDirection.HasValue && !_robot.IsTurning)
-                    {
+                    { // 自动模式可提出“转到指定方向”的请求：同样仅在未转向时触发。
                         _turnController.StartTurnTo(autoState.RequestTurnToDirection.Value);
                     }
                 }
@@ -193,14 +183,14 @@ namespace GridDemo.RobotRuns
                 double y = _getRobotY();
                 EnumMoveDirection dir = _robot.Direction;
 
-                if (!_robot.IsTurning)          // 转向动画期间不更新位移，原地转向
-                {
+                if (!_robot.IsTurning)
+                { // 转向动画期间不更新位移，原地转向
                     v += a * _dt;
                     if (v < 0) v = 0;
                     if (v > vmax) v = vmax;
 
-                    switch (dir)                   // 根据离散方向推进（世界坐标）
-                    {
+                    switch (dir)
+                    { // 根据离散方向推进（世界坐标）
                         case EnumMoveDirection.Right:
                             x += v * _dt;
                             break;
@@ -219,8 +209,8 @@ namespace GridDemo.RobotRuns
                     double worldHeight = _getWorldHeightM();
                     double halfCell = _cellSizeM / 2.0;
 
-                    if (autoState.Enabled && autoState.ClampOnBounds)                  // 边界夹紧
-                    {
+                    if (autoState.Enabled && autoState.ClampOnBounds)
+                    { // 边界夹紧
                         if (x < halfCell)
                         {
                             x = halfCell;
@@ -239,8 +229,8 @@ namespace GridDemo.RobotRuns
                         }
                     }
 
-                    if (!(autoState.Enabled && autoState.SuppressEdgeTurning))                    // 夹紧,确保机器人在边界内运动
-                    {
+                    if (!(autoState.Enabled && autoState.SuppressEdgeTurning))
+                    { // 夹紧,确保机器人在边界内运动
                         switch (dir)
                         {
                             case EnumMoveDirection.Right:
@@ -276,24 +266,6 @@ namespace GridDemo.RobotRuns
                                 break;
                         }
                     }
-
-                    // ------------------------- 核心：网格中心线“渐进吸附” -------------------------
-                    // 横向移动：Y 向最近的“行中心线”渐进回正
-                    // 纵向移动：X 向最近的“列中心线”渐进回正
-                    switch (dir)
-                    {
-                        case EnumMoveDirection.Right:
-                        case EnumMoveDirection.Left:
-                            y = ApproachToCellCenterLine(y);
-                            break;
-
-                        case EnumMoveDirection.Down:
-                        case EnumMoveDirection.Up:
-                            x = ApproachToCellCenterLine(x);
-                            break;
-                    }
-                    // ----------------------------------------------------------------------
-
                     _setRobotSpeed(v);
                     _setRobotX(x);
                     _setRobotY(y);
@@ -302,37 +274,6 @@ namespace GridDemo.RobotRuns
             }
 
             _turnController.Update();
-        }
-
-        /// <summary>
-        /// 找到最近的格子中心线（k*cell + halfCell），然后按指数平滑方式逼近。
-        /// 这样避免 Math.Round 的“硬跳变”，移动更自然。
-        /// </summary>
-        private double ApproachToCellCenterLine(double w)
-        {
-            double target = SnapToCellCenter(w);
-
-            double delta = target - w;
-            if (Math.Abs(delta) <= CenterlineSnapEpsilonM)
-            {
-                return target;
-            }
-
-            // 指数衰减：factor = 1 - exp(-k*dt)，dt 越小也能保持一致的“每秒回正强度”
-            double factor = 1.0 - Math.Exp(-CenterlineSnapStrengthPerSec * _dt);
-
-            return w + delta * factor;
-        }
-
-        /// <summary>
-        /// 吸附到最近的网格中心：
-        /// 目标中心坐标为 k*cell + halfCell（k 为整数）。
-        /// </summary>
-        private double SnapToCellCenter(double w)
-        {
-            double halfCell = _cellSizeM / 2.0;
-            double k = Math.Round((w - halfCell) / _cellSizeM);
-            return k * _cellSizeM + halfCell;
         }
     }
 }

@@ -49,9 +49,8 @@ namespace GridDemo.RobotRuns
                 // 计算最短旋转角度
                 double delta = target - cur;
 
-                // 选择最短旋转方向：把差值映射到 (-π, π]
                 if (delta > Math.PI)
-                {
+                { // 选择最短旋转方向：把差值映射到 (-π, π]
                     delta -= 2 * Math.PI;
                 }
                 else if (delta < -Math.PI)
@@ -59,8 +58,8 @@ namespace GridDemo.RobotRuns
                     delta += 2 * Math.PI;
                 }
 
-                if (Math.Abs(delta) <= maxStep)            // 若本帧一步就能到达目标，直接对齐并结束动画
-                {
+                if (Math.Abs(delta) <= maxStep)
+                { // 若本帧一步就能到达目标，直接对齐并结束动画
                     // 旋转完成
                     _robot.OrientationAngle = target;
                     _robot.IsTurning = false;
@@ -68,9 +67,8 @@ namespace GridDemo.RobotRuns
                     // 根据最终角度更新离散方向
                     _robot.Direction = AngleToDirection(target);
 
-                    // 若前进键当前处于按下状态，恢复加速度让其继续前进
                     if (_robot.IsForwardKeyDown)
-                    {
+                    { // 若前进键当前处于按下状态，恢复加速度让其继续前进
                         _move.ResumeForwardAfterTurn();
                     }
 
@@ -118,9 +116,8 @@ namespace GridDemo.RobotRuns
                 // 获取当前方向
                 EnumMoveDirection currentDir = _robot.Direction;
 
-                // 如果目标方向与当前方向相同，不需要转向
                 if (currentDir == targetDirection)
-                {
+                { // 如果目标方向与当前方向相同，不需要转向
                     return;
                 }
 
@@ -141,9 +138,8 @@ namespace GridDemo.RobotRuns
                     delta += 2 * Math.PI;
                 }
 
-                // 如果旋转角度很小，直接设置方向，不进行动画
                 if (Math.Abs(delta) < 0.01) // 约0.57度
-                {
+                { // 如果旋转角度很小，直接设置方向，不进行动画
                     _robot.OrientationAngle = targetAngle;
                     _robot.TargetOrientationAngle = targetAngle;
                     _robot.Direction = targetDirection;
@@ -168,8 +164,8 @@ namespace GridDemo.RobotRuns
             lock (_robotLock)
             {
                 if (_robot.IsTurning)
-                {
-                    return;                    // 正在转向中，忽略新的命令
+                { // 正在转向中，忽略新的命令
+                    return;
                 }
 
                 _move.StopForTurn();                // 原地转向：立即把速度清零并停止加速
@@ -193,7 +189,10 @@ namespace GridDemo.RobotRuns
         {
             // 归一化到 [0, 2π) 范围，避免负角度带来的复杂性
             angle = angle % (2 * Math.PI);
-            if (angle < 0) angle += 2 * Math.PI;
+            if (angle < 0)
+            {
+                angle += 2 * Math.PI;
+            }
             return angle;
         }
 

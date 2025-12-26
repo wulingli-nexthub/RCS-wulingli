@@ -66,18 +66,17 @@ namespace GridDemo
             Initialize();  // 初始化
             _centerGrid.Center();    // 加载居中
 
-            cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;            // 默认手动控制
-            cmbChooseModel.SelectedIndex = 0;
+            cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;            // 默认自动控制
+            cmbChooseModel.SelectedIndex = 1;
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
-            _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
 
             cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;            // 默认寻路算法：A*
             cmbPathAlgorithm.SelectedIndex = 1; // 0=Dijkstra, 1=A*
             cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
             _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
 
-            _robotAutoNavigator.Disable();
-            _robotManual.Enable();
+            _robotAutoNavigator.Enable();
+            _robotManual.Disable();
 
             ActiveControl = null;      // 把焦点回到窗体（避免下拉框/数值框占用焦点导致按键无效）
             BeginInvoke(new Action(() => Focus()));
