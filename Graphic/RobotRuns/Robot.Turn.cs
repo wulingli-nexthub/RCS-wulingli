@@ -67,10 +67,10 @@ namespace GridDemo.RobotRuns
                     // 根据最终角度更新离散方向
                     _robot.Direction = AngleToDirection(target);
 
-                    if (_robot.IsForwardKeyDown)
-                    { // 若前进键当前处于按下状态，恢复加速度让其继续前进
-                        _move.ResumeForwardAfterTurn();
-                    }
+                    //if (_robot._manualForwardKeyDown)
+                    //{ // 若前进键当前处于按下状态，恢复加速度让其继续前进
+                    //    _move.ResumeForwardAfterTurn();
+                    //}
 
                     return;
                 }

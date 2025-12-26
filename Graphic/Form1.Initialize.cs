@@ -87,6 +87,12 @@ namespace GridDemo
                 robot: _robot
             );
 
+            _robotManual = new RobotManual(
+                robotLock: _robotLock,
+                getCellSizeM: () => CellSizeM,
+                robot: _robot
+            );
+
             _drawPath = new DrawPath(
                 _worldTransform,
                 getPathPointsSnapshot: () => _robotAutoNavigator.GetPathWorldPointsSnapshot(),
@@ -105,22 +111,20 @@ namespace GridDemo
                 getWorldWidthM: () => _worldWidthM,
                 getWorldHeightM: () => _worldHeightM,
                 cellSizeM: CellSizeM,
-                dt: _dt,
-                getForwardAcc: () => _robotAcc,
-                getAutoMotionState: () => _robotAutoNavigator.GetAutoMotionState(() => _robotAcc)
+                dt: _dt
             );
 
-            _robotManual = new RobotManual(
+            // Robot 绑定运行时（把“自动指令源”接进来）
+            _robot.BindRuntime(
                 robotLock: _robotLock,
-                getForwardAcc: () => _robotAcc,
-                setRobotSpeed: v => _robotSpeed = v,
-                robot: _robot,
-                turn: _robotMove.TurnController
+                move: _robotMove,
+                turn: _robotMove.TurnController,
+                autoCommandProvider: () => _robotAutoNavigator.TryBuildNextCommand()
             );
 
             _robotSimulator = new RobotSimulator(
                 host: skControl,
-                motion: _robotMove,
+                update: new RobotMotionFacade(_robotLock, _robotMove, _robot, _dt, () => _robotAcc).Update,
                 dt: _dt
             );
             _robotSimulator._Thead_Start();

@@ -1,70 +1,123 @@
 ﻿using GridDemo.RobotRuns;
 using System;
+using System.Windows.Forms;
 
 namespace GridDemo.RobotModels
 {
     /// <summary>
     /// 机器人手动控制器（键盘）：
-    /// - 负责把键盘事件（W/A/D）翻译成机器人状态的改变；
-    /// - W：前进（设置 <see cref="Robot.IsForwardKeyDown"/>，并在非转向时设置加速度 <see cref="Robot.Acc"/>）；
-    /// - A/D：触发 90° 左/右转（通过 <see cref="RobotTurn"/>）。
-    /// 线程安全：
-    /// - 通过 <see cref="_robotLock"/> 与仿真/绘制线程同步访问机器人状态。
+    /// - 负责把键盘事件（W/A/D）翻译成“指令”（两种格式：位移/转向）；
+    /// - 不直接修改 Robot 运动学状态（Acc/Speed/IsTurning 等），执行与监测由 Robot 统一调度。
     /// </summary>
     internal sealed class RobotManual
     {
         private readonly object _robotLock;
-        private readonly Func<double> _getForwardAcc;
-        private readonly Action<double> _setRobotSpeed;
+        private readonly Func<double> _getCellSizeM;
         private readonly Robot _robot;
-        private readonly RobotTurn _turn;
 
         public RobotManual(
             object robotLock,
-            Func<double> getForwardAcc,
-            Action<double> setRobotSpeed,
-            Robot robot,
-            RobotTurn turn)
+            Func<double> getCellSizeM,
+            Robot robot)
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
-            _getForwardAcc = getForwardAcc ?? throw new ArgumentNullException(nameof(getForwardAcc));
-            _setRobotSpeed = setRobotSpeed ?? throw new ArgumentNullException(nameof(setRobotSpeed));
+            _getCellSizeM = getCellSizeM ?? throw new ArgumentNullException(nameof(getCellSizeM));
             _robot = robot ?? throw new ArgumentNullException(nameof(robot));
-            _turn = turn ?? throw new ArgumentNullException(nameof(turn));
         }
 
         public bool IsEnabled { get; private set; }         // 是否启用手动控制
 
-        /// <summary>
-        /// 启用手动模式：
-        /// - 打开启用标志；
-        /// - 清除“前进按键按下”状态；
-        /// - 清零加速度并强制速度归零，确保进入手动模式时机器人处于可控且静止的初始状态。
-        /// </summary>
         public void Enable()
         {
             lock (_robotLock)
             {
                 IsEnabled = true;
-                _robot.IsForwardKeyDown = false;
-                _robot.Acc = 0.0;
-                _setRobotSpeed(0.0);
+                _robot.SetMode(EnumRobotControlMode.Manual);
+                _robot.InputManualForwardKey(false);
             }
         }
 
-        /// <summary>
-        /// 禁用手动模式：
-        /// - 关闭启用标志；
-        /// - 同样清除按键状态并刹停，避免切换模式时机器人“带着速度/加速度”继续运动。
-        /// </summary>
         public void Disable()
         {
             lock (_robotLock)
             {
                 IsEnabled = false;
-                _robot.IsForwardKeyDown = false;
-                _robot.Acc = 0.0;
-                _setRobotSpeed(0.0);
+                _robot.InputManualForwardKey(false);
+            }
+        }
+
+        /// <summary>
+        /// UI KeyDown -> 指令/输入
+        /// </summary>
+        public void OnKeyDown(KeyEventArgs e)
+        {
+            if (e == null) throw new ArgumentNullException(nameof(e));
+
+            lock (_robotLock)
+            {
+                if (!IsEnabled)
+                {
+                    return;
+                }
+
+                switch (e.KeyCode)
+                {
+                    case Keys.W:
+                        // 持续前进用“位移脉冲”实现：按下只标记，脉冲由 Robot.Tick 内部补发
+                        _robot.InputManualForwardKey(true);
+                        e.Handled = true;
+                        break;
+
+                    case Keys.A:
+                        _robot.EnqueueCommand(RobotCommand.TurnLeft());
+                        e.Handled = true;
+                        break;
+
+                    case Keys.D:
+                        _robot.EnqueueCommand(RobotCommand.TurnRight());
+                        e.Handled = true;
+                        break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// UI KeyUp -> 停止输入
+        /// </summary>
+        public void OnKeyUp(KeyEventArgs e)
+        {
+            if (e == null) throw new ArgumentNullException(nameof(e));
+
+            lock (_robotLock)
+            {
+                if (!IsEnabled)
+                {
+                    return;
+                }
+
+                if (e.KeyCode == Keys.W)
+                {
+                    _robot.InputManualForwardKey(false);
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 可选：用于“单步前进一格”的离散指令（例如你将来做按钮/脚本控制）。
+        /// </summary>
+        public void StepForwardOneCell()
+        {
+            lock (_robotLock)
+            {
+                if (!IsEnabled)
+                {
+                    return;
+                }
+
+                double dist = _getCellSizeM();
+                _robot.EnqueueCommand(RobotCommand.MoveDistance(dist));
             }
         }
     }

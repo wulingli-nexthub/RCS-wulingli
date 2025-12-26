@@ -106,32 +106,25 @@ namespace GridDemo
         /// </summary>
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
-            if (_robot == null || _robotMove == null)
-            { // 空值检查
+            if (_robot == null)
+            {
                 return;
             }
 
             switch (e.KeyCode)
             {
                 case Keys.W:
-                    lock (_robotLock)
-                    {
-                        _robot.IsForwardKeyDown = true;         // 标记前进按键按下
-                        e.Handled = true;             // 标记事件已处理
-                        if (!_robot.IsTurning)
-                        { // 如果当前没有在转向，直接给出数值框配置的加速度
-                            _robot.Acc = _robotAcc;
-                        }
-                    }
+                    _robot.InputManualForwardKey(true);
+                    e.Handled = true;
                     break;
 
                 case Keys.A:
-                    _robotMove.TurnController.StartTurnLeft();
+                    _robot.InputManualTurnLeft();
                     e.Handled = true;
                     break;
 
                 case Keys.D:
-                    _robotMove.TurnController.StartTurnRight();
+                    _robot.InputManualTurnRight();
                     e.Handled = true;
                     break;
             }
@@ -149,12 +142,8 @@ namespace GridDemo
 
             if (e.KeyCode == Keys.W)
             {
-                lock (_robotLock)
-                {
-                    _robot.IsForwardKeyDown = false;
-                    _robotSpeed = 0.0;
-                    _robot.Acc = 0.0;
-                }
+                _robot.InputManualForwardKey(false);
+                e.Handled = true;
             }
         }
 
@@ -253,14 +242,7 @@ namespace GridDemo
         {
             lock (_robotLock)
             {
-                // 数值框决定“前进时使用的加速度”
                 _robotAcc = (double)((NumericUpDown)sender).Value;
-
-                // 如果此时前进键按着且没有在转向，可以立即更新当前加速度
-                if (_robot != null && _robot.IsForwardKeyDown && !_robot.IsTurning)
-                {
-                    _robot.Acc = _robotAcc;
-                }
             }
         }
 
@@ -299,32 +281,29 @@ namespace GridDemo
         /// </summary>
         private void cmbChooseModel_SelectedIndexChanged(object sender, EventArgs e)
         {
+            if (_robot == null)
+            {
+                return;
+            }
+
             if (cmbChooseModel.SelectedIndex == 1)
             {
+                _robot.SetMode(EnumRobotControlMode.Auto);
+
                 _robotManual.Disable();
                 _robotAutoNavigator.Enable();
             }
             else
             {
                 cmbChooseModel.SelectedIndex = 0;
+
+                _robot.SetMode(EnumRobotControlMode.Manual);
+
                 _robotAutoNavigator.Disable();
                 _robotManual.Enable();
 
-                // 切回手动时强制焦点回到窗体
                 this.ActiveControl = null;
                 BeginInvoke(new Action(() => Focus()));
-            }
-
-            // 同步一次（确保方向一致）
-            lock (_robotLock)
-            {
-                // 使用当前实际方向计算角度
-                double angle = Robot.DirectionToAngle(_robot.Direction);
-                _robot.OrientationAngle = angle;
-                _robot.TargetOrientationAngle = angle;
-
-                // 确保转向状态重置
-                _robot.IsTurning = false;
             }
         }
 
