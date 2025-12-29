@@ -17,19 +17,16 @@ namespace GridDemo.Draws
     {
         private readonly WorldTransform _transform;
         private readonly Func<List<(double X, double Y)>> _getPathPointsSnapshot;           // 获取路径点快照的委托
-        private readonly Func<int> _getPathIndexSnapshot;              // 获取路径索引快照的委托
 
         /// <summary>
         /// 创建路径绘制器实例。
         /// </summary>
         internal DrawPath(
             WorldTransform transform,
-            Func<List<(double X, double Y)>> getPathPointsSnapshot,
-            Func<int> getPathIndexSnapshot)
+            Func<List<(double X, double Y)>> getPathPointsSnapshot)
         {
             _transform = transform;
             _getPathPointsSnapshot = getPathPointsSnapshot ?? throw new ArgumentNullException(nameof(getPathPointsSnapshot));
-            _getPathIndexSnapshot = getPathIndexSnapshot ?? throw new ArgumentNullException(nameof(getPathIndexSnapshot));
         }
 
         /// <summary>
@@ -39,7 +36,6 @@ namespace GridDemo.Draws
         internal void Draw(SKCanvas canvas)
         {
             List<(double X, double Y)> points = _getPathPointsSnapshot();         // 获取路径点快照
-            int index = _getPathIndexSnapshot();                     // 获取路径索引快照
 
             if (points == null || points.Count < 2)              // 少于 2 个点时不绘制
             {
@@ -73,12 +69,6 @@ namespace GridDemo.Draws
                 IsAntialias = true,
                 Style = SKPaintStyle.Fill
             })
-            using (var nextPaint = new SKPaint                     // 当前“下一个”目标点（路径索引）样式
-            {
-                Color = new SKColor(255, 165, 0, 230),
-                IsAntialias = true,
-                Style = SKPaintStyle.Fill
-            })
             {
                 var path = new SKPath();                     // 生成路径折线
 
@@ -103,12 +93,6 @@ namespace GridDemo.Draws
                 canvas.DrawCircle(p0.X, p0.Y, 6f, startPaint);                // 起点 / 终点
                 var pLast = _transform.WorldToScreen(points[points.Count - 1].X, points[points.Count - 1].Y);
                 canvas.DrawCircle(pLast.X, pLast.Y, 6f, goalPaint);
-
-                if (index >= 0 && index < points.Count)                // 当前“下一个”目标点（_pathIndex）
-                {
-                    var pNext = _transform.WorldToScreen(points[index].X, points[index].Y);
-                    canvas.DrawCircle(pNext.X, pNext.Y, 7f, nextPaint);
-                }
             }
         }
     }
