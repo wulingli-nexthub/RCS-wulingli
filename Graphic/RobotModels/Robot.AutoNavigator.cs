@@ -53,62 +53,6 @@ namespace GridDemo.RobotModels
         public bool IsEnabled { get; private set; }
 
         /// <summary>
-        /// 寻路算法切换：
-        /// - 切换时清空路径与索引，避免继续沿用旧算法生成的路径；
-        /// - 是否立刻重建由调用方决定（本类在 set 中不自动 rebuild，避免频繁/重复规划）。
-        /// </summary>
-        public EnumPathfindingAlgorithm Algorithm
-        {
-            get { return _algorithm; }
-            set
-            {
-                lock (_robotLock)
-                {
-                    if (_algorithm == value)
-                    {
-                        return;
-                    }
-
-                    _algorithm = value;
-                    _path.Clear();
-                    _pathIndex = 0;
-                }
-            }
-        }
-
-        /// <summary>
-        /// 设置导航目的地（网格坐标）：
-        /// - 会清空当前路径与索引；
-        /// - 若处于启用状态且 rebuildIfEnabled=true，则立即重建路径，保证目标切换后不会沿用旧路径。
-        /// </summary>
-        public void SetGoal(GridPos goal, bool rebuildIfEnabled)
-        {
-            lock (_robotLock)
-            {
-                _goal = goal;
-
-                _path.Clear();
-                _pathIndex = 0;
-
-                if (rebuildIfEnabled && IsEnabled)
-                {
-                    RebuildPath_NoLock();
-                }
-            }
-        }
-
-        /// <summary>
-        /// 外部主动要求重建路径
-        /// </summary>
-        public void RebuildPath()
-        {
-            lock (_robotLock)
-            {
-                RebuildPath_NoLock();
-            }
-        }
-
-        /// <summary>
         /// 启用自动导航：
         /// - 清空旧路径与索引；
         /// - 立即尝试规划一次路径；
@@ -147,22 +91,67 @@ namespace GridDemo.RobotModels
         }
 
         /// <summary>
-        /// 获取当前路径的世界坐标点（格子中心）快照：
-        /// - 用于 UI 绘制（路径可视化），避免直接暴露内部 _path；
-        /// - 返回新 list，调用方可安全枚举。
+        /// 寻路算法切换：
+        /// - 切换时清空路径与索引，避免继续沿用旧算法生成的路径；
+        /// - 是否立刻重建由调用方决定（本类在 set 中不自动 rebuild，避免频繁/重复规划）。
         /// </summary>
-        public List<(double X, double Y)> GetPathWorldPointsSnapshot()
+        public EnumPathfindingAlgorithm Algorithm
+        {
+            get { return _algorithm; }
+            set
+            {
+                lock (_robotLock)
+                {
+                    if (_algorithm == value)
+                    {
+                        return;
+                    }
+
+                    _algorithm = value;
+                    _path.Clear();
+                    _pathIndex = 0;
+
+                    // 算法切换时，强制刷新自动指令
+                    _robot.ResetAutoCommands();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 设置导航目的地（网格坐标）：
+        /// - 会清空当前路径与索引；
+        /// - 若处于启用状态且 rebuildIfEnabled=true，则立即重建路径，保证目标切换后不会沿用旧路径。
+        /// </summary>
+        public void SetGoal(GridPos goal, bool rebuildIfEnabled)
         {
             lock (_robotLock)
             {
-                var points = new List<(double X, double Y)>(_path.Count);
-                for (int i = 0; i < _path.Count; i++)
-                {
-                    GridPos p = _path[i];
-                    points.Add((GridToCenterWorldX(p.X), GridToCenterWorldY(p.Y)));
-                }
+                _goal = goal;
 
-                return points;
+                _path.Clear();
+                _pathIndex = 0;
+
+                if (rebuildIfEnabled && IsEnabled)
+                {
+                    RebuildPath_NoLock();
+                    // 目的地切换 + 已重建路径时，刷新自动指令
+                    _robot.ResetAutoCommands();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 外部主动要求重建路径
+        /// </summary>
+        public void RebuildPath()
+        {
+            lock (_robotLock)
+            {
+                RebuildPath_NoLock();
+                if (IsEnabled)
+                { // 重新规划路径后，让自动模式立刻用新路径
+                    _robot.ResetAutoCommands();
+                }
             }
         }
 
@@ -392,6 +381,26 @@ namespace GridDemo.RobotModels
 
                 // 既没到达，也没穿过当前点，则停止推进索引
                 break;
+            }
+        }
+
+        /// <summary>
+        /// 获取当前路径的世界坐标点（格子中心）快照：
+        /// - 用于 UI 绘制（路径可视化），避免直接暴露内部 _path；
+        /// - 返回新 list，调用方可安全枚举。
+        /// </summary>
+        public List<(double X, double Y)> GetPathWorldPointsSnapshot()
+        {
+            lock (_robotLock)
+            {
+                var points = new List<(double X, double Y)>(_path.Count);
+                for (int i = 0; i < _path.Count; i++)
+                {
+                    GridPos p = _path[i];
+                    points.Add((GridToCenterWorldX(p.X), GridToCenterWorldY(p.Y)));
+                }
+
+                return points;
             }
         }
 

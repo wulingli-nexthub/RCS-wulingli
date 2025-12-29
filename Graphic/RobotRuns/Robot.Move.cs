@@ -58,6 +58,12 @@ namespace GridDemo.RobotRuns
             get { return _turnController; }
         }
 
+        /// <summary>
+        /// 为转向做准备的“停车”：
+        /// - 清零速度与加速度（避免继续积分位移）；
+        /// - 转向将打断当前 MoveDistance（清理执行状态）；
+        /// - 内部加锁，适合从外部线程/定时器在未知锁状态下调用。
+        /// </summary>
         public void StopForTurn()
         {
             lock (_robotLock)
@@ -71,6 +77,10 @@ namespace GridDemo.RobotRuns
             }
         }
 
+        /// <summary>
+        /// 立即停止（不加锁版本）：
+        /// 仅用于调用方已持有 `_robotLock` 的场景，避免重复 lock 或锁顺序问题。
+        /// </summary>
         public void StopImmediately_NoLock()
         {
             _setRobotSpeed(0.0);
@@ -81,36 +91,46 @@ namespace GridDemo.RobotRuns
 
         /// <summary>
         /// 开始执行“前进位移”指令（米）。
+        /// 注意：该方法不加锁，要求调用方已经持有 `_robotLock`，用于上层批量更新时减少锁开销。
         /// </summary>
+        /// <param name="distanceM">期望前进距离（米）。小于等于 0 会直接视为无指令。</param>
+        /// <param name="forwardAcc">前进加速度（米/秒^2）。允许由上层决定加速策略。</param>
         public void StartMoveDistance_NoLock(double distanceM, double forwardAcc)
         {
             if (distanceM <= 0)
-            {
+            { // 无效距离
                 _moveDistanceActive = false;
                 _moveDistanceRemainM = 0.0;
                 return;
             }
 
-            // 转向中不允许开始移动
             if (_robot.IsTurning)
-            {
+            { // 转向中不允许开始移动
                 _moveDistanceActive = false;
                 _moveDistanceRemainM = 0.0;
                 return;
             }
 
+            // 写入加速度并激活指令：Update() 将按 dt 逐步扣减 remain。
             _robot.Acc = forwardAcc;
             _moveDistanceActive = true;
             _moveDistanceRemainM = distanceM;
         }
 
+        /// <summary>
+        /// 查询 MoveDistance 是否完成（不加锁版本）。
+        /// 说明：`_moveDistanceActive == false` 表示未在执行（可能完成，也可能被 Stop/Turn 打断）。
+        /// </summary>
         public bool IsMoveDistanceDone_NoLock()
         {
             return !_moveDistanceActive;
         }
 
         /// <summary>
-        /// 每帧更新运动学：仅在存在 MoveDistance 指令且不在转向时推进位移。
+        /// 每帧更新运动学：
+        /// - 转向期间不移动；
+        /// - 若存在 MoveDistance 指令：按 v=a*dt 积分更新速度，并按 step=v*dt 扣减剩余距离；
+        /// - 移动后执行边界夹紧，确保机器人始终位于世界范围内（以半格为边界）。
         /// </summary>
         public void Update()
         {
@@ -119,30 +139,34 @@ namespace GridDemo.RobotRuns
                 // 先更新转向动画（转向期间不移动）
                 // 注意：RobotTurn.Update 内部也 lock，同一把锁会死锁，所以这里不提前调用
                 // 转向 Update 移到锁外执行
-
                 if (_robot.IsTurning)
                 {
                     // 转向期间不走位移
                 }
                 else if (_moveDistanceActive)
                 {
-                    double v = _getRobotSpeed();
-                    double a = _robot.Acc;
-                    double vmax = _robot.MaxSpeed;
-                    double x = _getRobotX();
-                    double y = _getRobotY();
+                    // 1) 读取当前运动学状态
+                    double v = _getRobotSpeed();     // 当前速度（米/秒）
+                    double a = _robot.Acc;           // 当前加速度（米/秒^2）
+                    double vmax = _robot.MaxSpeed;   // 最大速度（米/秒）
+                    double x = _getRobotX();         // 当前 x（米）
+                    double y = _getRobotY();         // 当前 y（米）
                     EnumMoveDirection dir = _robot.Direction;
 
+                    // 2) 欧拉积分更新速度：v(t+dt) = v(t) + a*dt
                     v += a * _dt;
+                    // 将速度限制在 [0, vmax]：避免负速度导致“倒退”或速度上溢。
                     if (v < 0) v = 0;
                     if (v > vmax) v = vmax;
 
+                    // 3) 计算本帧位移步长，并确保不超过剩余距离
                     double step = v * _dt;
                     if (step > _moveDistanceRemainM)
                     {
                         step = _moveDistanceRemainM;
                     }
 
+                    // 4) 按方向更新坐标：仅允许四向网格移动
                     switch (dir)
                     {
                         case EnumMoveDirection.Right:
@@ -159,7 +183,8 @@ namespace GridDemo.RobotRuns
                             break;
                     }
 
-                    // 边界夹紧（保持原逻辑）
+                    // 5) 边界夹紧（保持原逻辑）：
+                    //    机器人中心点不得越界；以半格作为安全距离，防止“贴边越界”。
                     double worldWidth = _getWorldWidthM();
                     double worldHeight = _getWorldHeightM();
                     double halfCell = _cellSizeM / 2.0;
@@ -169,14 +194,18 @@ namespace GridDemo.RobotRuns
                     if (x > worldWidth - halfCell) x = worldWidth - halfCell;
                     if (y > worldHeight - halfCell) y = worldHeight - halfCell;
 
+                    // 6) 扣减剩余距离
                     _moveDistanceRemainM -= step;
 
+                    // 7) 回写速度与位置
                     _setRobotSpeed(v);
                     _setRobotX(x);
                     _setRobotY(y);
 
+                    // 8) 指令完成判定：用一个很小的阈值避免浮点误差导致“永远差一点”
                     if (_moveDistanceRemainM <= 0.000001)
                     {
+                        // 清理指令并立即停车：保证完成后速度归零，便于上层下一步决策。
                         _moveDistanceActive = false;
                         _moveDistanceRemainM = 0.0;
                         _setRobotSpeed(0.0);
