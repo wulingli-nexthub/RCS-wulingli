@@ -21,7 +21,7 @@ namespace GridDemo.RobotModels
         private readonly Func<double> _getWorldHeightM;
 
         private readonly double _cellSizeM;
-        private readonly Robot _robot;
+        private readonly RobotManager _robotManager;
 
         private const double ArriveEpsilonM = 0.05;
 
@@ -39,7 +39,7 @@ namespace GridDemo.RobotModels
             Func<double> getWorldWidthM,
             Func<double> getWorldHeightM,
             double cellSizeM,
-            Robot robot)
+            RobotManager robotManager)
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
             _getRobotX = getRobotX ?? throw new ArgumentNullException(nameof(getRobotX));
@@ -47,7 +47,7 @@ namespace GridDemo.RobotModels
             _getWorldWidthM = getWorldWidthM ?? throw new ArgumentNullException(nameof(getWorldWidthM));
             _getWorldHeightM = getWorldHeightM ?? throw new ArgumentNullException(nameof(getWorldHeightM));
             _cellSizeM = cellSizeM;
-            _robot = robot ?? throw new ArgumentNullException(nameof(robot));
+            _robotManager = robotManager ?? throw new ArgumentNullException(nameof(robotManager));
         }
 
         public bool IsEnabled { get; private set; }
@@ -70,9 +70,9 @@ namespace GridDemo.RobotModels
                 RebuildPath_NoLock();
 
                 // 仅做内部状态同步（不驱动运动）
-                double angle = Robot.DirectionToAngle(_robot.Direction);
-                _robot.OrientationAngle = angle;
-                _robot.TargetOrientationAngle = angle;
+                double angle = RobotManager.DirectionToAngle(_robotManager.Direction);
+                _robotManager.OrientationAngle = angle;
+                _robotManager.TargetOrientationAngle = angle;
             }
         }
 
@@ -112,7 +112,7 @@ namespace GridDemo.RobotModels
                     _pathIndex = 0;
 
                     // 算法切换时，强制刷新自动指令
-                    _robot.ResetAutoCommands();
+                    _robotManager.ResetAutoCommands();
                 }
             }
         }
@@ -135,7 +135,7 @@ namespace GridDemo.RobotModels
                 {
                     RebuildPath_NoLock();
                     // 目的地切换 + 已重建路径时，刷新自动指令
-                    _robot.ResetAutoCommands();
+                    _robotManager.ResetAutoCommands();
                 }
             }
         }
@@ -150,7 +150,7 @@ namespace GridDemo.RobotModels
                 RebuildPath_NoLock();
                 if (IsEnabled)
                 { // 重新规划路径后，让自动模式立刻用新路径
-                    _robot.ResetAutoCommands();
+                    _robotManager.ResetAutoCommands();
                 }
             }
         }
@@ -212,7 +212,7 @@ namespace GridDemo.RobotModels
                 EnumMoveDirection desiredDir = ChooseDirectionToTarget(x, y, firstX, firstY);
 
                 // 需要转向：先转向（只输出 Turn 指令）
-                if (!_robot.IsTurning && desiredDir != _robot.Direction)
+                if (!_robotManager.IsTurning && desiredDir != _robotManager.Direction)
                 {
                     return RobotCommand.TurnTo(desiredDir);
                 }

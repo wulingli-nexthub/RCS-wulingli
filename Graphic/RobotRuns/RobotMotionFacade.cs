@@ -9,15 +9,15 @@ namespace GridDemo.RobotRuns
     {
         private readonly object _robotLock;
         private readonly RobotMove _move;
-        private readonly Robot _robot;
+        private readonly RobotManager _robotManager;
         private readonly double _dt;
         private readonly Func<double> _getForwardAcc;
 
-        public RobotMotionFacade(object robotLock, RobotMove move, Robot robot, double dt, Func<double> getForwardAcc)
+        public RobotMotionFacade(object robotLock, RobotMove move, RobotManager robotManager, double dt, Func<double> getForwardAcc)
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
             _move = move ?? throw new ArgumentNullException(nameof(move));
-            _robot = robot ?? throw new ArgumentNullException(nameof(robot));
+            _robotManager = robotManager ?? throw new ArgumentNullException(nameof(robotManager));
             _dt = dt;
             _getForwardAcc = getForwardAcc ?? throw new ArgumentNullException(nameof(getForwardAcc));
         }
@@ -25,7 +25,7 @@ namespace GridDemo.RobotRuns
         public void Update()
         {
             // Robot.Tick 内部会 lock
-            _robot.Tick(_dt, _getForwardAcc);
+            _robotManager.Tick(_dt, _getForwardAcc);
 
             // Move.Update 内部会 lock
             _move.Update();

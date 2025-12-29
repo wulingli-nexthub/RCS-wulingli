@@ -13,16 +13,16 @@ namespace GridDemo.RobotModels
     {
         private readonly object _robotLock;
         private readonly Func<double> _getCellSizeM;
-        private readonly Robot _robot;
+        private readonly RobotManager _robotManager;
 
         public RobotManual(
             object robotLock,
             Func<double> getCellSizeM,
-            Robot robot)
+            RobotManager robotManager)
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
             _getCellSizeM = getCellSizeM ?? throw new ArgumentNullException(nameof(getCellSizeM));
-            _robot = robot ?? throw new ArgumentNullException(nameof(robot));
+            _robotManager = robotManager ?? throw new ArgumentNullException(nameof(robotManager));
         }
 
         public bool IsEnabled { get; private set; }         // 是否启用手动控制
@@ -32,8 +32,8 @@ namespace GridDemo.RobotModels
             lock (_robotLock)
             {
                 IsEnabled = true;
-                _robot.SetMode(EnumRobotControlMode.Manual);
-                _robot.InputManualForwardKey(false);
+                _robotManager.SetMode(EnumRobotControlMode.Manual);
+                _robotManager.InputManualForwardKey(false);
             }
         }
 
@@ -42,7 +42,7 @@ namespace GridDemo.RobotModels
             lock (_robotLock)
             {
                 IsEnabled = false;
-                _robot.InputManualForwardKey(false);
+                _robotManager.InputManualForwardKey(false);
             }
         }
 
@@ -64,17 +64,17 @@ namespace GridDemo.RobotModels
                 {
                     case Keys.W:
                         // 持续前进用“位移脉冲”实现：按下只标记，脉冲由 Robot.Tick 内部补发
-                        _robot.InputManualForwardKey(true);
+                        _robotManager.InputManualForwardKey(true);
                         e.Handled = true;
                         break;
 
                     case Keys.A:
-                        _robot.EnqueueCommand(RobotCommand.TurnLeft());
+                        _robotManager.EnqueueCommand(RobotCommand.TurnLeft());
                         e.Handled = true;
                         break;
 
                     case Keys.D:
-                        _robot.EnqueueCommand(RobotCommand.TurnRight());
+                        _robotManager.EnqueueCommand(RobotCommand.TurnRight());
                         e.Handled = true;
                         break;
                 }
@@ -97,7 +97,7 @@ namespace GridDemo.RobotModels
 
                 if (e.KeyCode == Keys.W)
                 {
-                    _robot.InputManualForwardKey(false);
+                    _robotManager.InputManualForwardKey(false);
                     e.Handled = true;
                     return;
                 }
@@ -117,7 +117,7 @@ namespace GridDemo.RobotModels
                 }
 
                 double dist = _getCellSizeM();
-                _robot.EnqueueCommand(RobotCommand.MoveDistance(dist));
+                _robotManager.EnqueueCommand(RobotCommand.MoveDistance(dist));
             }
         }
     }

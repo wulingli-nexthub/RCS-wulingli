@@ -35,7 +35,7 @@ namespace GridDemo.RobotRuns
     /// - `_currentCommand` 负责“正在做什么”；
     /// - Move/Turn 负责“怎么做”（落地执行与动画/积分），但由 Robot 串行调度，避免并发冲突。
     /// </summary>
-    internal class Robot
+    internal class RobotManager
     {
         private object _robotLock;
 
@@ -69,7 +69,7 @@ namespace GridDemo.RobotRuns
         public bool IsTurning { get; set; }           // 由 RobotTurn 控制，指示当前是否正在转向
         public double TurnAngularSpeed { get; set; } = Math.PI;         // 转向速度（弧度/秒），默认 180°/s
 
-        public Robot(double acc, double maxSpeed, EnumMoveDirection direction)
+        public RobotManager(double acc, double maxSpeed, EnumMoveDirection direction)
         {
             Acc = acc;
             MaxSpeed = maxSpeed;

@@ -97,7 +97,7 @@
     <Compile Include="RobotModels\Pathfinding\GridPathfinder.cs" />
     <Compile Include="RobotModels\Robot.AutoNavigator.cs" />
     <Compile Include="RobotModels\Robot.Manual.cs" />
-    <Compile Include="RobotRuns\Robot.cs" />
+    <Compile Include="RobotRuns\Robot.Manager.cs" />
     <Compile Include="RobotRuns\Robot.Move.cs" />
     <Compile Include="RobotRuns\Robot.Simulator.cs" />
     <Compile Include="RobotRuns\Robot.Turn.cs" />

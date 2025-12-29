@@ -18,7 +18,7 @@ namespace GridDemo
         private MouseWheel _mouseWheel;
         private MousePan _mousePan;
         private CenterGrid _centerGrid;
-        private Robot _robot;
+        private RobotManager _robotManager;
         private RobotMove _robotMove;
         private RobotSimulator _robotSimulator;
         private DestinationPicker _destinationPicker;
@@ -33,7 +33,7 @@ namespace GridDemo
                 _robotLock,
                 () => (_robotX, _robotY),
                 () => _scale,
-                () => _robot.OrientationAngle
+                () => _robotManager.OrientationAngle
             );
 
             _mouseWheel = new MouseWheel(
@@ -59,7 +59,7 @@ namespace GridDemo
                 updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
             );
 
-            _robot = new Robot(
+            _robotManager = new RobotManager(
                 acc: _robotAcc,
                 maxSpeed: _robotMaxSpeed,
                 direction: EnumMoveDirection.Right
@@ -84,13 +84,13 @@ namespace GridDemo
                 getWorldWidthM: () => _worldWidthM,
                 getWorldHeightM: () => _worldHeightM,
                 cellSizeM: CellSizeM,
-                robot: _robot
+                robotManager: _robotManager
             );
 
             _robotManual = new RobotManual(
                 robotLock: _robotLock,
                 getCellSizeM: () => CellSizeM,
-                robot: _robot
+                robotManager: _robotManager
             );
 
             _drawPath = new DrawPath(
@@ -106,7 +106,7 @@ namespace GridDemo
                 setRobotY: y => _robotY = y,
                 getRobotSpeed: () => _robotSpeed,
                 setRobotSpeed: v => _robotSpeed = v,
-                robot: _robot,
+                robotManager: _robotManager,
                 getWorldWidthM: () => _worldWidthM,
                 getWorldHeightM: () => _worldHeightM,
                 cellSizeM: CellSizeM,
@@ -114,7 +114,7 @@ namespace GridDemo
             );
 
             // Robot 绑定运行时（把“自动指令源”接进来）
-            _robot.BindRuntime(
+            _robotManager.BindRuntime(
                 robotLock: _robotLock,
                 move: _robotMove,
                 turn: _robotMove.TurnController,
@@ -123,7 +123,7 @@ namespace GridDemo
 
             _robotSimulator = new RobotSimulator(
                 host: skControl,
-                update: new RobotMotionFacade(_robotLock, _robotMove, _robot, _dt, () => _robotAcc).Update,
+                update: new RobotMotionFacade(_robotLock, _robotMove, _robotManager, _dt, () => _robotAcc).Update,
                 dt: _dt
             );
             _robotSimulator._Thead_Start();

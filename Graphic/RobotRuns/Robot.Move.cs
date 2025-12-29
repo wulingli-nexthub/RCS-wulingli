@@ -11,7 +11,7 @@ namespace GridDemo.RobotRuns
         private readonly Action<double> _setRobotY;
         private readonly Func<double> _getRobotSpeed;
         private readonly Action<double> _setRobotSpeed;
-        private readonly Robot _robot;
+        private readonly RobotManager _robotManager;
         private readonly Func<double> _getWorldWidthM;
         private readonly Func<double> _getWorldHeightM;
         private readonly double _cellSizeM;
@@ -31,7 +31,7 @@ namespace GridDemo.RobotRuns
             Action<double> setRobotY,
             Func<double> getRobotSpeed,
             Action<double> setRobotSpeed,
-            Robot robot,
+            RobotManager robotManager,
             Func<double> getWorldWidthM,
             Func<double> getWorldHeightM,
             double cellSizeM,
@@ -44,13 +44,13 @@ namespace GridDemo.RobotRuns
             _setRobotY = setRobotY ?? throw new ArgumentNullException(nameof(setRobotY));
             _getRobotSpeed = getRobotSpeed ?? throw new ArgumentNullException(nameof(getRobotSpeed));
             _setRobotSpeed = setRobotSpeed ?? throw new ArgumentNullException(nameof(setRobotSpeed));
-            _robot = robot ?? throw new ArgumentNullException(nameof(robot));
+            _robotManager = robotManager ?? throw new ArgumentNullException(nameof(robotManager));
             _getWorldWidthM = getWorldWidthM ?? throw new ArgumentNullException(nameof(getWorldWidthM));
             _getWorldHeightM = getWorldHeightM ?? throw new ArgumentNullException(nameof(getWorldHeightM));
             _cellSizeM = cellSizeM;
             _dt = dt;
 
-            _turnController = new RobotTurn(_robotLock, _robot, this, _dt);
+            _turnController = new RobotTurn(_robotLock, _robotManager, this, _dt);
         }
 
         public RobotTurn TurnController
@@ -69,7 +69,7 @@ namespace GridDemo.RobotRuns
             lock (_robotLock)
             {
                 _setRobotSpeed(0.0);
-                _robot.Acc = 0.0;
+                _robotManager.Acc = 0.0;
 
                 // 转向会打断前进指令
                 _moveDistanceActive = false;
@@ -84,7 +84,7 @@ namespace GridDemo.RobotRuns
         public void StopImmediately_NoLock()
         {
             _setRobotSpeed(0.0);
-            _robot.Acc = 0.0;
+            _robotManager.Acc = 0.0;
             _moveDistanceActive = false;
             _moveDistanceRemainM = 0.0;
         }
@@ -104,7 +104,7 @@ namespace GridDemo.RobotRuns
                 return;
             }
 
-            if (_robot.IsTurning)
+            if (_robotManager.IsTurning)
             { // 转向中不允许开始移动
                 _moveDistanceActive = false;
                 _moveDistanceRemainM = 0.0;
@@ -112,7 +112,7 @@ namespace GridDemo.RobotRuns
             }
 
             // 写入加速度并激活指令：Update() 将按 dt 逐步扣减 remain。
-            _robot.Acc = forwardAcc;
+            _robotManager.Acc = forwardAcc;
             _moveDistanceActive = true;
             _moveDistanceRemainM = distanceM;
         }
@@ -139,7 +139,7 @@ namespace GridDemo.RobotRuns
                 // 先更新转向动画（转向期间不移动）
                 // 注意：RobotTurn.Update 内部也 lock，同一把锁会死锁，所以这里不提前调用
                 // 转向 Update 移到锁外执行
-                if (_robot.IsTurning)
+                if (_robotManager.IsTurning)
                 {
                     // 转向期间不走位移
                 }
@@ -147,11 +147,11 @@ namespace GridDemo.RobotRuns
                 {
                     // 1) 读取当前运动学状态
                     double v = _getRobotSpeed();     // 当前速度（米/秒）
-                    double a = _robot.Acc;           // 当前加速度（米/秒^2）
-                    double vmax = _robot.MaxSpeed;   // 最大速度（米/秒）
+                    double a = _robotManager.Acc;           // 当前加速度（米/秒^2）
+                    double vmax = _robotManager.MaxSpeed;   // 最大速度（米/秒）
                     double x = _getRobotX();         // 当前 x（米）
                     double y = _getRobotY();         // 当前 y（米）
-                    EnumMoveDirection dir = _robot.Direction;
+                    EnumMoveDirection dir = _robotManager.Direction;
 
                     // 2) 欧拉积分更新速度：v(t+dt) = v(t) + a*dt
                     v += a * _dt;
@@ -209,7 +209,7 @@ namespace GridDemo.RobotRuns
                         _moveDistanceActive = false;
                         _moveDistanceRemainM = 0.0;
                         _setRobotSpeed(0.0);
-                        _robot.Acc = 0.0;
+                        _robotManager.Acc = 0.0;
                     }
                 }
             }

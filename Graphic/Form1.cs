@@ -106,7 +106,7 @@ namespace GridDemo
         /// </summary>
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
-            if (_robot == null)
+            if (_robotManager == null)
             {
                 return;
             }
@@ -114,17 +114,17 @@ namespace GridDemo
             switch (e.KeyCode)
             {
                 case Keys.W:
-                    _robot.InputManualForwardKey(true);
+                    _robotManager.InputManualForwardKey(true);
                     e.Handled = true;
                     break;
 
                 case Keys.A:
-                    _robot.InputManualTurnLeft();
+                    _robotManager.InputManualTurnLeft();
                     e.Handled = true;
                     break;
 
                 case Keys.D:
-                    _robot.InputManualTurnRight();
+                    _robotManager.InputManualTurnRight();
                     e.Handled = true;
                     break;
             }
@@ -135,14 +135,14 @@ namespace GridDemo
         /// </summary>
         private void Form1_KeyUp(object sender, KeyEventArgs e)
         {
-            if (_robot == null)
+            if (_robotManager == null)
             {
                 return;
             }
 
             if (e.KeyCode == Keys.W)
             {
-                _robot.InputManualForwardKey(false);
+                _robotManager.InputManualForwardKey(false);
                 e.Handled = true;
             }
         }
@@ -253,7 +253,7 @@ namespace GridDemo
         {
             lock (_robotLock)
             {
-                _robot.MaxSpeed = (double)((NumericUpDown)sender).Value;
+                _robotManager.MaxSpeed = (double)((NumericUpDown)sender).Value;
             }
         }
 
@@ -281,14 +281,14 @@ namespace GridDemo
         /// </summary>
         private void cmbChooseModel_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (_robot == null)
+            if (_robotManager == null)
             {
                 return;
             }
 
             if (cmbChooseModel.SelectedIndex == 1)
             {
-                _robot.SetMode(EnumRobotControlMode.Auto);
+                _robotManager.SetMode(EnumRobotControlMode.Auto);
 
                 _robotManual.Disable();
                 _robotAutoNavigator.Enable();
@@ -297,7 +297,7 @@ namespace GridDemo
             {
                 cmbChooseModel.SelectedIndex = 0;
 
-                _robot.SetMode(EnumRobotControlMode.Manual);
+                _robotManager.SetMode(EnumRobotControlMode.Manual);
 
                 _robotAutoNavigator.Disable();
                 _robotManual.Enable();
