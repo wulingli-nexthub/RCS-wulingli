@@ -49,6 +49,8 @@ namespace GridDemo.RobotRuns
 
         // 手动输入状态（UI 写入，Robot 读取生成指令）
         private bool _manualForwardKeyDown;
+        private bool _manualTurnLeftKeyDown;
+        private bool _manualTurnRightKeyDown;
 
         // 依赖（执行落地由 Move/Turn 提供，但由 Robot 统一调度）
         private RobotMove _move;
@@ -68,6 +70,7 @@ namespace GridDemo.RobotRuns
         public double TargetOrientationAngle { get; set; }          // 目标朝向角度（弧度），用于转向动画插值
         public bool IsTurning { get; set; }           // 由 RobotTurn 控制，指示当前是否正在转向
         public double TurnAngularSpeed { get; set; } = Math.PI;         // 转向速度（弧度/秒），默认 180°/s
+        public int ManualTurnSign { get; internal set; }      // 手动转向符号：-1=左，0=不转，1=右
 
         public RobotManager(double acc, double maxSpeed, EnumMoveDirection direction)
         {
@@ -165,7 +168,7 @@ namespace GridDemo.RobotRuns
         #region UI 输入（Form 仅调用这些）
         /// <summary>
         /// UI 通知手动前进键（如 W）按下/松开。
-        /// 松开时会立即刹停并清空未执行指令，以获得“松手即停”的交互效果。
+        /// 松开时立即刹停。
         /// </summary>
         public void InputManualForwardKey(bool isDown)
         {
@@ -174,64 +177,42 @@ namespace GridDemo.RobotRuns
                 _manualForwardKeyDown = isDown;
                 if (!isDown)
                 {
-                    // 松开即刹停，并清掉未执行的前进指令
-                    _commandQueue.Clear();
-                    _hasCurrentCommand = false;
-                    _currentCommand = null;
-                    Acc = 0.0;
+                    // 松开即刹停
                     _move.StopImmediately_NoLock();
+                    Acc = 0.0;
                 }
             }
         }
 
         /// <summary>
-        /// UI 请求左转：以“转向指令”的形式入队，由 Tick 串行调度执行。
+        /// UI 通知左转键（如 A）按下/松开。
         /// </summary>
-        public void InputManualTurnLeft()
+        public void InputManualTurnLeftKey(bool isDown)
         {
-            EnqueueCommand(RobotCommand.TurnLeft());
-        }
-
-        /// <summary>
-        /// UI 请求右转：以“转向指令”的形式入队，由 Tick 串行调度执行。
-        /// </summary>
-        public void InputManualTurnRight()
-        {
-            EnqueueCommand(RobotCommand.TurnRight());
-        }
-
-        /// <summary>
-        /// 手动前进：按住 W 时每次补一段“位移指令”（米）。
-        /// 说明：这里用“分段位移”模拟持续按键，避免引入第三类“持续速度指令”，从而保持调度逻辑简单：
-        /// - Turn
-        /// - MoveDistance
-        /// </summary>
-        public void ManualForwardPulse(double distanceM)
-        {
-            if (distanceM <= 0)
-            {
-                return;
-            }
-
             lock (_robotLock)
             {
-                if (_mode != EnumRobotControlMode.Manual)
+                _manualTurnLeftKeyDown = isDown;
+                if (!isDown && !_manualTurnRightKeyDown)
                 {
-                    return;
+                    // 左右键都松开时，停止转向
+                    IsTurning = false;
                 }
+            }
+        }
 
-                if (!_manualForwardKeyDown)
+        /// <summary>
+        /// UI 通知右转键（如 D）按下/松开。
+        /// </summary>
+        public void InputManualTurnRightKey(bool isDown)
+        {
+            lock (_robotLock)
+            {
+                _manualTurnRightKeyDown = isDown;
+                if (!isDown && !_manualTurnLeftKeyDown)
                 {
-                    return;
+                    // 左右键都松开时，停止转向
+                    IsTurning = false;
                 }
-
-                // 转向中不下发前进（避免边转边走）
-                if (IsTurning)
-                {
-                    return;
-                }
-
-                _commandQueue.Enqueue(RobotCommand.MoveDistance(distanceM));
             }
         }
         #endregion
@@ -265,88 +246,110 @@ namespace GridDemo.RobotRuns
             lock (_robotLock)
             {
                 // 1) 自动模式：按需从 provider 拉取指令进入队列
-                if (_mode == EnumRobotControlMode.Auto && _autoCommandProvider != null)
+                if (_mode == EnumRobotControlMode.Auto)
                 {
-                    if (!_hasCurrentCommand && _commandQueue.Count == 0)
+                    if (_autoCommandProvider != null)
                     {
-                        RobotCommand cmd = _autoCommandProvider();
-                        if (cmd != null)
+                        if (!_hasCurrentCommand && _commandQueue.Count == 0)
                         {
-                            _commandQueue.Enqueue(cmd);
+                            RobotCommand cmd = _autoCommandProvider();
+                            if (cmd != null)
+                            {
+                                _commandQueue.Enqueue(cmd);
+                            }
                         }
                     }
+
+                    if (!_hasCurrentCommand)
+                    { // 2) 取出当前指令（若没有）
+
+                        if (_commandQueue.Count == 0)
+                        {
+                            return;
+                        }
+
+                        _currentCommand = _commandQueue.Dequeue();
+                        _hasCurrentCommand = true;
+
+                        // 下发给 Move/Turn（执行器内部会依据 IsTurning 等状态保护）
+                        if (_currentCommand.Type == EnumRobotCommandType.MoveDistance)
+                        {
+                            _move.StartMoveDistance_NoLock(_currentCommand.DistanceM.Value, getForwardAcc());
+                        }
+                        else if (_currentCommand.Type == EnumRobotCommandType.Turn)
+                        {
+                            if (_currentCommand.Turn == EnumTurnCommand.Left)
+                            {
+                                _turn.StartTurnLeft();
+                            }
+                            else if (_currentCommand.Turn == EnumTurnCommand.Right)
+                            {
+                                _turn.StartTurnRight();
+                            }
+                            else
+                            {
+                                _turn.StartTurnTo(_currentCommand.TargetDirection.Value);
+                            }
+                        }
+                    }
+
+                    // 3) 监测执行完成：完成则切下一条
+                    //    完成条件由执行器状态决定：Move 看自身指令状态；Turn 看 `IsTurning`。
+                    if (_hasCurrentCommand)
+                    {
+                        bool done = false;
+
+                        if (_currentCommand.Type == EnumRobotCommandType.MoveDistance)
+                        {
+                            done = _move.IsMoveDistanceDone_NoLock();
+                        }
+                        else if (_currentCommand.Type == EnumRobotCommandType.Turn)
+                        {
+                            done = !IsTurning;
+                        }
+
+                        if (done)
+                        {
+                            _hasCurrentCommand = false;
+                            _currentCommand = null;
+                        }
+                    }
+
+                    return;  // 自动模式到此结束
                 }
 
-                // 2) 手动模式：按住 W 时持续“脉冲式”补位移指令（dt 对应一小段距离）
-                if (_mode == EnumRobotControlMode.Manual && _manualForwardKeyDown)
+                // 手动模式：
+                // 1) 前进：按住 W 时持续加速积分位移；松开时 Acc 归零且 Move.Stop 已在 InputManualForwardKey 做过
+                if (_manualForwardKeyDown)
                 {
-                    // 这里用“期望速度 * dt”转成位移指令，保持指令类型只有两种
                     double forwardAcc = getForwardAcc();
                     Acc = forwardAcc;
-
-                    // 经验值：按帧补给一个小位移，避免队列堆积过快
-                    // distance = v * dt，但 v 在 Move 内部积分；这里用 MaxSpeed 做上限近似，取更保守的 0.3 倍避免突进
-                    double distanceM = Math.Max(0.0, Math.Min(MaxSpeed * dt * 0.3, 0.2));
-                    if (distanceM > 0)
-                    {
-                        _commandQueue.Enqueue(RobotCommand.MoveDistance(distanceM));
-                    }
+                    // 不再入队 MoveDistance，实际积分在 RobotMove.Update 中按 Acc/Speed 计算
                 }
-
-                if (!_hasCurrentCommand)
-                { // 3) 取出当前指令（若没有）
-
-                    if (_commandQueue.Count == 0)
-                    {
-                        return;
-                    }
-
-                    _currentCommand = _commandQueue.Dequeue();
-                    _hasCurrentCommand = true;
-
-                    // 下发给 Move/Turn（执行器内部会依据 IsTurning 等状态保护）
-                    if (_currentCommand.Type == EnumRobotCommandType.MoveDistance)
-                    {
-                        _move.StartMoveDistance_NoLock(_currentCommand.DistanceM.Value, getForwardAcc());
-                    }
-                    else if (_currentCommand.Type == EnumRobotCommandType.Turn)
-                    {
-                        if (_currentCommand.Turn == EnumTurnCommand.Left)
-                        {
-                            _turn.StartTurnLeft();
-                        }
-                        else if (_currentCommand.Turn == EnumTurnCommand.Right)
-                        {
-                            _turn.StartTurnRight();
-                        }
-                        else
-                        {
-                            _turn.StartTurnTo(_currentCommand.TargetDirection.Value);
-                        }
-                    }
-                }
-
-                // 4) 监测执行完成：完成则切下一条
-                //    完成条件由执行器状态决定：Move 看自身指令状态；Turn 看 `IsTurning`。
-                if (_hasCurrentCommand)
+                else
                 {
-                    bool done = false;
-
-                    if (_currentCommand.Type == EnumRobotCommandType.MoveDistance)
-                    {
-                        done = _move.IsMoveDistanceDone_NoLock();
-                    }
-                    else if (_currentCommand.Type == EnumRobotCommandType.Turn)
-                    {
-                        done = !IsTurning;
-                    }
-
-                    if (done)
-                    {
-                        _hasCurrentCommand = false;
-                        _currentCommand = null;
-                    }
+                    Acc = 0.0;
                 }
+
+                // 2) 转向：按住 A/D 给 Turn 写一个「当前帧目标角速度和方向」
+                if (_manualTurnLeftKeyDown ^ _manualTurnRightKeyDown)
+                {
+                    // 只有一边按下：开始转向
+                    IsTurning = true;
+                    ManualTurnSign = _manualTurnLeftKeyDown ? -1 : 1;
+                    // 交给 RobotTurn.Update 处理“以固定角速度持续旋转”的逻辑
+                }
+                else
+                {
+                    // 没有或两边都按：停止转向
+                    IsTurning = false;
+                    ManualTurnSign = 0;
+                }
+
+                // 手动模式不使用命令队列
+                _commandQueue.Clear();
+                _hasCurrentCommand = false;
+                _currentCommand = null;
             }
         }
 

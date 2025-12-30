@@ -63,18 +63,15 @@ namespace GridDemo.RobotModels
                 switch (e.KeyCode)
                 {
                     case Keys.W:
-                        // 持续前进用“位移脉冲”实现：按下只标记，脉冲由 Robot.Tick 内部补发
                         _robotManager.InputManualForwardKey(true);
                         e.Handled = true;
                         break;
-
                     case Keys.A:
-                        _robotManager.EnqueueCommand(RobotCommand.TurnLeft());
+                        _robotManager.InputManualTurnLeftKey(true);
                         e.Handled = true;
                         break;
-
                     case Keys.D:
-                        _robotManager.EnqueueCommand(RobotCommand.TurnRight());
+                        _robotManager.InputManualTurnRightKey(true);
                         e.Handled = true;
                         break;
                 }
@@ -95,11 +92,20 @@ namespace GridDemo.RobotModels
                     return;
                 }
 
-                if (e.KeyCode == Keys.W)
+                switch (e.KeyCode)
                 {
-                    _robotManager.InputManualForwardKey(false);
-                    e.Handled = true;
-                    return;
+                    case Keys.W:
+                        _robotManager.InputManualForwardKey(false);
+                        e.Handled = true;
+                        break;
+                    case Keys.A:
+                        _robotManager.InputManualTurnLeftKey(false);
+                        e.Handled = true;
+                        break;
+                    case Keys.D:
+                        _robotManager.InputManualTurnRightKey(false);
+                        e.Handled = true;
+                        break;
                 }
             }
         }

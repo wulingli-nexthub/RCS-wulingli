@@ -212,6 +212,41 @@ namespace GridDemo.RobotRuns
                         _robotManager.Acc = 0.0;
                     }
                 }
+                else if (_robotManager.Acc != 0.0 || _getRobotSpeed() != 0.0)
+                {
+                    double v = _getRobotSpeed();
+                    double a = _robotManager.Acc;
+                    double vmax = _robotManager.MaxSpeed;
+
+                    // 1) 积分速度
+                    v += a * _dt;
+                    if (v < 0) v = 0;
+                    if (v > vmax) v = vmax;
+
+                    // 2) 根据 OrientationAngle 做连续方向移动
+                    double x = _getRobotX();
+                    double y = _getRobotY();
+
+                    double step = v * _dt;
+
+                    // 使用朝向角度，而不是离散方向
+                    double angle = _robotManager.OrientationAngle;
+                    x += Math.Cos(angle) * step;
+                    y += Math.Sin(angle) * step;
+
+                    double worldWidth = _getWorldWidthM();
+                    double worldHeight = _getWorldHeightM();
+                    double halfCell = _cellSizeM / 2.0;
+
+                    if (x < halfCell) x = halfCell;
+                    if (y < halfCell) y = halfCell;
+                    if (x > worldWidth - halfCell) x = worldWidth - halfCell;
+                    if (y > worldHeight - halfCell) y = worldHeight - halfCell;
+
+                    _setRobotSpeed(v);
+                    _setRobotX(x);
+                    _setRobotY(y);
+                }
             }
 
             _turnController.Update();

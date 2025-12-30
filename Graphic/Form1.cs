@@ -119,12 +119,12 @@ namespace GridDemo
                     break;
 
                 case Keys.A:
-                    _robotManager.InputManualTurnLeft();
+                    _robotManager.InputManualTurnLeftKey(true);
                     e.Handled = true;
                     break;
 
                 case Keys.D:
-                    _robotManager.InputManualTurnRight();
+                    _robotManager.InputManualTurnRightKey(true);
                     e.Handled = true;
                     break;
             }
@@ -135,15 +135,24 @@ namespace GridDemo
         /// </summary>
         private void Form1_KeyUp(object sender, KeyEventArgs e)
         {
-            if (_robotManager == null)
-            {
-                return;
-            }
+            if (_robotManager == null) return;
 
-            if (e.KeyCode == Keys.W)
+            switch (e.KeyCode)
             {
-                _robotManager.InputManualForwardKey(false);
-                e.Handled = true;
+                case Keys.W:
+                    _robotManager.InputManualForwardKey(false);
+                    e.Handled = true;
+                    break;
+
+                case Keys.A:
+                    _robotManager.InputManualTurnLeftKey(false);
+                    e.Handled = true;
+                    break;
+
+                case Keys.D:
+                    _robotManager.InputManualTurnRightKey(false);
+                    e.Handled = true;
+                    break;
             }
         }
 

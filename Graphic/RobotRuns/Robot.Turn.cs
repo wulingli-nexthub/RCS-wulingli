@@ -14,6 +14,7 @@ namespace GridDemo.RobotRuns
         private readonly RobotManager _robotManager;
         private readonly RobotMove _move;
         private readonly double _dt;
+        private bool _hasTargetAngle;
 
         public RobotTurn(object robotLock, RobotManager robotManager, RobotMove move, double dt)
         {
@@ -38,45 +39,60 @@ namespace GridDemo.RobotRuns
                     return;
                 }
 
-                double cur = _robotManager.OrientationAngle;
-                double target = _robotManager.TargetOrientationAngle;
+
                 double maxStep = _robotManager.TurnAngularSpeed * _dt;       // 每帧允许的最大旋转角度（弧度）
 
-                // 确保角度在 [0, 2π) 范围内计算
-                cur = NormalizeAngle(cur);
-                target = NormalizeAngle(target);
-
-                // 计算最短旋转角度
-                double delta = target - cur;
-
-                if (delta > Math.PI)
-                { // 选择最短旋转方向：把差值映射到 (-π, π]
-                    delta -= 2 * Math.PI;
-                }
-                else if (delta < -Math.PI)
+                if (_hasTargetAngle)
                 {
-                    delta += 2 * Math.PI;
+                    double cur = _robotManager.OrientationAngle;
+                    double target = _robotManager.TargetOrientationAngle;
+
+                    // 确保角度在 [0, 2π) 范围内计算
+                    cur = NormalizeAngle(cur);
+                    target = NormalizeAngle(target);
+
+                    // 计算最短旋转角度
+                    double delta = target - cur;
+
+                    if (delta > Math.PI)
+                    { // 选择最短旋转方向：把差值映射到 (-π, π]
+                        delta -= 2 * Math.PI;
+                    }
+                    else if (delta < -Math.PI)
+                    {
+                        delta += 2 * Math.PI;
+                    }
+
+                    if (Math.Abs(delta) <= maxStep)
+                    { // 若本帧一步就能到达目标，直接对齐并结束动画
+                      // 旋转完成
+                        _robotManager.OrientationAngle = target;
+                        _robotManager.IsTurning = false;
+
+                        // 根据最终角度更新离散方向
+                        _robotManager.Direction = AngleToDirection(target);
+                        return;
+                    }
+
+                    double step = delta > 0 ? maxStep : -maxStep;             // 本帧沿最短方向走一步
+                    _robotManager.OrientationAngle = NormalizeAngle(cur + step);
                 }
+                else
+                { // 手动模式
+                    int sign = _robotManager.ManualTurnSign; // -1,0,1
+                    if (sign == 0)
+                    {
+                        _robotManager.IsTurning = false;
+                        return;
+                    }
 
-                if (Math.Abs(delta) <= maxStep)
-                { // 若本帧一步就能到达目标，直接对齐并结束动画
-                    // 旋转完成
-                    _robotManager.OrientationAngle = target;
-                    _robotManager.IsTurning = false;
+                    double cur = NormalizeAngle(_robotManager.OrientationAngle);
+                    double step = sign * maxStep;
+                    _robotManager.OrientationAngle = NormalizeAngle(cur + step);
 
-                    // 根据最终角度更新离散方向
-                    _robotManager.Direction = AngleToDirection(target);
-
-                    //if (_robot._manualForwardKeyDown)
-                    //{ // 若前进键当前处于按下状态，恢复加速度让其继续前进
-                    //    _move.ResumeForwardAfterTurn();
-                    //}
-
-                    return;
+                    // 连续转向时，Direction 可以按当前角更新，便于 UI/逻辑使用
+                    _robotManager.Direction = AngleToDirection(_robotManager.OrientationAngle);
                 }
-
-                double step = delta > 0 ? maxStep : -maxStep;             // 本帧沿最短方向走一步
-                _robotManager.OrientationAngle = NormalizeAngle(cur + step);
             }
         }
 
@@ -85,7 +101,11 @@ namespace GridDemo.RobotRuns
         /// </summary>
         public void StartTurnLeft()
         {
-            StartTurnInternal(-System.Math.PI / 2.0);
+            lock (_robotLock)
+            {
+                _hasTargetAngle = true;
+            }
+            StartTurnInternal(-Math.PI / 2.0);
         }
 
         /// <summary>
@@ -93,7 +113,11 @@ namespace GridDemo.RobotRuns
         /// </summary>
         public void StartTurnRight()
         {
-            StartTurnInternal(System.Math.PI / 2.0);
+            lock (_robotLock)
+            {
+                _hasTargetAngle = true;
+            }
+            StartTurnInternal(Math.PI / 2.0);
         }
 
         /// <summary>
@@ -108,6 +132,7 @@ namespace GridDemo.RobotRuns
         {
             lock (_robotLock)
             {
+                _hasTargetAngle = true;
                 if (_robotManager.IsTurning)
                 {
                     return;
