@@ -1,6 +1,5 @@
 ﻿using GridDemo.RobotRuns;
 using System;
-using System.Windows.Forms;
 
 namespace GridDemo.RobotModels
 {
@@ -43,87 +42,6 @@ namespace GridDemo.RobotModels
             {
                 IsEnabled = false;
                 _robotManager.InputManualForwardKey(false);
-            }
-        }
-
-        /// <summary>
-        /// UI KeyDown -> 指令/输入
-        /// </summary>
-        public void OnKeyDown(KeyEventArgs e)
-        {
-            if (e == null) throw new ArgumentNullException(nameof(e));
-
-            lock (_robotLock)
-            {
-                if (!IsEnabled)
-                {
-                    return;
-                }
-
-                switch (e.KeyCode)
-                {
-                    case Keys.W:
-                        _robotManager.InputManualForwardKey(true);
-                        e.Handled = true;
-                        break;
-                    case Keys.A:
-                        _robotManager.InputManualTurnLeftKey(true);
-                        e.Handled = true;
-                        break;
-                    case Keys.D:
-                        _robotManager.InputManualTurnRightKey(true);
-                        e.Handled = true;
-                        break;
-                }
-            }
-        }
-
-        /// <summary>
-        /// UI KeyUp -> 停止输入
-        /// </summary>
-        public void OnKeyUp(KeyEventArgs e)
-        {
-            if (e == null) throw new ArgumentNullException(nameof(e));
-
-            lock (_robotLock)
-            {
-                if (!IsEnabled)
-                {
-                    return;
-                }
-
-                switch (e.KeyCode)
-                {
-                    case Keys.W:
-                        _robotManager.InputManualForwardKey(false);
-                        e.Handled = true;
-                        break;
-                    case Keys.A:
-                        _robotManager.InputManualTurnLeftKey(false);
-                        e.Handled = true;
-                        break;
-                    case Keys.D:
-                        _robotManager.InputManualTurnRightKey(false);
-                        e.Handled = true;
-                        break;
-                }
-            }
-        }
-
-        /// <summary>
-        /// 可选：用于“单步前进一格”的离散指令（例如你将来做按钮/脚本控制）。
-        /// </summary>
-        public void StepForwardOneCell()
-        {
-            lock (_robotLock)
-            {
-                if (!IsEnabled)
-                {
-                    return;
-                }
-
-                double dist = _getCellSizeM();
-                _robotManager.EnqueueCommand(RobotCommand.MoveDistance(dist));
             }
         }
     }

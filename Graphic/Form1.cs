@@ -100,9 +100,8 @@ namespace GridDemo
 
         /// <summary>
         /// 键盘按下：W/A/D 控制。
-        /// - W：开始前进（设置 IsForwardKeyDown，并在未转向时施加加速度）
-        /// - A：左转（通过 RobotTurn 启动转向动画）
-        /// - D：右转（通过 RobotTurn 启动转向动画）
+        /// - 通过 RobotManager 通知 RobotManual 模块按键状态变更；
+        /// - RobotManual 会更新 Robot 的加速度/转向指令，由 RobotManager 统一调度执行。
         /// </summary>
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {

@@ -223,23 +223,10 @@ namespace GridDemo.RobotRuns
         #endregion
 
         /// <summary>
-        /// 将指令入队（线程安全）。
-        /// </summary>
-        public void EnqueueCommand(RobotCommand command)
-        {
-            if (command == null) throw new ArgumentNullException(nameof(command));
-
-            lock (_robotLock)
-            {
-                _commandQueue.Enqueue(command);
-            }
-        }
-
-        /// <summary>
         /// 由仿真线程每帧调用：生成/下发/监测指令（调度核心）。
         /// 调度流程：
         /// 1) 自动模式：当“无当前指令且队列为空”时，从 provider 拉取一条新指令；
-        /// 2) 手动模式：按住前进键时，以 dt 为节拍持续生成小段 MoveDistance 指令；
+        /// 2) 手动模式：按住键盘时，一直运动（不入队指令，实时积分位移与角速度）；
         /// 3) 若当前无指令且队列非空：出队一条并下发给 Move/Turn；
         /// 4) 轮询检测当前指令是否完成：完成后清理，下一帧进入下一条。
         /// </summary>
@@ -260,7 +247,7 @@ namespace GridDemo.RobotRuns
                             RobotCommand cmd = _autoCommandProvider();
                             if (cmd != null)
                             {
-                                _commandQueue.Enqueue(cmd);
+                                _commandQueue.Enqueue(cmd);          // 指令入队
                             }
                         }
                     }
@@ -373,11 +360,5 @@ namespace GridDemo.RobotRuns
                 default: return 0;
             }
         }
-
-        /// <summary>
-        /// 指示当前是否有手动前进键按下。
-        /// 用途：外部可用于 UI 状态显示或调试观察。
-        /// </summary>
-        internal bool ManualForwardKeyDown => _manualForwardKeyDown;
     }
 }
