@@ -341,34 +341,29 @@ namespace GridDemo.RobotModels
                     continue;   // 回到循环开头，继续判定下一个点是否也已到达，以支持一次推进多个点
                 }
 
-                // 2) 跨越中心线判定
-                //    若上一路径点存在，且机器人已经从上一点到当前点方向的“另一侧”了，
-                //    说明已经穿过当前格子的中心线，也算到达。
+                // 2) 跨越中心线判定（按“路径离散方向”判定轴，避免误判导致索引跳动）
                 if (_pathIndex > 0)
-                {  // 存在上一路径点
+                {
                     GridPos prev = _path[_pathIndex - 1];
-                    double px = GridToCenterWorldX(prev.X);
-                    double py = GridToCenterWorldY(prev.Y);
 
-                    // 由于寻路是 4 邻接，prev 和 p 只会在一个轴上相差 1 个格子：
-                    // - 若主要是水平移动：关心 x 是否穿过 tx；
-                    // - 若主要是垂直移动：关心 y 是否穿过 ty。
-                    if (Math.Abs(px - tx) >= Math.Abs(py - ty))
-                    {  // 根据上一个点和当前点判断是水平移动还是垂直移动
+                    int dxCell = p.X - prev.X;
+                    int dyCell = p.Y - prev.Y;
 
-                        double s1 = px - tx;  // 水平移动：看 x 是否从 tx 左右两侧交换
+                    // 由 prev -> p 的网格步进决定当前段的轴向（4邻接）
+                    if (dxCell != 0)
+                    { // 水平移动段：只判断 x 是否越过 tx
+                        double s1 = GridToCenterWorldX(prev.X) - tx;
                         double s2 = robotX - tx;
 
                         if (s1 * s2 <= 0)
-                        { // 已经穿过当前点，推进索引
+                        {
                             _pathIndex++;
                             continue;
                         }
                     }
-                    else
-                    {
-                        // 垂直移动：看 y 是否从 ty 上下两侧交换
-                        double s1 = py - ty;
+                    else if (dyCell != 0)
+                    { // 垂直移动段：只判断 y 是否越过 ty
+                        double s1 = GridToCenterWorldY(prev.Y) - ty;
                         double s2 = robotY - ty;
 
                         if (s1 * s2 <= 0)
@@ -378,7 +373,6 @@ namespace GridDemo.RobotModels
                         }
                     }
                 }
-
                 // 既没到达，也没穿过当前点，则停止推进索引
                 break;
             }
