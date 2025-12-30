@@ -131,6 +131,9 @@ namespace GridDemo.RobotRuns
                 OrientationAngle = angle;
                 TargetOrientationAngle = angle;
                 IsTurning = false;
+                ManualTurnSign = 0;
+
+                _turn.ResetTargetAngle();
             }
         }
 
@@ -196,6 +199,7 @@ namespace GridDemo.RobotRuns
                 {
                     // 左右键都松开时，停止转向
                     IsTurning = false;
+                    ManualTurnSign = 0;
                 }
             }
         }
@@ -212,6 +216,7 @@ namespace GridDemo.RobotRuns
                 {
                     // 左右键都松开时，停止转向
                     IsTurning = false;
+                    ManualTurnSign = 0;
                 }
             }
         }

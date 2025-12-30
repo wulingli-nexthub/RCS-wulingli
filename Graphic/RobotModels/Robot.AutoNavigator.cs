@@ -341,7 +341,7 @@ namespace GridDemo.RobotModels
                     continue;   // 回到循环开头，继续判定下一个点是否也已到达，以支持一次推进多个点
                 }
 
-                // 2) 跨越中心线判定（按“路径离散方向”判定轴，避免误判导致索引跳动）
+                // 2) 跨越中心线判定（只看当前段的轴向），用于“越过索引点但还没进入 arrive 半径”的场景
                 if (_pathIndex > 0)
                 {
                     GridPos prev = _path[_pathIndex - 1];
@@ -349,27 +349,39 @@ namespace GridDemo.RobotModels
                     int dxCell = p.X - prev.X;
                     int dyCell = p.Y - prev.Y;
 
-                    // 由 prev -> p 的网格步进决定当前段的轴向（4邻接）
-                    if (dxCell != 0)
-                    { // 水平移动段：只判断 x 是否越过 tx
-                        double s1 = GridToCenterWorldX(prev.X) - tx;
-                        double s2 = robotX - tx;
+                    // prev/cur 的中心点：用于稳定判断“是否已经越过 cur”
+                    double prevX = GridToCenterWorldX(prev.X);
+                    double prevY = GridToCenterWorldY(prev.Y);
 
-                        if (s1 * s2 <= 0)
+                    if (dxCell != 0)
+                    { // 水平段：判断 robot 是否已越过 tx（沿 prev->cur 的方向）
+                        double dir = Math.Sign(tx - prevX);          // +1=向右，-1=向左
+                        if (dir != 0)
                         {
-                            _pathIndex++;
-                            continue;
+                            // 若 robot 在该方向上的投影距离 >= 目标点投影距离，则认为越过/到达
+                            double robotProj = (robotX - prevX) * dir;
+                            double targetProj = (tx - prevX) * dir;
+
+                            if (robotProj >= targetProj)
+                            {
+                                _pathIndex++;
+                                continue;
+                            }
                         }
                     }
                     else if (dyCell != 0)
-                    { // 垂直移动段：只判断 y 是否越过 ty
-                        double s1 = GridToCenterWorldY(prev.Y) - ty;
-                        double s2 = robotY - ty;
-
-                        if (s1 * s2 <= 0)
+                    { // 垂直段：判断 robot 是否已越过 ty（沿 prev->cur 的方向）
+                        double dir = Math.Sign(ty - prevY);          // +1=向下，-1=向上
+                        if (dir != 0)
                         {
-                            _pathIndex++;
-                            continue;
+                            double robotProj = (robotY - prevY) * dir;
+                            double targetProj = (ty - prevY) * dir;
+
+                            if (robotProj >= targetProj)
+                            {
+                                _pathIndex++;
+                                continue;
+                            }
                         }
                     }
                 }

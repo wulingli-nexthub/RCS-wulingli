@@ -120,6 +120,14 @@ namespace GridDemo.RobotRuns
             StartTurnInternal(Math.PI / 2.0);
         }
 
+        public void ResetTargetAngle()
+        {
+            lock (_robotLock)
+            {
+                _hasTargetAngle = false;
+            }
+        }
+
         /// <summary>
         /// 开始转向到指定离散方向（选择最短旋转路径）。
         /// 说明：
