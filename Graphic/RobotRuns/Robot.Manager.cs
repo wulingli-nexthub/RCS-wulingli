@@ -11,13 +11,6 @@ namespace GridDemo.RobotRuns
         Up
     }
 
-    public enum EnumRobotStatus
-    {
-        TurningLeft,
-        TurningRight,
-        Moving
-    }
-
     internal enum EnumRobotControlMode
     {
         Manual,

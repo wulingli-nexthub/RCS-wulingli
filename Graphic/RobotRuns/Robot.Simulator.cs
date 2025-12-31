@@ -1,7 +1,5 @@
-﻿using SkiaSharp.Views.Desktop;
-using System;
+﻿using System;
 using System.Threading;
-using System.Windows.Forms;
 
 namespace GridDemo.RobotRuns
 {
@@ -14,27 +12,25 @@ namespace GridDemo.RobotRuns
     /// </summary>
     internal class RobotSimulator
     {
-        private readonly SKControl _host;
-        private readonly Action _update;
+        private readonly Action _tick;
         private readonly double _dt;
         private Thread _thread;
         private bool _running;
 
-        public RobotSimulator(SKControl host, Action update, double dt)
+        public RobotSimulator(Action tick, double dt)
         {
-            _host = host ?? throw new ArgumentNullException(nameof(host));
-            _update = update ?? throw new ArgumentNullException(nameof(update));
+            _tick = tick ?? throw new ArgumentNullException(nameof(tick));
             _dt = dt;
         }
 
-        public void _Thead_Start()
+        public void Start()
         {
             _running = true;
             _thread = new Thread(ThreadLoop) { IsBackground = true };
             _thread.Start();
         }
 
-        public void _Thead_Stop()
+        public void Stop()
         {
             _running = false;
             if (_thread != null && _thread.IsAlive)
@@ -47,13 +43,7 @@ namespace GridDemo.RobotRuns
         {
             while (_running)
             {
-                _update();
-
-                if (_host != null && !_host.IsDisposed)
-                {
-                    _host.Invalidate();
-                }
-
+                _tick();
                 Thread.Sleep((int)Math.Round(_dt * 1000));
             }
         }

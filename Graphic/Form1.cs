@@ -1,4 +1,5 @@
-﻿using GridDemo.RobotModels.Pathfinding;
+﻿using GridDemo.Core;
+using GridDemo.RobotModels.Pathfinding;
 using GridDemo.RobotRuns;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
@@ -19,16 +20,25 @@ namespace GridDemo
         private double _offsetX;        //世界坐标对应屏幕坐标偏移量
         private double _offsetY;
 
-        private double _robotX = CellSizeM / 2;        //机器人初始世界坐标
-        private double _robotY = CellSizeM / 2;
-
-        private double _robotSpeed = 0;        //机器人的初始速度和加速度
-        private double _robotMaxSpeed = 1.5;
-        private double _robotAcc = 0;
-
-        private readonly double _dt = 0.02;      //固定时间模拟步长0.02秒：用于仿真线程按固定频率推进运动更新
-        private readonly object _robotLock = new object();   // 机器人共享状态锁：保护 _robotX/_robotY/_robotSpeed/_robotAcc/_robot 等多线程读写
         private bool _isObstacleEditMode;
+
+        // 业务引擎与仿真循环
+        private RobotEngine _engine;
+        private UiRobotSimulation _simulation;
+
+        // 画图相关（基本保持原有）
+        private WorldView.WorldTransform _worldTransform;
+        private Draws.DrawGrid _drawGrid;
+        private Draws.DrawObstacles _drawObstacles;
+        private Draws.DrawPath _drawPath;
+        private Draws.DrawRobot _drawRobot;
+        private Events.MouseWheel _mouseWheel;
+        private Events.MousePan _mousePan;
+        private WorldView.CenterGrid.CenterGrid _centerGrid;
+        private Events.DestinationPicker _destinationPicker;
+
+        private readonly double _dt = 0.02;  // 仿真步长 50ms
+
         public Form1()
         {
             InitializeComponent();
@@ -63,22 +73,105 @@ namespace GridDemo
         /// </summary>
         private void Form1_Load(object sender, EventArgs e)
         {
-            Initialize();  // 初始化
-            _centerGrid.Center();    // 加载居中
+            // 1. 创建业务引擎
+            _engine = new RobotEngine(
+                gridCount: GridCount,
+                cellSizeM: CellSizeM,
+                dt: _dt,
+                initialMaxSpeed: 1.5,
+                initialDirection: EnumMoveDirection.Right);
 
-            cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;            // 默认自动控制
-            cmbChooseModel.SelectedIndex = 1;
+            _worldWidthM = _engine.WorldWidthM;
+            _worldHeightM = _engine.WorldHeightM;
+
+            // 2. 初始化 WorldTransform 与 Draw 层
+            _scale = 50;          // 比如一个默认缩放，可以重用你原来的初始值
+            _offsetX = 0;
+            _offsetY = 0;
+
+            _worldTransform = new WorldView.WorldTransform(_scale, (float)_offsetX, (float)_offsetY);
+
+            _drawGrid = new Draws.DrawGrid(_worldTransform, _worldWidthM, _worldHeightM);
+
+            _drawObstacles = new Draws.DrawObstacles(
+                _worldTransform,
+                getObstacleSnapshot: () => _engine.GetObstacleSnapshot(),
+                getCellSizeM: () => _engine.CellSizeM);
+
+            _drawPath = new Draws.DrawPath(
+                _worldTransform,
+                getPathPointsSnapshot: () => _engine.GetPathWorldPointsSnapshot());
+
+            _drawRobot = new Draws.DrawRobot(
+                _worldTransform,
+                robotLock: new object(), // DrawRobot 内部只在绘制时读位置，不需要真实锁，可传一个 dummy
+                getRobotPosition: () =>
+                {
+                    var s = _engine.GetStateSnapshot();
+                    return (s.X, s.Y);
+                },
+                getScale: () => _scale,
+                getOrientationAngle: () => _engine.GetStateSnapshot().OrientationAngle);
+
+            // 3. 鼠标缩放/平移
+            _mouseWheel = new Events.MouseWheel(
+                form: this,
+                getState: () => (_scale, _offsetX, _offsetY),
+                setScale: s => _scale = s,
+                setOffset: (ox, oy) =>
+                {
+                    _offsetX = ox;
+                    _offsetY = oy;
+                },
+                updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
+            );
+
+            _mousePan = new Events.MousePan(
+                form: this,
+                getState: () => (_offsetX, _offsetY, _scale),
+                setOffset: (ox, oy) =>
+                {
+                    _offsetX = ox;
+                    _offsetY = oy;
+                },
+                updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
+            );
+
+            _centerGrid = new WorldView.CenterGrid.CenterGrid(
+                host: skControl,
+                getWorldWidthM: () => _worldWidthM,
+                getWorldHeightM: () => _worldHeightM,
+                setScale: s => _scale = s,
+                setOffsetX: x => _offsetX = x,
+                setOffsetY: y => _offsetY = y,
+                updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
+            );
+
+            _destinationPicker = new Events.DestinationPicker(
+                transform: _worldTransform,
+                navigator: _engine.AutoNavigator,           // 直接传引擎内部的导航器
+                getWorldWidthM: () => _worldWidthM,
+                getWorldHeightM: () => _worldHeightM,
+                cellSizeM: _engine.CellSizeM);
+
+            // 4. 创建仿真循环
+            _simulation = new UiRobotSimulation(_engine, skControl, _dt);
+            _simulation.Start();
+
+            // 5. 默认模式与算法
+            _centerGrid.Center();
+
+            cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;
+            cmbChooseModel.SelectedIndex = 1;  // Auto
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
+            _engine.EnableAuto();
 
-            cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;            // 默认寻路算法：A*
-            cmbPathAlgorithm.SelectedIndex = 1; // 0=Dijkstra, 1=A*
+            cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;
+            cmbPathAlgorithm.SelectedIndex = 1; // A*
             cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
-            _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
+            _engine.Algorithm = EnumPathfindingAlgorithm.AStar;
 
-            _robotAutoNavigator.Enable();
-            _robotManual.Disable();
-
-            ActiveControl = null;      // 把焦点回到窗体（避免下拉框/数值框占用焦点导致按键无效）
+            ActiveControl = null;
             BeginInvoke(new Action(() => Focus()));
         }
 
@@ -87,7 +180,7 @@ namespace GridDemo
         /// </summary>
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
-            _robotSimulator?._Thead_Stop();
+            _simulation?.Stop();
         }
 
         /// <summary>
@@ -98,58 +191,43 @@ namespace GridDemo
             _centerGrid.Center();
         }
 
-        /// <summary>
-        /// 键盘按下：W/A/D 控制。
-        /// - 通过 RobotManager 通知 RobotManual 模块按键状态变更；
-        /// - RobotManual 会更新 Robot 的加速度/转向指令，由 RobotManager 统一调度执行。
-        /// </summary>
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
-            if (_robotManager == null)
-            {
-                return;
-            }
+            if (_engine == null) return;
 
             switch (e.KeyCode)
             {
                 case Keys.W:
-                    _robotManager.InputManualForwardKey(true);
+                    _engine.ManualForwardKey(true);
                     e.Handled = true;
                     break;
-
                 case Keys.A:
-                    _robotManager.InputManualTurnLeftKey(true);
+                    _engine.ManualTurnLeftKey(true);
                     e.Handled = true;
                     break;
-
                 case Keys.D:
-                    _robotManager.InputManualTurnRightKey(true);
+                    _engine.ManualTurnRightKey(true);
                     e.Handled = true;
                     break;
             }
         }
 
-        /// <summary>
-        /// 键盘抬起：松开 W 则停止前进（清零速度与加速度）。
-        /// </summary>
         private void Form1_KeyUp(object sender, KeyEventArgs e)
         {
-            if (_robotManager == null) return;
+            if (_engine == null) return;
 
             switch (e.KeyCode)
             {
                 case Keys.W:
-                    _robotManager.InputManualForwardKey(false);
+                    _engine.ManualForwardKey(false);
                     e.Handled = true;
                     break;
-
                 case Keys.A:
-                    _robotManager.InputManualTurnLeftKey(false);
+                    _engine.ManualTurnLeftKey(false);
                     e.Handled = true;
                     break;
-
                 case Keys.D:
-                    _robotManager.InputManualTurnRightKey(false);
+                    _engine.ManualTurnRightKey(false);
                     e.Handled = true;
                     break;
             }
@@ -214,38 +292,28 @@ namespace GridDemo
         {
             SKCanvas canvas = e.Surface.Canvas;
 
-            _drawGrid.Draw(canvas);             // 绘制顺序：先网格，再路径，再机器人，保证“路径/机器人盖在网格之上”
+            _drawGrid.Draw(canvas);
             _drawObstacles.Draw(canvas);
             _drawPath.Draw(canvas);
             _drawRobot.Draw(canvas);
 
-            double robotX;
-            double robotY;
-            double robotV;
-            double robotA;
-
-            lock (_robotLock)
+            RobotStateSnapshot s = default;
+            if (_engine != null)
             {
-                robotX = _robotX;
-                robotY = _robotY;
-                robotV = _robotSpeed;
-                robotA = _robotAcc;
+                s = _engine.GetStateSnapshot();
             }
 
-            using (var textPaint = new SKPaint              // 绘制文本样式（机器人坐标、速度、加速度）
+            using (var textPaint = new SKPaint
             {
                 Color = SKColors.Black,
                 IsAntialias = true,
             })
+            using (var font = new SKFont { Size = 15 })
             {
-                using (var font = new SKFont())
-                {
-                    font.Size = 15;
-                    //string info = $"Scale: {_scale:F1} px/m   Offset: ({_offsetX:F0}, {_offsetY:F0})";
-                    string infoRobot = $"Robot: ({robotX:F2}, {robotY:F2}), v={robotV:F2}m/s, a={robotA:F2}m/s2";
-                    //canvas.DrawText(info, 10, 25, SKTextAlign.Left, font, textPaint);
-                    canvas.DrawText(infoRobot, 10, 25, SKTextAlign.Left, font, textPaint);
-                }
+                string infoRobot =
+                    $"Robot: ({s.X:F2}, {s.Y:F2}), v={s.Speed:F2}m/s, a={s.Acc:F2}m/s2";
+
+                canvas.DrawText(infoRobot, 10, 25, SKTextAlign.Left, font, textPaint);
             }
         }
 
@@ -255,10 +323,12 @@ namespace GridDemo
         /// </summary>
         private void numericAcc_ValueChanged(object sender, EventArgs e)
         {
-            lock (_robotLock)
+            if (_engine == null)
             {
-                _robotAcc = (double)((NumericUpDown)sender).Value;
+                return;
             }
+
+            _engine.SetForwardAcc((double)((NumericUpDown)sender).Value);
         }
 
         /// <summary>
@@ -266,10 +336,12 @@ namespace GridDemo
         /// </summary>
         private void numericVmax_ValueChanged(object sender, EventArgs e)
         {
-            lock (_robotLock)
+            if (_engine == null)
             {
-                _robotManager.MaxSpeed = (double)((NumericUpDown)sender).Value;
+                return;
             }
+
+            _engine.SetMaxSpeed((double)((NumericUpDown)sender).Value);
         }
 
         /// <summary>
@@ -296,27 +368,19 @@ namespace GridDemo
         /// </summary>
         private void cmbChooseModel_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (_robotManager == null)
+            if (_engine == null)
             {
                 return;
             }
 
             if (cmbChooseModel.SelectedIndex == 1)
             {
-                _robotManager.SetMode(EnumRobotControlMode.Auto);
-
-                _robotManual.Disable();
-                _robotAutoNavigator.Enable();
+                _engine.EnableAuto();
             }
             else
             {
                 cmbChooseModel.SelectedIndex = 0;
-
-                _robotManager.SetMode(EnumRobotControlMode.Manual);
-
-                _robotAutoNavigator.Disable();
-                _robotManual.Enable();
-
+                _engine.EnableManual();
                 this.ActiveControl = null;
                 BeginInvoke(new Action(() => Focus()));
             }
@@ -327,24 +391,19 @@ namespace GridDemo
         /// </summary>
         private void cmbPathAlgorithm_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (_robotAutoNavigator == null)
+            if (_engine == null)
             {
                 return;
             }
 
-            if (cmbPathAlgorithm.SelectedIndex == 0)
-            {
-                _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.Dijkstra;
-            }
-            else
-            {
-                _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.AStar;
-            }
+            _engine.Algorithm =
+                cmbPathAlgorithm.SelectedIndex == 0
+                    ? EnumPathfindingAlgorithm.Dijkstra
+                    : EnumPathfindingAlgorithm.AStar;
 
-            // 自动巡航中：立刻用新算法重新规划（否则可能沿用旧路径/已结束路径导致停住）
-            if (_robotAutoNavigator.IsEnabled)
+            if (_engine.AutoEnabled)
             {
-                _robotAutoNavigator.RebuildPath();
+                _engine.RebuildPath();
             }
         }
 
@@ -372,29 +431,22 @@ namespace GridDemo
         }
         private void TryToggleObstacleAtMouse(MouseEventArgs e)
         {
-            if (_obstacleMap == null || _worldTransform == null)
+            if (_engine == null || _worldTransform == null)
             {
                 return;
             }
 
             var world = _worldTransform.ScreenToWorld(e.X, e.Y);
 
-            int gx = (int)Math.Floor(world.X / CellSizeM);
-            int gy = (int)Math.Floor(world.Y / CellSizeM);
+            int gx = (int)Math.Floor(world.X / _engine.CellSizeM);
+            int gy = (int)Math.Floor(world.Y / _engine.CellSizeM);
 
-            if (gx < 0 || gy < 0 || gx >= GridCount || gy >= GridCount)
+            if (gx < 0 || gy < 0 || gx >= _engine.GridCount || gy >= _engine.GridCount)
             {
                 return;
             }
 
-            _obstacleMap.Toggle(new GridPos(gx, gy));
-
-            // 若当前在自动巡航：障碍变化后立刻重规划
-            if (_robotAutoNavigator != null && _robotAutoNavigator.IsEnabled)
-            {
-                _robotAutoNavigator.RebuildPath();
-            }
-
+            _engine.ToggleObstacle(new GridPos(gx, gy));
             skControl.Invalidate();
         }
     }
