@@ -28,7 +28,7 @@ namespace GridDemo
 
         private readonly double _dt = 0.02;      //固定时间模拟步长0.02秒：用于仿真线程按固定频率推进运动更新
         private readonly object _robotLock = new object();   // 机器人共享状态锁：保护 _robotX/_robotY/_robotSpeed/_robotAcc/_robot 等多线程读写
-
+        private bool _isObstacleEditMode;
         public Form1()
         {
             InitializeComponent();
@@ -174,6 +174,12 @@ namespace GridDemo
         /// </summary>
         private void Form1_MouseDown(object sender, MouseEventArgs e)
         {
+            if (_isObstacleEditMode && e.Button == MouseButtons.Left)
+            {
+                TryToggleObstacleAtMouse(e);
+                skControl.Invalidate();
+                return;
+            }
             if (_destinationPicker != null && _destinationPicker.TryPick(e))
             {
                 skControl.Invalidate();
@@ -209,6 +215,7 @@ namespace GridDemo
             SKCanvas canvas = e.Surface.Canvas;
 
             _drawGrid.Draw(canvas);             // 绘制顺序：先网格，再路径，再机器人，保证“路径/机器人盖在网格之上”
+            _drawObstacles.Draw(canvas);
             _drawPath.Draw(canvas);
             _drawRobot.Draw(canvas);
 
@@ -347,6 +354,48 @@ namespace GridDemo
         private void btnReset_Click(object sender, EventArgs e)
         {
             _centerGrid.Center();
+        }
+
+        private void btnObstacle_Click(object sender, EventArgs e)
+        {
+            _isObstacleEditMode = !_isObstacleEditMode;
+
+            btnObstacle.Text = _isObstacleEditMode ? "设置障碍物：开" : "设置障碍物：关";
+
+            // 避免设置障碍物时误触发平移的 Hand 光标残留
+            if (!_isObstacleEditMode)
+            {
+                this.Cursor = Cursors.Default;
+            }
+
+            skControl.Invalidate();
+        }
+        private void TryToggleObstacleAtMouse(MouseEventArgs e)
+        {
+            if (_obstacleMap == null || _worldTransform == null)
+            {
+                return;
+            }
+
+            var world = _worldTransform.ScreenToWorld(e.X, e.Y);
+
+            int gx = (int)Math.Floor(world.X / CellSizeM);
+            int gy = (int)Math.Floor(world.Y / CellSizeM);
+
+            if (gx < 0 || gy < 0 || gx >= GridCount || gy >= GridCount)
+            {
+                return;
+            }
+
+            _obstacleMap.Toggle(new GridPos(gx, gy));
+
+            // 若当前在自动巡航：障碍变化后立刻重规划
+            if (_robotAutoNavigator != null && _robotAutoNavigator.IsEnabled)
+            {
+                _robotAutoNavigator.RebuildPath();
+            }
+
+            skControl.Invalidate();
         }
     }
 }

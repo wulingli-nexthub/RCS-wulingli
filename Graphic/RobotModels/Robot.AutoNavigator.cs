@@ -30,7 +30,7 @@ namespace GridDemo.RobotModels
 
         private EnumPathfindingAlgorithm _algorithm = EnumPathfindingAlgorithm.AStar;
         private GridPos? _goal;
-
+        private Func<GridPos, bool> _isWalkableProvider = p => true;
         public RobotAutoNavigator(
             object robotLock,
             Func<double> getRobotX,
@@ -49,7 +49,13 @@ namespace GridDemo.RobotModels
             _cellSizeM = cellSizeM;
             _robotManager = robotManager ?? throw new ArgumentNullException(nameof(robotManager));
         }
-
+        public void SetIsWalkableProvider(Func<GridPos, bool> isWalkableProvider)
+        {
+            lock (_robotLock)
+            {
+                _isWalkableProvider = isWalkableProvider ?? throw new ArgumentNullException(nameof(isWalkableProvider));
+            }
+        }
         public bool IsEnabled { get; private set; }
 
         /// <summary>
@@ -300,7 +306,7 @@ namespace GridDemo.RobotModels
 
             GridPos goal = _goal.Value;
 
-            Func<GridPos, bool> isWalkable = p => true;      // 可行走判定（是否有障碍物）
+            Func<GridPos, bool> isWalkable = _isWalkableProvider ?? (p => true);      // 可行走判定（是否有障碍物）
 
             List<GridPos> path = GridPathfinder.FindPath(          // 调用寻路算法生成路径（List）
                 width: gridW,

@@ -32,6 +32,7 @@
             this.numericVinit = new System.Windows.Forms.NumericUpDown();
             this.cmbChooseModel = new System.Windows.Forms.ComboBox();
             this.cmbPathAlgorithm = new System.Windows.Forms.ComboBox();
+            this.btnObstacle = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).BeginInit();
             this.SuspendLayout();
@@ -134,11 +135,22 @@
             this.cmbPathAlgorithm.Size = new System.Drawing.Size(121, 26);
             this.cmbPathAlgorithm.TabIndex = 9;
             // 
+            // btnObstacle
+            // 
+            this.btnObstacle.Location = new System.Drawing.Point(493, 18);
+            this.btnObstacle.Name = "btnObstacle";
+            this.btnObstacle.Size = new System.Drawing.Size(150, 39);
+            this.btnObstacle.TabIndex = 10;
+            this.btnObstacle.Text = "设置障碍物：关";
+            this.btnObstacle.UseVisualStyleBackColor = true;
+            this.btnObstacle.Click += new System.EventHandler(this.btnObstacle_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 18F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1221, 774);
+            this.Controls.Add(this.btnObstacle);
             this.Controls.Add(this.cmbPathAlgorithm);
             this.Controls.Add(this.cmbChooseModel);
             this.Controls.Add(this.numericVinit);
@@ -148,7 +160,7 @@
             this.Controls.Add(this.btnReset);
             this.Controls.Add(this.skControl);
             this.Name = "Form1";
-            this.Text = " RCS Ver 2.2.1 吴灵丽（三期 28号）";
+            this.Text = " RCS Ver 2.2.2 吴灵丽（三期 28号）";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
             this.ResumeLayout(false);
@@ -166,6 +178,7 @@
         private System.Windows.Forms.NumericUpDown numericVinit;
         private System.Windows.Forms.ComboBox cmbChooseModel;
         private System.Windows.Forms.ComboBox cmbPathAlgorithm;
+        private System.Windows.Forms.Button btnObstacle;
     }
 }
 

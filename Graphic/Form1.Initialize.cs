@@ -1,4 +1,5 @@
-﻿using GridDemo.Draws;
+﻿using Graphic.Maps;
+using GridDemo.Draws;
 using GridDemo.Events;
 using GridDemo.RobotModels;
 using GridDemo.RobotRuns;
@@ -22,12 +23,20 @@ namespace GridDemo
         private RobotMove _robotMove;
         private RobotSimulator _robotSimulator;
         private DestinationPicker _destinationPicker;
+        private ObstacleMap _obstacleMap;
+        private DrawObstacles _drawObstacles;
 
         private void Initialize()
         {
             _worldTransform = new WorldTransform(_scale, (float)_offsetX, (float)_offsetY);
             _drawGrid = new DrawGrid(_worldTransform, _worldWidthM, _worldHeightM);
 
+            _obstacleMap = new ObstacleMap(GridCount, GridCount);
+            _drawObstacles = new DrawObstacles(
+                _worldTransform,
+                getObstacleSnapshot: () => _obstacleMap.GetSnapshot(),
+                getCellSizeM: () => CellSizeM
+            );
             _drawRobot = new DrawRobot(
                 _worldTransform,
                 _robotLock,
@@ -86,6 +95,7 @@ namespace GridDemo
                 cellSizeM: CellSizeM,
                 robotManager: _robotManager
             );
+            _robotAutoNavigator.SetIsWalkableProvider(p => !_obstacleMap.IsObstacle(p));
 
             _robotManual = new RobotManual(
                 robotLock: _robotLock,
