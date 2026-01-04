@@ -31,6 +31,8 @@ namespace GridDemo.RobotModels
         private EnumPathfindingAlgorithm _algorithm = EnumPathfindingAlgorithm.AStar;
         private GridPos? _goal;
         private Func<GridPos, bool> _isWalkableProvider = p => true;
+        // 新增：自动模式启动/重建路径后，先对齐到路径起点格中心再巡航
+        private readonly Queue<RobotCommand> _alignQueue = new Queue<RobotCommand>();
         public RobotAutoNavigator(
             object robotLock,
             Func<double> getRobotX,
@@ -72,6 +74,7 @@ namespace GridDemo.RobotModels
 
                 _path.Clear();
                 _pathIndex = 0;
+                _alignQueue.Clear();
 
                 RebuildPath_NoLock();
 
@@ -93,6 +96,32 @@ namespace GridDemo.RobotModels
 
                 _path.Clear();
                 _pathIndex = 0;
+                _alignQueue.Clear();
+            }
+        }
+
+        /// <summary>
+        /// 手动切换到自动模式时调用：
+        /// - 不改变目标；
+        /// - 基于当前机器人世界坐标重新规划（得到 start 格）；
+        /// - 生成“矫正到 start 格中心”的对齐队列；
+        /// - 调用方可再 ResetAutoCommands() 以便自动模式立即拉取矫正指令。
+        /// </summary>
+        public void SyncAfterManualToAuto()
+        {
+            lock (_robotLock)
+            {
+                if (!IsEnabled)
+                {
+                    return;
+                }
+
+                // 不清目标；仅重建路径与对齐队列
+                _path.Clear();
+                _pathIndex = 0;
+                _alignQueue.Clear();
+
+                RebuildPath_NoLock();
             }
         }
 
@@ -187,6 +216,12 @@ namespace GridDemo.RobotModels
                 if (!_goal.HasValue)
                 {
                     return null;
+                }
+
+                // 优先执行“对齐到路径起点格中心”的矫正队列
+                if (_alignQueue.Count > 0)
+                {
+                    return _alignQueue.Dequeue();
                 }
 
                 if (_path.Count == 0)
@@ -301,6 +336,7 @@ namespace GridDemo.RobotModels
             {
                 _path.Clear();
                 _pathIndex = 0;
+                _alignQueue.Clear();
                 return;
             }
 
@@ -323,6 +359,47 @@ namespace GridDemo.RobotModels
             if (_path.Count > 0 && _path[0].Equals(start))
             { // 若路径第一格等于起点，则跳过该点
                 _pathIndex = Math.Min(1, _path.Count);
+            }
+
+            // 重建路径后，生成“矫正到 start 格中心”的指令序列
+            BuildAlignToGridCenterQueue_NoLock(start);
+        }
+
+        // 对齐到指定格子的中心（最多两段：先 X 后 Y；每段会先 TurnTo 再 MoveDistance）
+        private void BuildAlignToGridCenterQueue_NoLock(GridPos startCell)
+        {
+            _alignQueue.Clear();
+
+            double x = _getRobotX();
+            double y = _getRobotY();
+
+            double cx = GridToCenterWorldX(startCell.X);
+            double cy = GridToCenterWorldY(startCell.Y);
+
+            double dx = cx - x;
+            double dy = cy - y;
+
+            bool needX = Math.Abs(dx) > ArriveEpsilonM;
+            bool needY = Math.Abs(dy) > ArriveEpsilonM;
+
+            if (!needX && !needY)
+            {
+                return;
+            }
+
+            // 先矫正 X，再矫正 Y：这样能稳定把机器人送回“起点格中心”
+            if (needX)
+            {
+                EnumMoveDirection dirX = dx >= 0 ? EnumMoveDirection.Right : EnumMoveDirection.Left;
+                _alignQueue.Enqueue(RobotCommand.TurnTo(dirX));
+                _alignQueue.Enqueue(RobotCommand.MoveDistance(Math.Abs(dx)));
+            }
+
+            if (needY)
+            {
+                EnumMoveDirection dirY = dy >= 0 ? EnumMoveDirection.Down : EnumMoveDirection.Up;
+                _alignQueue.Enqueue(RobotCommand.TurnTo(dirY));
+                _alignQueue.Enqueue(RobotCommand.MoveDistance(Math.Abs(dy)));
             }
         }
 
