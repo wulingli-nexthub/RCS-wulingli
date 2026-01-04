@@ -26,7 +26,7 @@ namespace GridDemo.RobotRuns
         public void Start()
         {
             _running = true;
-            _thread = new Thread(ThreadLoop) { IsBackground = true };
+            _thread = new Thread(_Thread_Loop) { IsBackground = true };
             _thread.Start();
         }
 
@@ -39,7 +39,7 @@ namespace GridDemo.RobotRuns
             }
         }
 
-        private void ThreadLoop()
+        private void _Thread_Loop()
         {
             while (_running)
             {

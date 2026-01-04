@@ -2,6 +2,7 @@
 using GridDemo.RobotModels;
 using GridDemo.RobotModels.Pathfinding;
 using GridDemo.RobotRuns;
+using System;
 using System.Collections.Generic;
 
 namespace GridDemo.Core
@@ -66,7 +67,19 @@ namespace GridDemo.Core
                 getWorldWidthM: () => _worldWidthM,
                 getWorldHeightM: () => _worldHeightM,
                 cellSizeM: _cellSizeM,
-                dt: _dt);
+                dt: _dt,
+                isWorldWalkable: (wx, wy) =>
+                {
+                    int gx = (int)Math.Floor(wx / _cellSizeM);
+                    int gy = (int)Math.Floor(wy / _cellSizeM);
+
+                    if (gx < 0 || gy < 0 || gx >= _gridCount || gy >= _gridCount)
+                    {
+                        return false;
+                    }
+
+                    return !_obstacleMap.IsObstacle(new GridPos(gx, gy));
+                });
 
             _motionFacade = new RobotMotionFacade(
                 robotLock: _robotLock,

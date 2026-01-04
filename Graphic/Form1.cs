@@ -37,7 +37,7 @@ namespace GridDemo
         private WorldView.CenterGrid.CenterGrid _centerGrid;
         private Events.DestinationPicker _destinationPicker;
 
-        private readonly double _dt = 0.02;  // 仿真步长 50ms
+        private readonly double _dt = 0.02;  // 仿真步长 20ms
 
         public Form1()
         {

@@ -19,6 +19,10 @@ namespace GridDemo.RobotRuns
 
         private readonly RobotTurn _turnController;
 
+        // 新增：可通行判定（世界坐标 -> 是否可走）
+        private readonly Func<double, double, bool> _isWorldWalkable;
+        private readonly double _robotRadiusM;
+
         // 指令执行状态：MoveDistance
         private bool _moveDistanceActive;
         private double _moveDistanceRemainM;
@@ -35,7 +39,9 @@ namespace GridDemo.RobotRuns
             Func<double> getWorldWidthM,
             Func<double> getWorldHeightM,
             double cellSizeM,
-            double dt)
+            double dt,
+            Func<double, double, bool> isWorldWalkable = null
+            )
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
             _getRobotX = getRobotX ?? throw new ArgumentNullException(nameof(getRobotX));
@@ -49,7 +55,9 @@ namespace GridDemo.RobotRuns
             _getWorldHeightM = getWorldHeightM ?? throw new ArgumentNullException(nameof(getWorldHeightM));
             _cellSizeM = cellSizeM;
             _dt = dt;
-
+            // 默认全可走，保持兼容
+            _isWorldWalkable = isWorldWalkable ?? ((x, y) => true);
+            _robotRadiusM = _cellSizeM / 3.0; // 机器人半径
             _turnController = new RobotTurn(_robotLock, _robotManager, this, _dt);
         }
 
@@ -156,8 +164,14 @@ namespace GridDemo.RobotRuns
                     // 2) 欧拉积分更新速度：v(t+dt) = v(t) + a*dt
                     v += a * _dt;
                     // 将速度限制在 [0, vmax]：避免负速度导致“倒退”或速度上溢。
-                    if (v < 0) v = 0;
-                    if (v > vmax) v = vmax;
+                    if (v < 0)
+                    {
+                        v = 0;
+                    }
+                    if (v > vmax)
+                    {
+                        v = vmax;
+                    }
 
                     // 3) 计算本帧位移步长，并确保不超过剩余距离
                     double step = v * _dt;
@@ -167,40 +181,41 @@ namespace GridDemo.RobotRuns
                     }
 
                     // 4) 按方向更新坐标：仅允许四向网格移动
+                    double newX = x;
+                    double newY = y;
                     switch (dir)
                     {
                         case EnumMoveDirection.Right:
-                            x += step;
+                            newX += step;
                             break;
                         case EnumMoveDirection.Left:
-                            x -= step;
+                            newX -= step;
                             break;
                         case EnumMoveDirection.Down:
-                            y += step;
+                            newY += step;
                             break;
                         case EnumMoveDirection.Up:
-                            y -= step;
+                            newY -= step;
                             break;
                     }
 
-                    // 5) 边界夹紧（保持原逻辑）：
-                    //    机器人中心点不得越界；以半格作为安全距离，防止“贴边越界”。
-                    double worldWidth = _getWorldWidthM();
-                    double worldHeight = _getWorldHeightM();
-                    double halfCell = _cellSizeM / 2.0;
+                    // 5) 边界夹紧，碰到障碍物
+                    ClampToWorld_NoLock(ref newX, ref newY);
 
-                    if (x < halfCell) x = halfCell;
-                    if (y < halfCell) y = halfCell;
-                    if (x > worldWidth - halfCell) x = worldWidth - halfCell;
-                    if (y > worldHeight - halfCell) y = worldHeight - halfCell;
+                    // 命中障碍物：停止（不允许穿过）
+                    if (IsHitObstacle_NoLock(newX, newY))
+                    {
+                        StopImmediately_NoLock();
+                        return;
+                    }
 
                     // 6) 扣减剩余距离
                     _moveDistanceRemainM -= step;
 
                     // 7) 回写速度与位置
                     _setRobotSpeed(v);
-                    _setRobotX(x);
-                    _setRobotY(y);
+                    _setRobotX(newX);
+                    _setRobotY(newY);
 
                     // 8) 指令完成判定：用一个很小的阈值避免浮点误差导致“永远差一点”
                     if (_moveDistanceRemainM <= 0.000001)
@@ -220,8 +235,14 @@ namespace GridDemo.RobotRuns
 
                     // 1) 积分速度
                     v += a * _dt;
-                    if (v < 0) v = 0;
-                    if (v > vmax) v = vmax;
+                    if (v < 0)
+                    {
+                        v = 0;
+                    }
+                    if (v > vmax)
+                    {
+                        v = vmax;
+                    }
 
                     // 2) 根据 OrientationAngle 做连续方向移动
                     double x = _getRobotX();
@@ -231,25 +252,119 @@ namespace GridDemo.RobotRuns
 
                     // 使用朝向角度，而不是离散方向
                     double angle = _robotManager.OrientationAngle;
-                    x += Math.Cos(angle) * step;
-                    y += Math.Sin(angle) * step;
+                    double newX = x + Math.Cos(angle) * step;
+                    double newY = y + Math.Sin(angle) * step;
 
-                    double worldWidth = _getWorldWidthM();
-                    double worldHeight = _getWorldHeightM();
-                    double halfCell = _cellSizeM / 2.0;
+                    ClampToWorld_NoLock(ref newX, ref newY);
 
-                    if (x < halfCell) x = halfCell;
-                    if (y < halfCell) y = halfCell;
-                    if (x > worldWidth - halfCell) x = worldWidth - halfCell;
-                    if (y > worldHeight - halfCell) y = worldHeight - halfCell;
+                    // 手动模式核心：命中障碍物就刹停，玩家需要自己转向绕行
+                    if (IsHitObstacle_NoLock(newX, newY))
+                    {
+                        StopImmediately_NoLock();
+                        return;
+                    }
 
                     _setRobotSpeed(v);
-                    _setRobotX(x);
-                    _setRobotY(y);
+                    _setRobotX(newX);
+                    _setRobotY(newY);
                 }
             }
 
             _turnController.Update();
+        }
+
+        private bool IsHitObstacle_NoLock(double centerX, double centerY)
+        {
+            double r = _robotRadiusM;
+
+            if (!_isWorldWalkable(centerX, centerY))
+            {
+                return true;
+            }
+
+            double worldW = _getWorldWidthM();
+            double worldH = _getWorldHeightM();
+            int gridW = (int)Math.Floor(worldW / _cellSizeM);
+            int gridH = (int)Math.Floor(worldH / _cellSizeM);
+
+            int minX = (int)Math.Floor((centerX - r) / _cellSizeM) - 1;
+            int maxX = (int)Math.Floor((centerX + r) / _cellSizeM) + 1;
+            int minY = (int)Math.Floor((centerY - r) / _cellSizeM) - 1;
+            int maxY = (int)Math.Floor((centerY + r) / _cellSizeM) + 1;
+
+            for (int gy = minY; gy <= maxY; gy++)
+            {
+                for (int gx = minX; gx <= maxX; gx++)
+                {
+                    // 越界格子：跳过（不要直接判碰撞）
+                    if (gx < 0 || gy < 0 || gx >= gridW || gy >= gridH)
+                    {
+                        continue;
+                    }
+
+                    // 用格子中心点判断该格是否为障碍格
+                    double cellCenterX = gx * _cellSizeM + _cellSizeM / 2.0;
+                    double cellCenterY = gy * _cellSizeM + _cellSizeM / 2.0;
+
+                    if (_isWorldWalkable(cellCenterX, cellCenterY))
+                    {
+                        continue;
+                    }
+
+                    // 圆-矩形相交检测
+                    double rectLeft = gx * _cellSizeM;
+                    double rectRight = rectLeft + _cellSizeM;
+                    double rectTop = gy * _cellSizeM;
+                    double rectBottom = rectTop + _cellSizeM;
+
+                    double closestX = Clamp(centerX, rectLeft, rectRight);
+                    double closestY = Clamp(centerY, rectTop, rectBottom);
+
+                    double dx = centerX - closestX;
+                    double dy = centerY - closestY;
+
+                    if (dx * dx + dy * dy <= r * r)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static double Clamp(double v, double min, double max)
+        {
+            if (v < min) return min;
+            if (v > max) return max;
+            return v;
+        }
+
+        /// <summary>
+        /// 边界夹紧
+        /// </summary>
+        private void ClampToWorld_NoLock(ref double x, ref double y)
+        {
+            double worldWidth = _getWorldWidthM();
+            double worldHeight = _getWorldHeightM();
+            double halfCell = _cellSizeM / 2.0;
+
+            if (x < halfCell)
+            {
+                x = halfCell;
+            }
+            if (y < halfCell)
+            {
+                y = halfCell;
+            }
+            if (x > worldWidth - halfCell)
+            {
+                x = worldWidth - halfCell;
+            }
+            if (y > worldHeight - halfCell)
+            {
+                y = worldHeight - halfCell;
+            }
         }
     }
 }
