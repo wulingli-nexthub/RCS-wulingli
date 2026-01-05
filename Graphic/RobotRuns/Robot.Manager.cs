@@ -45,6 +45,8 @@ namespace GridDemo.RobotRuns
         private bool _manualTurnLeftKeyDown;
         private bool _manualTurnRightKeyDown;
 
+        private Func<double> _getForwardAcc;
+        private RobotCommand _manualCurrentMoveCommand;
         // 依赖（执行落地由 Move/Turn 提供，但由 Robot 统一调度）
         private RobotMove _move;
         private RobotTurn _turn;
@@ -84,12 +86,15 @@ namespace GridDemo.RobotRuns
             object robotLock,
             RobotMove move,
             RobotTurn turn,
-            Func<RobotCommand> autoCommandProvider)
+            Func<RobotCommand> autoCommandProvider,
+            Func<double> getForwardAcc     // 新增参数
+        )
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
             _move = move ?? throw new ArgumentNullException(nameof(move));
             _turn = turn ?? throw new ArgumentNullException(nameof(turn));
-            _autoCommandProvider = autoCommandProvider; // 允许为 null：无自动指令源时自动模式不下发
+            _autoCommandProvider = autoCommandProvider;
+            _getForwardAcc = getForwardAcc ?? throw new ArgumentNullException(nameof(getForwardAcc));
         }
 
         /// <summary>
@@ -127,6 +132,7 @@ namespace GridDemo.RobotRuns
                 ManualTurnSign = 0;
 
                 _turn.ResetTargetAngle();
+                _manualCurrentMoveCommand = null;
             }
         }
 
@@ -171,11 +177,44 @@ namespace GridDemo.RobotRuns
             lock (_robotLock)
             {
                 _manualForwardKeyDown = isDown;
-                if (!isDown)
+                if (_mode != EnumRobotControlMode.Manual)
                 {
-                    // 松开即刹停
-                    _move.StopImmediately_NoLock();
-                    Acc = 0.0;
+                    return;
+                }
+
+                if (isDown)
+                {
+                    // 手动模式：发送“前进无穷距离”——一条新的 MoveDistance 指令
+                    // 这里不用队列，直接作为“当前手动指令”下发给 Move。
+                    const double infiniteDist = double.MaxValue;   // 或者一个你认为合理的大值
+
+                    _manualCurrentMoveCommand = RobotCommand.MoveDistance(infiniteDist);
+
+                    // 下发给执行器：按当前前进加速度策略开始这条指令
+                    // 加速度通过外部策略获取
+                    if (_getForwardAcc == null)
+                    {
+                        throw new InvalidOperationException("Forward acceleration strategy (_getForwardAcc) is not set.");
+                    }
+
+                    double forwardAcc = _getForwardAcc();
+
+                    // 将当前加速度状态写入 Manager，供后续 Move.Update 积分
+                    Acc = forwardAcc;
+
+                    _move.StartMoveDistance_NoLock(_manualCurrentMoveCommand.DistanceM.Value, forwardAcc);
+                }
+                else
+                {
+                    // 手动模式：W 松开 => 发送“前进 0 距离”的一条新指令
+                    // 本质：旧的“无穷距离”指令被覆盖，不是被完成
+                    _manualCurrentMoveCommand = RobotCommand.MoveDistance(0.0);
+
+                    // 下发“0 距离”指令：由 Move 自己判定“无需前进”，并在内部把速度/加速度归零
+                    _move.StartMoveDistance_NoLock(_manualCurrentMoveCommand.DistanceM.Value, 0.0);
+
+                    // 注意：这里不直接 Speed=0，不 Acc=0
+                    // 真正的停止在 RobotMove.Update 里，由“距离已完成”来触发
                 }
             }
         }
@@ -307,8 +346,7 @@ namespace GridDemo.RobotRuns
                 // 1) 前进：按住 W 时持续加速积分位移；松开时 Acc 归零且 Move.Stop 已在 InputManualForwardKey 做过
                 if (_manualForwardKeyDown)
                 {
-                    double forwardAcc = getForwardAcc();
-                    Acc = forwardAcc;
+                    Acc = getForwardAcc();
                     // 不再入队 MoveDistance，实际积分在 RobotMove.Update 中按 Acc/Speed 计算
                 }
                 else

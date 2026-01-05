@@ -112,7 +112,8 @@ namespace GridDemo.Core
                 robotLock: _robotLock,
                 move: _robotMove,
                 turn: _robotMove.TurnController,
-                autoCommandProvider: () => _robotAutoNavigator.TryBuildNextCommand());
+                autoCommandProvider: () => _robotAutoNavigator.TryBuildNextCommand(),
+                getForwardAcc: () => _robotAcc);
         }
 
         #region 公共属性/方法（供 UI 调用）

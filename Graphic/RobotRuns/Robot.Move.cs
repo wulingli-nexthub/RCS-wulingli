@@ -106,9 +106,12 @@ namespace GridDemo.RobotRuns
         public void StartMoveDistance_NoLock(double distanceM, double forwardAcc)
         {
             if (distanceM <= 0)
-            { // 无效距离
+            { // 这是一个“0 距离指令”：立即视作完成，并在此处自然停车
                 _moveDistanceActive = false;
                 _moveDistanceRemainM = 0.0;
+
+                _setRobotSpeed(0.0);
+                _robotManager.Acc = 0.0;
                 return;
             }
 
