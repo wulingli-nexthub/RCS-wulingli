@@ -24,10 +24,10 @@ namespace GridDemo.RobotRuns
 
         public void Update()
         {
-            // Robot.Tick 内部会 lock
+            // ① 逻辑层：生成/调度指令（自动/手动）
             _robotManager.Tick(_dt, _getForwardAcc);
 
-            // Move.Update 内部会 lock
+            // ② 物理层：根据 Acc/Speed/方向，积分更新位置和转向动画
             _move.Update();
         }
     }

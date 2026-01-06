@@ -186,20 +186,31 @@ namespace GridDemo.RobotRuns
                     // 4) 按方向更新坐标：仅允许四向网格移动
                     double newX = x;
                     double newY = y;
-                    switch (dir)
+                    bool isManualInfiniteMove = _moveDistanceRemainM == double.MaxValue;
+
+                    if (isManualInfiniteMove)
                     {
-                        case EnumMoveDirection.Right:
-                            newX += step;
-                            break;
-                        case EnumMoveDirection.Left:
-                            newX -= step;
-                            break;
-                        case EnumMoveDirection.Down:
-                            newY += step;
-                            break;
-                        case EnumMoveDirection.Up:
-                            newY -= step;
-                            break;
+                        double angle = _robotManager.OrientationAngle;
+                        newX += Math.Cos(angle) * step;
+                        newY += Math.Sin(angle) * step;
+                    }
+                    else
+                    {
+                        switch (dir)
+                        {
+                            case EnumMoveDirection.Right:
+                                newX += step;
+                                break;
+                            case EnumMoveDirection.Left:
+                                newX -= step;
+                                break;
+                            case EnumMoveDirection.Down:
+                                newY += step;
+                                break;
+                            case EnumMoveDirection.Up:
+                                newY -= step;
+                                break;
+                        }
                     }
 
                     // 5) 边界夹紧，碰到障碍物
