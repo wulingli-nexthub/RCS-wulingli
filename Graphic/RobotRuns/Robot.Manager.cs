@@ -310,10 +310,6 @@ namespace GridDemo.RobotRuns
                             {
                                 _turn.StartTurnRight();
                             }
-                            else
-                            {
-                                _turn.StartTurnTo(_currentCommand.TargetDirection.Value);
-                            }
                         }
                     }
 

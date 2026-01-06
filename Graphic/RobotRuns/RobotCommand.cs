@@ -11,8 +11,7 @@ namespace GridDemo.RobotRuns
     internal enum EnumTurnCommand
     {
         Left,
-        Right,
-        ToDirection
+        Right
     }
 
     /// <summary>
@@ -53,11 +52,6 @@ namespace GridDemo.RobotRuns
         public static RobotCommand TurnRight()
         {
             return new RobotCommand(EnumRobotCommandType.Turn, null, EnumTurnCommand.Right, null);
-        }
-
-        public static RobotCommand TurnTo(EnumMoveDirection direction)
-        {
-            return new RobotCommand(EnumRobotCommandType.Turn, null, EnumTurnCommand.ToDirection, direction);
         }
     }
 }

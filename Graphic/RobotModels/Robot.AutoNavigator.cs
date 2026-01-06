@@ -252,10 +252,29 @@ namespace GridDemo.RobotModels
                 double firstY = GridToCenterWorldY(first.Y);
                 EnumMoveDirection desiredDir = ChooseDirectionToTarget(x, y, firstX, firstY);
 
-                // 需要转向：先转向（只输出 Turn 指令）
+                // 需要转向：按相对左/右转输出指令（不使用绝对角度）
                 if (!_robotManager.IsTurning && desiredDir != _robotManager.Direction)
                 {
-                    return RobotCommand.TurnTo(desiredDir);
+                    EnumMoveDirection curDir = _robotManager.Direction;
+
+                    int cur = DirToIndex(curDir);
+                    int des = DirToIndex(desiredDir);
+
+                    // 右转步数（每步 90°）
+                    int rightSteps = (des - cur + 4) % 4;
+                    // 左转步数（每步 90°）
+                    int leftSteps = (cur - des + 4) % 4;
+
+                    // 选择步数更少的方向；若一样多，可以固定选右转
+                    if (rightSteps <= leftSteps)
+                    {
+                        // 这里一次只发一条 90° 的 Right 指令
+                        return RobotCommand.TurnRight();
+                    }
+                    else
+                    {
+                        return RobotCommand.TurnLeft();
+                    }
                 }
 
                 // 已对齐方向：把同方向连续段合并成一个 MoveDistance 指令
@@ -387,19 +406,67 @@ namespace GridDemo.RobotModels
                 return;
             }
 
-            // 先矫正 X，再矫正 Y：这样能稳定把机器人送回“起点格中心”
+            // 当前离散方向（注意：这里只用离散方向，不依赖 OrientationAngle）
+            EnumMoveDirection curDir = _robotManager.Direction;
+
+            // 先矫正 X
             if (needX)
             {
                 EnumMoveDirection dirX = dx >= 0 ? EnumMoveDirection.Right : EnumMoveDirection.Left;
-                _alignQueue.Enqueue(RobotCommand.TurnTo(dirX));
+
+                EnqueueTurnSteps(curDir, dirX, _alignQueue);
                 _alignQueue.Enqueue(RobotCommand.MoveDistance(Math.Abs(dx)));
+
+                // 经过这一段后，逻辑上方向变成 dirX
+                curDir = dirX;
             }
 
+            // 再矫正 Y
             if (needY)
             {
                 EnumMoveDirection dirY = dy >= 0 ? EnumMoveDirection.Down : EnumMoveDirection.Up;
-                _alignQueue.Enqueue(RobotCommand.TurnTo(dirY));
+
+                EnqueueTurnSteps(curDir, dirY, _alignQueue);
                 _alignQueue.Enqueue(RobotCommand.MoveDistance(Math.Abs(dy)));
+
+                curDir = dirY;
+            }
+        }
+
+        private static int DirToIndex(EnumMoveDirection dir)
+        {
+            switch (dir)
+            {
+                case EnumMoveDirection.Right: return 0;
+                case EnumMoveDirection.Down: return 1;
+                case EnumMoveDirection.Left: return 2;
+                case EnumMoveDirection.Up: return 3;
+                default: return 0;
+            }
+        }
+
+        private void EnqueueTurnSteps(EnumMoveDirection currentDir,
+                              EnumMoveDirection targetDir,
+                              Queue<RobotCommand> queue)
+        {
+            if (currentDir == targetDir)
+                return;
+
+            int cur = DirToIndex(currentDir);
+            int des = DirToIndex(targetDir);
+
+            int rightSteps = (des - cur + 4) % 4;
+            int leftSteps = (cur - des + 4) % 4;
+
+            if (rightSteps <= leftSteps)
+            {
+                for (int i = 0; i < rightSteps; i++)
+                    queue.Enqueue(RobotCommand.TurnRight());
+            }
+            else
+            {
+                for (int i = 0; i < leftSteps; i++)
+                    queue.Enqueue(RobotCommand.TurnLeft());
             }
         }
 
