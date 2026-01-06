@@ -36,7 +36,8 @@ namespace GridDemo.RobotRuns
             if (distanceM < 0) throw new ArgumentOutOfRangeException(nameof(distanceM));
             return new RobotCommand(EnumRobotCommandType.MoveDistance, distanceM, null);
         }
-        // 新的统一转向指令：相对角度
+
+        // 统一转向指令：相对角度
         public static RobotCommand TurnAngle(double angleRad)
         {
             return new RobotCommand(EnumRobotCommandType.Turn, null, angleRad);

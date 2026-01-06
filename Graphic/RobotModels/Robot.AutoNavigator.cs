@@ -271,8 +271,8 @@ namespace GridDemo.RobotModels
                 {
                     EnumMoveDirection curDir = _robotManager.Direction;
 
-                    int cur = DirToIndex(curDir);
-                    int des = DirToIndex(desiredDir);
+                    int cur = (int)(curDir);
+                    int des = (int)(desiredDir);
 
                     // 右转步数（每步 90°）
                     int rightSteps = (des - cur + 4) % 4;
@@ -447,18 +447,6 @@ namespace GridDemo.RobotModels
             }
         }
 
-        private static int DirToIndex(EnumMoveDirection dir)
-        {
-            switch (dir)
-            {
-                case EnumMoveDirection.Right: return 0;
-                case EnumMoveDirection.Down: return 1;
-                case EnumMoveDirection.Left: return 2;
-                case EnumMoveDirection.Up: return 3;
-                default: return 0;
-            }
-        }
-
         private void EnqueueTurnSteps(EnumMoveDirection currentDir,
                               EnumMoveDirection targetDir,
                               Queue<RobotCommand> queue)
@@ -466,8 +454,8 @@ namespace GridDemo.RobotModels
             if (currentDir == targetDir)
                 return;
 
-            int cur = DirToIndex(currentDir);
-            int des = DirToIndex(targetDir);
+            int cur = (int)(currentDir);
+            int des = (int)(targetDir);
 
             int rightSteps = (des - cur + 4) % 4;
             int leftSteps = (cur - des + 4) % 4;
@@ -584,11 +572,22 @@ namespace GridDemo.RobotModels
             int gx = (int)Math.Floor(wx / _cellSizeM);
             int gy = (int)Math.Floor(wy / _cellSizeM);
 
-            if (gx < 0) gx = 0;
-            if (gy < 0) gy = 0;
-            if (gx >= gridW) gx = gridW - 1;
-            if (gy >= gridH) gy = gridH - 1;
-
+            if (gx < 0)
+            {
+                gx = 0;
+            }
+            if (gy < 0)
+            {
+                gy = 0;
+            }
+            if (gx >= gridW)
+            {
+                gx = gridW - 1;
+            }
+            if (gy >= gridH)
+            {
+                gy = gridH - 1;
+            }
             return new GridPos(gx, gy);
         }
 

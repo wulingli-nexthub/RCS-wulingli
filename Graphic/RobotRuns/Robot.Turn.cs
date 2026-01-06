@@ -39,7 +39,6 @@ namespace GridDemo.RobotRuns
                     return;
                 }
 
-
                 double maxStep = _robotManager.TurnAngularSpeed * _dt;       // 每帧允许的最大旋转角度（弧度）
 
                 if (_hasTargetAngle)

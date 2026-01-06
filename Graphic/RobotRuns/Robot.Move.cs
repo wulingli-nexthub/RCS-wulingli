@@ -241,47 +241,6 @@ namespace GridDemo.RobotRuns
                         _robotManager.Acc = 0.0;
                     }
                 }
-                else if (_robotManager.Acc != 0.0 || _getRobotSpeed() != 0.0)
-                { // 手动模式下的自由加速
-                    double v = _getRobotSpeed();
-                    double a = _robotManager.Acc;
-                    double vmax = _robotManager.MaxSpeed;
-
-                    // 1) 积分速度
-                    v += a * _dt;
-                    if (v < 0)
-                    {
-                        v = 0;
-                    }
-                    if (v > vmax)
-                    {
-                        v = vmax;
-                    }
-
-                    // 2) 根据 OrientationAngle 做连续方向移动
-                    double x = _getRobotX();
-                    double y = _getRobotY();
-
-                    double step = v * _dt;
-
-                    // 使用朝向角度，而不是离散方向
-                    double angle = _robotManager.OrientationAngle;
-                    double newX = x + Math.Cos(angle) * step;
-                    double newY = y + Math.Sin(angle) * step;
-
-                    ClampToWorld_NoLock(ref newX, ref newY);
-
-                    // 手动模式核心：命中障碍物就刹停，需要自己转向绕行
-                    if (IsHitObstacle_NoLock(newX, newY))
-                    {
-                        StopImmediately_NoLock();
-                        return;
-                    }
-
-                    _setRobotSpeed(v);
-                    _setRobotX(newX);
-                    _setRobotY(newY);
-                }
             }
 
             _turnController.Update();

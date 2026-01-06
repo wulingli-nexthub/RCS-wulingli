@@ -5,10 +5,10 @@ namespace GridDemo.RobotRuns
 {
     public enum EnumMoveDirection
     {
-        Right,
-        Left,
-        Down,
-        Up
+        Right = 0,
+        Down = 1,
+        Left = 2,
+        Up = 3
     }
 
     internal enum EnumRobotControlMode
@@ -65,7 +65,7 @@ namespace GridDemo.RobotRuns
         public double TargetOrientationAngle { get; set; }          // 目标朝向角度（弧度），用于转向动画插值
         public bool IsTurning { get; set; }           // 由 RobotTurn 控制，指示当前是否正在转向
         public double TurnAngularSpeed { get; set; } = Math.PI;         // 转向速度（弧度/秒），默认 180°/s
-        public int ManualTurnSign { get; internal set; }      // 手动转向符号：-1=左，0=不转，1=右
+        //public int ManualTurnSign { get; internal set; }      // 手动转向符号：-1=左，0=不转，1=右
 
         public RobotManager(double acc, double maxSpeed, EnumMoveDirection direction)
         {
@@ -129,7 +129,7 @@ namespace GridDemo.RobotRuns
                 OrientationAngle = angle;
                 TargetOrientationAngle = angle;
                 IsTurning = false;
-                ManualTurnSign = 0;
+                //ManualTurnSign = 0;
 
                 _turn.ResetTargetAngle();
                 _manualCurrentMoveCommand = null;
@@ -356,15 +356,15 @@ namespace GridDemo.RobotRuns
 
                 // 手动模式：
                 // 1) 前进：按住 W 时持续加速积分位移；松开时 Acc 归零且 Move.Stop 已在 InputManualForwardKey 做过
-                if (_manualForwardKeyDown)
-                {
-                    Acc = getForwardAcc();
-                    // 不再入队 MoveDistance，实际积分在 RobotMove.Update 中按 Acc/Speed 计算
-                }
-                else
-                {
-                    Acc = 0.0;
-                }
+                //if (_manualForwardKeyDown)
+                //{
+                //    Acc = getForwardAcc();
+                //    // 不再入队 MoveDistance，实际积分在 RobotMove.Update 中按 Acc/Speed 计算
+                //}
+                //else
+                //{
+                //    Acc = 0.0;
+                //}
 
                 // 手动模式不使用命令队列
                 _commandQueue.Clear();
