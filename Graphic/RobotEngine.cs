@@ -139,6 +139,7 @@ namespace GridDemo.Core
                 _robotManager.SetMode(EnumRobotControlMode.Auto);
                 _robotAutoNavigator.Enable();
                 _robotAutoNavigator.SyncAfterManualToAuto();
+                _robotAutoNavigator.ClearGoal();  // 切换到自动后清空目标，等待 UI 重新设置
 
                 // 关键：清空队列/当前指令，让下一帧从 provider 拉取矫正队列里的指令
                 _robotManager.ResetAutoCommands();

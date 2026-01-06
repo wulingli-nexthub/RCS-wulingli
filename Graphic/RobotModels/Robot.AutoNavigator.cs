@@ -176,6 +176,20 @@ namespace GridDemo.RobotModels
         }
 
         /// <summary>
+        /// 清空导航目的地，防止模式切换后继续沿用旧目标。
+        /// </summary>
+        public void ClearGoal()
+        {
+            lock (_robotLock)
+            {
+                _goal = null;
+                _path.Clear();
+                _pathIndex = 0;
+                _alignQueue.Clear();
+            }
+        }
+
+        /// <summary>
         /// 外部主动要求重建路径
         /// </summary>
         public void RebuildPath()
