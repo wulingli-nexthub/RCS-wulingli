@@ -166,13 +166,12 @@ namespace GridDemo.RobotRuns
 
                     // 2) 欧拉积分更新速度：v(t+dt) = v(t) + a*dt
                     v += a * _dt;
-                    // 将速度限制在 [0, vmax]：避免负速度导致“倒退”或速度上溢。
                     if (v < 0)
-                    {
+                    { // 将速度限制在 [0, vmax]：避免负速度导致“倒退”
                         v = 0;
                     }
                     if (v > vmax)
-                    {
+                    { // 避免速度超出最大值
                         v = vmax;
                     }
 
@@ -189,7 +188,8 @@ namespace GridDemo.RobotRuns
                     bool isManualInfiniteMove = _moveDistanceRemainM == double.MaxValue;
 
                     if (isManualInfiniteMove)
-                    {
+                    { // 当 _moveDistanceRemainM == double.MaxValue
+                      // 表示一种“手动无限移动”的特殊模式，不再是“走固定距离”，而是一直往朝向方向走。
                         double angle = _robotManager.OrientationAngle;
                         newX += Math.Cos(angle) * step;
                         newY += Math.Sin(angle) * step;
@@ -242,7 +242,7 @@ namespace GridDemo.RobotRuns
                     }
                 }
                 else if (_robotManager.Acc != 0.0 || _getRobotSpeed() != 0.0)
-                {
+                { // 手动模式下的自由加速
                     double v = _getRobotSpeed();
                     double a = _robotManager.Acc;
                     double vmax = _robotManager.MaxSpeed;
@@ -271,7 +271,7 @@ namespace GridDemo.RobotRuns
 
                     ClampToWorld_NoLock(ref newX, ref newY);
 
-                    // 手动模式核心：命中障碍物就刹停，玩家需要自己转向绕行
+                    // 手动模式核心：命中障碍物就刹停，需要自己转向绕行
                     if (IsHitObstacle_NoLock(newX, newY))
                     {
                         StopImmediately_NoLock();
@@ -287,6 +287,15 @@ namespace GridDemo.RobotRuns
             _turnController.Update();
         }
 
+        /// <summary>
+        /// 判断给定中心点位置是否与障碍物发生碰撞（不加锁版本）。
+        /// </summary>
+        /// <remarks>
+        /// 实现策略：
+        /// 1) 先用 _isWorldWalkable(center) 做快速失败；
+        /// 2) 再枚举机器人圆形包围范围附近的格子；
+        /// 3) 对“障碍格”使用圆-矩形相交检测（closest point）。
+        /// </remarks>
         private bool IsHitObstacle_NoLock(double centerX, double centerY)
         {
             double r = _robotRadiusM;
@@ -347,6 +356,9 @@ namespace GridDemo.RobotRuns
             return false;
         }
 
+        /// <summary>
+        /// 将 v 夹紧到 [min, max]。
+        /// </summary>
         private static double Clamp(double v, double min, double max)
         {
             if (v < min) return min;

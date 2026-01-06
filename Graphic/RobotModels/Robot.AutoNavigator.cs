@@ -283,11 +283,11 @@ namespace GridDemo.RobotModels
                     if (rightSteps <= leftSteps)
                     {
                         // 这里一次只发一条 90° 的 Right 指令
-                        return RobotCommand.TurnRight();
+                        return RobotCommand.TurnAngle(+Math.PI / 2.0);
                     }
                     else
                     {
-                        return RobotCommand.TurnLeft();
+                        return RobotCommand.TurnAngle(-Math.PI / 2.0);
                     }
                 }
 
@@ -475,12 +475,12 @@ namespace GridDemo.RobotModels
             if (rightSteps <= leftSteps)
             {
                 for (int i = 0; i < rightSteps; i++)
-                    queue.Enqueue(RobotCommand.TurnRight());
+                    queue.Enqueue(RobotCommand.TurnAngle(+Math.PI / 2.0));
             }
             else
             {
                 for (int i = 0; i < leftSteps; i++)
-                    queue.Enqueue(RobotCommand.TurnLeft());
+                    queue.Enqueue(RobotCommand.TurnAngle(-Math.PI / 2.0));
             }
         }
 

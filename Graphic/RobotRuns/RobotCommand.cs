@@ -8,12 +8,6 @@ namespace GridDemo.RobotRuns
         Turn            // 转向（左/右/或转到指定方向）
     }
 
-    internal enum EnumTurnCommand
-    {
-        Left,
-        Right
-    }
-
     /// <summary>
     /// 机器人指令（格式固定两种）：
     /// 1) 前进位移（米）
@@ -24,34 +18,28 @@ namespace GridDemo.RobotRuns
         private RobotCommand(
             EnumRobotCommandType type,
             double? distanceM,
-            EnumTurnCommand? turn,
-            EnumMoveDirection? targetDirection)
+            double? turnAngleRad)
         {
             Type = type;
             DistanceM = distanceM;
-            Turn = turn;
-            TargetDirection = targetDirection;
+            TurnAngleRad = turnAngleRad;
         }
 
         public EnumRobotCommandType Type { get; }
         public double? DistanceM { get; }
-        public EnumTurnCommand? Turn { get; }
-        public EnumMoveDirection? TargetDirection { get; }
+        public double? TurnAngleRad { get; }
+        //public EnumTurnCommand? Turn { get; }
+        //public EnumMoveDirection? TargetDirection { get; }
 
         public static RobotCommand MoveDistance(double distanceM)
         {
             if (distanceM < 0) throw new ArgumentOutOfRangeException(nameof(distanceM));
-            return new RobotCommand(EnumRobotCommandType.MoveDistance, distanceM, null, null);
+            return new RobotCommand(EnumRobotCommandType.MoveDistance, distanceM, null);
         }
-
-        public static RobotCommand TurnLeft()
+        // 新的统一转向指令：相对角度
+        public static RobotCommand TurnAngle(double angleRad)
         {
-            return new RobotCommand(EnumRobotCommandType.Turn, null, EnumTurnCommand.Left, null);
-        }
-
-        public static RobotCommand TurnRight()
-        {
-            return new RobotCommand(EnumRobotCommandType.Turn, null, EnumTurnCommand.Right, null);
+            return new RobotCommand(EnumRobotCommandType.Turn, null, angleRad);
         }
     }
 }

@@ -219,6 +219,7 @@ namespace GridDemo.RobotRuns
             }
         }
 
+        private const double ManualHugeTurnAngle = 1000.0; // 手动模式下的“持续转向”大角度
         /// <summary>
         /// UI 通知左转键（如 A）按下/松开。
         /// </summary>
@@ -227,11 +228,22 @@ namespace GridDemo.RobotRuns
             lock (_robotLock)
             {
                 _manualTurnLeftKeyDown = isDown;
-                if (!isDown && !_manualTurnRightKeyDown)
+                if (_mode != EnumRobotControlMode.Manual)
                 {
-                    // 左右键都松开时，停止转向
-                    IsTurning = false;
-                    ManualTurnSign = 0;
+                    return;
+                }
+
+                if (isDown)
+                {
+                    // 按下：给一个很大的负角度，相当于“持续左转”
+                    var cmd = RobotCommand.TurnAngle(-ManualHugeTurnAngle);
+                    _turn.StartTurnByDelta(cmd.TurnAngleRad.Value);
+                }
+                else
+                {
+                    // 松开：给角度 0 的指令，立即停止转向
+                    var cmd = RobotCommand.TurnAngle(0.0);
+                    _turn.StartTurnByDelta(cmd.TurnAngleRad.Value);
                 }
             }
         }
@@ -244,11 +256,21 @@ namespace GridDemo.RobotRuns
             lock (_robotLock)
             {
                 _manualTurnRightKeyDown = isDown;
-                if (!isDown && !_manualTurnLeftKeyDown)
+                if (_mode != EnumRobotControlMode.Manual)
                 {
-                    // 左右键都松开时，停止转向
-                    IsTurning = false;
-                    ManualTurnSign = 0;
+                    return;
+                }
+
+                if (isDown)
+                {
+                    // 按下：给一个很大的正角度，相当于“持续右转”
+                    var cmd = RobotCommand.TurnAngle(ManualHugeTurnAngle);
+                    _turn.StartTurnByDelta(cmd.TurnAngleRad.Value);
+                }
+                else
+                {
+                    var cmd = RobotCommand.TurnAngle(0.0);
+                    _turn.StartTurnByDelta(cmd.TurnAngleRad.Value);
                 }
             }
         }
@@ -302,14 +324,8 @@ namespace GridDemo.RobotRuns
                         }
                         else if (_currentCommand.Type == EnumRobotCommandType.Turn)
                         {
-                            if (_currentCommand.Turn == EnumTurnCommand.Left)
-                            {
-                                _turn.StartTurnLeft();
-                            }
-                            else if (_currentCommand.Turn == EnumTurnCommand.Right)
-                            {
-                                _turn.StartTurnRight();
-                            }
+                            double delta = _currentCommand.TurnAngleRad ?? 0.0;
+                            _turn.StartTurnByDelta(delta);
                         }
                     }
 
@@ -348,21 +364,6 @@ namespace GridDemo.RobotRuns
                 else
                 {
                     Acc = 0.0;
-                }
-
-                // 2) 转向：按住 A/D 给 Turn 写一个「当前帧目标角速度和方向」
-                if (_manualTurnLeftKeyDown ^ _manualTurnRightKeyDown)
-                {
-                    // 只有一边按下：开始转向
-                    IsTurning = true;
-                    ManualTurnSign = _manualTurnLeftKeyDown ? -1 : 1;
-                    // 交给 RobotTurn.Update 处理“以固定角速度持续旋转”的逻辑
-                }
-                else
-                {
-                    // 没有或两边都按：停止转向
-                    IsTurning = false;
-                    ManualTurnSign = 0;
                 }
 
                 // 手动模式不使用命令队列

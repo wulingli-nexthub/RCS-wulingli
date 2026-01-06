@@ -44,80 +44,53 @@ namespace GridDemo.RobotRuns
 
                 if (_hasTargetAngle)
                 {
-                    double cur = _robotManager.OrientationAngle;
-                    double target = _robotManager.TargetOrientationAngle;
+                    double cur = NormalizeAngle(_robotManager.OrientationAngle);
+                    double target = NormalizeAngle(_robotManager.TargetOrientationAngle);
 
-                    // 确保角度在 [0, 2π) 范围内计算
-                    cur = NormalizeAngle(cur);
-                    target = NormalizeAngle(target);
-
-                    // 计算最短旋转角度
                     double delta = target - cur;
-
-                    if (delta > Math.PI)
-                    { // 选择最短旋转方向：把差值映射到 (-π, π]
-                        delta -= 2 * Math.PI;
-                    }
-                    else if (delta < -Math.PI)
-                    {
-                        delta += 2 * Math.PI;
-                    }
+                    if (delta > Math.PI) delta -= 2 * Math.PI;
+                    else if (delta < -Math.PI) delta += 2 * Math.PI;
 
                     if (Math.Abs(delta) <= maxStep)
-                    { // 若本帧一步就能到达目标，直接对齐并结束动画
-                      // 旋转完成
+                    {
                         _robotManager.OrientationAngle = target;
                         _robotManager.IsTurning = false;
+                        _hasTargetAngle = false;
 
-                        // 根据最终角度更新离散方向
                         _robotManager.Direction = AngleToDirection(target);
                         return;
                     }
 
-                    double step = delta > 0 ? maxStep : -maxStep;             // 本帧沿最短方向走一步
+                    double step = delta > 0 ? maxStep : -maxStep;
                     _robotManager.OrientationAngle = NormalizeAngle(cur + step);
-                }
-                else
-                { // 手动模式
-                    int sign = _robotManager.ManualTurnSign; // -1,0,1
-                    if (sign == 0)
-                    {
-                        _robotManager.IsTurning = false;
-                        return;
-                    }
-
-                    double cur = NormalizeAngle(_robotManager.OrientationAngle);
-                    double step = sign * maxStep;
-                    _robotManager.OrientationAngle = NormalizeAngle(cur + step);
-
-                    // 连续转向时，Direction 可以按当前角更新，便于 UI/逻辑使用
                     _robotManager.Direction = AngleToDirection(_robotManager.OrientationAngle);
                 }
             }
         }
 
-        /// <summary>
-        /// 开始一次 90° 左转
-        /// </summary>
-        public void StartTurnLeft()
+        // 统一入口：相对旋转 angleRad 弧度
+        public void StartTurnByDelta(double angleRad)
         {
             lock (_robotLock)
             {
-                _hasTargetAngle = true;
-            }
-            StartTurnInternal(-Math.PI / 2.0);
-        }
+                if (Math.Abs(angleRad) < 1e-6)
+                {
+                    // 角度为 0 -> 立即停止转向
+                    _robotManager.IsTurning = false;
+                    _hasTargetAngle = false;
+                    return;
+                }
 
-        /// <summary>
-        /// 开始一次 90° 右转
-        /// </summary>
-        public void StartTurnRight()
-        {
-            lock (_robotLock)
-            {
+                // 正在转向时，你可以选择覆盖或忽略，这里用覆盖：
+                _move.StopForTurn();   // 刹车后原地转
+
+                double currentAngle = NormalizeAngle(_robotManager.OrientationAngle);
+                double target = NormalizeAngle(currentAngle + angleRad);
+
+                _robotManager.TargetOrientationAngle = target;
+                _robotManager.IsTurning = true;
                 _hasTargetAngle = true;
             }
-            StartTurnInternal(Math.PI / 2.0);
         }
 
         public void ResetTargetAngle()
@@ -125,92 +98,6 @@ namespace GridDemo.RobotRuns
             lock (_robotLock)
             {
                 _hasTargetAngle = false;
-            }
-        }
-
-        /// <summary>
-        /// 开始转向到指定离散方向（选择最短旋转路径）。
-        /// 说明：
-        /// - 若目标方向与当前方向相同，会直接返回；
-        /// - 若角差很小（阈值 0.01 rad），则直接对齐不做动画；
-        /// - 否则进入转向动画，并通过 <see cref="RobotMove.StopForTurn"/> 停止平移。
-        /// </summary>
-        /// <param name="targetDirection"></param>
-        public void StartTurnTo(EnumMoveDirection targetDirection)
-        {
-            lock (_robotLock)
-            {
-                _hasTargetAngle = true;
-                if (_robotManager.IsTurning)
-                {
-                    return;
-                }
-
-                // 获取当前方向
-                EnumMoveDirection currentDir = _robotManager.Direction;
-
-                if (currentDir == targetDirection)
-                { // 如果目标方向与当前方向相同，不需要转向
-                    return;
-                }
-
-                // 当前角与目标角都归一化到 [0, 2π)，便于做最短路径角差
-                double currentAngle = NormalizeAngle(_robotManager.OrientationAngle);
-                double targetAngle = NormalizeAngle(RobotManager.DirectionToAngle(targetDirection));
-
-                // 计算两个方向的旋转差值（选择最短路径）
-                double delta = targetAngle - currentAngle;
-
-                // 选择最短旋转方向
-                if (delta > Math.PI)
-                {
-                    delta -= 2 * Math.PI;
-                }
-                else if (delta < -Math.PI)
-                {
-                    delta += 2 * Math.PI;
-                }
-
-                if (Math.Abs(delta) < 0.01) // 约0.57度
-                { // 如果旋转角度很小，直接设置方向，不进行动画
-                    _robotManager.OrientationAngle = targetAngle;
-                    _robotManager.TargetOrientationAngle = targetAngle;
-                    _robotManager.Direction = targetDirection;
-                    return;
-                }
-
-                double finalTarget = currentAngle + delta;   // delta 可能为负，表示逆时针（左转）；正表示顺时针（右转）
-
-                _move.StopForTurn();                // 原地转向：立即把速度清零并停止加速
-
-                _robotManager.TargetOrientationAngle = finalTarget;
-                _robotManager.IsTurning = true;
-            }
-        }
-
-        /// <summary>
-        /// 内部转向入口：以“相对角度”启动一次转向动画（例如 ±90°）。
-        /// </summary>
-        /// <param name="deltaAngle"></param>
-        private void StartTurnInternal(double deltaAngle)
-        {
-            lock (_robotLock)
-            {
-                if (_robotManager.IsTurning)
-                { // 正在转向中，忽略新的命令
-                    return;
-                }
-
-                _move.StopForTurn();                // 原地转向：立即把速度清零并停止加速
-
-                // 获取当前角度并归一化
-                double currentAngle = NormalizeAngle(_robotManager.OrientationAngle);
-
-                // 计算新角度并归一化
-                double newTarget = NormalizeAngle(currentAngle + deltaAngle);
-
-                _robotManager.TargetOrientationAngle = newTarget;
-                _robotManager.IsTurning = true;
             }
         }
 
