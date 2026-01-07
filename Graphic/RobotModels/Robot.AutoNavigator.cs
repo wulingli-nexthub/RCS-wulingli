@@ -261,29 +261,16 @@ namespace GridDemo.RobotModels
                 double firstY = GridToCenterWorldY(first.Y);
                 EnumMoveDirection desiredDir = ChooseDirectionToTarget(x, y, firstX, firstY);
 
-                // 需要转向：按相对左/右转输出指令（不使用绝对角度）
+                // 需要转向：输出一次相对角度转向指令（180° 时一次到位）
                 if (!_robotManager.IsTurning && desiredDir != _robotManager.Direction)
                 {
-                    EnumMoveDirection curDir = _robotManager.Direction;
-
-                    int cur = (int)(curDir);
-                    int des = (int)(desiredDir);
-
-                    // 右转步数（每步 90°）
-                    int rightSteps = (des - cur + 4) % 4;
-                    // 左转步数（每步 90°）
-                    int leftSteps = (cur - des + 4) % 4;
-
-                    // 选择步数更少的方向；若一样多，可以固定选右转
-                    if (rightSteps <= leftSteps)
+                    double? turnAngle = TryGetTurnAngleRad(_robotManager.Direction, desiredDir);
+                    if (turnAngle.HasValue)
                     {
-                        // 这里一次只发一条 90° 的 Right 指令
-                        return RobotCommand.TurnAngle(+Math.PI / 2.0);
+                        return RobotCommand.TurnAngle(turnAngle.Value);
                     }
-                    else
-                    {
-                        return RobotCommand.TurnAngle(-Math.PI / 2.0);
-                    }
+
+                    return null;
                 }
 
                 // 已对齐方向：把同方向连续段合并成一个 MoveDistance 指令
@@ -459,25 +446,40 @@ namespace GridDemo.RobotModels
                               EnumMoveDirection targetDir,
                               Queue<RobotCommand> queue)
         {
-            if (currentDir == targetDir)
+            double? angle = TryGetTurnAngleRad(currentDir, targetDir);
+            if (!angle.HasValue)
+            {
                 return;
+            }
 
-            int cur = (int)(currentDir);
-            int des = (int)(targetDir);
+            queue.Enqueue(RobotCommand.TurnAngle(angle.Value));
+        }
+
+        /// <summary>
+        /// 计算从 currentDir 转到 targetDir 的“相对转向角度”：
+        /// - 返回值为：+ 表示右转，- 表示左转；
+        /// - 90°/180° 会返回一次性角度（含 180° 合并）；
+        /// - 若无需转向则返回 null。
+        /// </summary>
+        private static double? TryGetTurnAngleRad(EnumMoveDirection currentDir, EnumMoveDirection targetDir)
+        {
+            if (currentDir == targetDir)
+            {
+                return null;
+            }
+
+            int cur = (int)currentDir;
+            int des = (int)targetDir;
 
             int rightSteps = (des - cur + 4) % 4;
             int leftSteps = (cur - des + 4) % 4;
 
             if (rightSteps <= leftSteps)
             {
-                for (int i = 0; i < rightSteps; i++)
-                    queue.Enqueue(RobotCommand.TurnAngle(+Math.PI / 2.0));
+                return +Math.PI / 2.0 * rightSteps;
             }
-            else
-            {
-                for (int i = 0; i < leftSteps; i++)
-                    queue.Enqueue(RobotCommand.TurnAngle(-Math.PI / 2.0));
-            }
+
+            return -Math.PI / 2.0 * leftSteps;
         }
 
         /// <summary>
