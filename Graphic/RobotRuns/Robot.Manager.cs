@@ -124,13 +124,6 @@ namespace GridDemo.RobotRuns
                 Acc = 0.0;
                 _move.StopImmediately_NoLock();
 
-                // 同步角度，确保模型一致
-                double angle = DirectionToAngle(Direction);
-                OrientationAngle = angle;
-                TargetOrientationAngle = angle;
-                IsTurning = false;
-                //ManualTurnSign = 0;
-
                 _turn.ResetTargetAngle();
                 _manualCurrentMoveCommand = null;
             }

@@ -77,11 +77,6 @@ namespace GridDemo.RobotModels
                 _alignQueue.Clear();
 
                 RebuildPath_NoLock();
-
-                // 仅做内部状态同步（不驱动运动）
-                double angle = RobotManager.DirectionToAngle(_robotManager.Direction);
-                _robotManager.OrientationAngle = angle;
-                _robotManager.TargetOrientationAngle = angle;
             }
         }
 
