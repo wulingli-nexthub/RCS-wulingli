@@ -129,7 +129,8 @@
             this.cmbPathAlgorithm.FormattingEnabled = true;
             this.cmbPathAlgorithm.Items.AddRange(new object[] {
             "Dijkstra",
-            "A*"});
+            "A*",
+            "蛇形"});
             this.cmbPathAlgorithm.Location = new System.Drawing.Point(24, 401);
             this.cmbPathAlgorithm.Name = "cmbPathAlgorithm";
             this.cmbPathAlgorithm.Size = new System.Drawing.Size(121, 26);
@@ -160,7 +161,7 @@
             this.Controls.Add(this.btnReset);
             this.Controls.Add(this.skControl);
             this.Name = "Form1";
-            this.Text = " RCS Ver 2.3.1 吴灵丽（三期 28号）";
+            this.Text = " RCS Ver 2.3.2 吴灵丽（三期 28号）";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
             this.ResumeLayout(false);

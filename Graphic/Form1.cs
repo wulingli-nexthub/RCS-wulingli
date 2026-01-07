@@ -396,10 +396,20 @@ namespace GridDemo
                 return;
             }
 
-            _engine.Algorithm =
-                cmbPathAlgorithm.SelectedIndex == 0
-                    ? EnumPathfindingAlgorithm.Dijkstra
-                    : EnumPathfindingAlgorithm.AStar;
+            // 0: Dijkstra, 1: A*, 2: Serpentine
+            if (cmbPathAlgorithm.SelectedIndex == 0)
+            {
+                _engine.Algorithm = EnumPathfindingAlgorithm.Dijkstra;
+            }
+            else if (cmbPathAlgorithm.SelectedIndex == 1)
+            {
+                _engine.Algorithm = EnumPathfindingAlgorithm.AStar;
+            }
+            else if (cmbPathAlgorithm.SelectedIndex == 2)
+            {
+                _engine.Algorithm = EnumPathfindingAlgorithm.Serpentine;
+            }
+
 
             if (_engine.AutoEnabled)
             {

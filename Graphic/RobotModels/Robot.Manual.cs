@@ -11,16 +11,13 @@ namespace GridDemo.RobotModels
     internal sealed class RobotManual
     {
         private readonly object _robotLock;
-        private readonly Func<double> _getCellSizeM;
         private readonly RobotManager _robotManager;
 
         public RobotManual(
             object robotLock,
-            Func<double> getCellSizeM,
             RobotManager robotManager)
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
-            _getCellSizeM = getCellSizeM ?? throw new ArgumentNullException(nameof(getCellSizeM));
             _robotManager = robotManager ?? throw new ArgumentNullException(nameof(robotManager));
         }
 

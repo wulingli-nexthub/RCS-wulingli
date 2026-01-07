@@ -2,6 +2,17 @@
 
 namespace GridDemo.RobotRuns
 {
+    /// <summary>
+    /// 机器人“平移/前进”执行器（运动学积分 + 边界/障碍碰撞）：
+    /// - 执行 <see cref="RobotCommand"/> 中的 MoveDistance 指令（按 dt 逐帧推进）；
+    /// - 与 <see cref="RobotTurn"/> 协作：转向期间不平移，开始转向会打断正在执行的 MoveDistance；
+    /// - 同时兼容“手动模式的连续移动”：当 MoveDistance 的距离为 <see cref="double.MaxValue"/> 时，按 <see cref="RobotManager.OrientationAngle"/> 连续方向移动。
+    ///
+    /// 典型调用链（项目内）：
+    /// - 自动模式：<see cref="RobotManager.Tick"/> 从 Provider 拉取 MoveDistance 指令 -> 调用 <see cref="StartMoveDistance_NoLock"/> -> 仿真线程每帧调用 <see cref="Update"/> 积分。
+    /// - 手动模式：W 按下时 <see cref="RobotManager.InputManualForwardKey"/> 下发 “MoveDistance(MaxValue)” -> <see cref="Update"/> 以朝向角连续移动；
+    ///            A/D 按下时由 <see cref="RobotTurn.Update"/> 改变朝向角，平移跟随朝向变化。
+    /// </summary>
     internal class RobotMove
     {
         private readonly object _robotLock;
@@ -19,7 +30,7 @@ namespace GridDemo.RobotRuns
 
         private readonly RobotTurn _turnController;
 
-        // 新增：可通行判定（世界坐标 -> 是否可走）
+        // 可通行判定（世界坐标 -> 是否可走）
         private readonly Func<double, double, bool> _isWorldWalkable;
         private readonly double _robotRadiusM;
 
@@ -61,6 +72,9 @@ namespace GridDemo.RobotRuns
             _turnController = new RobotTurn(_robotLock, _robotManager, this, _dt);
         }
 
+        /// <summary>
+        /// 暴露转向控制器给外部（RobotManager.BindRuntime 会绑定 Turn 执行器）。
+        /// </summary>
         public RobotTurn TurnController
         {
             get { return _turnController; }

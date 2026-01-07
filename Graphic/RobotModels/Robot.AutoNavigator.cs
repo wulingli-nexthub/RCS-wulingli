@@ -377,13 +377,26 @@ namespace GridDemo.RobotModels
 
             Func<GridPos, bool> isWalkable = _isWalkableProvider ?? (p => true);      // 可行走判定（是否有障碍物）
 
-            List<GridPos> path = GridPathfinder.FindPath(          // 调用寻路算法生成路径（List）
-                width: gridW,
-                height: gridH,
-                start: start,
-                goal: goal,
-                isWalkable: isWalkable,
-                algorithm: _algorithm);
+            List<GridPos> path;
+            if (_algorithm == EnumPathfindingAlgorithm.Serpentine)
+            {
+                path = SerpentinePathfinder.BuildPath(
+                    width: gridW,
+                    height: gridH,
+                    start: start,
+                    goal: goal,
+                    isWalkable: isWalkable);
+            }
+            else
+            {
+                path = GridPathfinder.FindPath(
+                    width: gridW,
+                    height: gridH,
+                    start: start,
+                    goal: goal,
+                    isWalkable: isWalkable,
+                    algorithm: _algorithm);
+            }
 
             _path.Clear();        // 清空旧路径
             _path.AddRange(path);       // 存入新路径

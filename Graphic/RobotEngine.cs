@@ -8,8 +8,10 @@ using System.Collections.Generic;
 namespace GridDemo.Core
 {
     /// <summary>
-    /// 封装机器人运动/寻路/障碍物等业务，不依赖任何 UI。
-    /// UI 通过本类提供的接口/快照进行交互。
+    /// 业务引擎（无 UI 依赖）：
+    /// - 统一封装机器人运动学（Move/Turn）、自动寻路（AutoNavigator）、手动控制（Manual）、障碍物地图（ObstacleMap）；
+    /// - 对 UI 暴露“控制接口 + 快照接口”，UI 不直接接触底层执行器细节；
+    /// - 通过一把共享锁 <see cref="_robotLock"/> 保护所有机器人状态的一致性（位置/速度/加速度/转向/指令等）。
     /// </summary>
     internal sealed class RobotEngine
     {
@@ -104,7 +106,6 @@ namespace GridDemo.Core
 
             _robotManual = new RobotManual(
                 robotLock: _robotLock,
-                getCellSizeM: () => _cellSizeM,
                 robotManager: _robotManager);
 
             // Robot 绑定运行时（自动指令源接入）
@@ -132,13 +133,24 @@ namespace GridDemo.Core
 
         public bool AutoEnabled => _robotAutoNavigator.IsEnabled;
 
+        /// <summary>
+        /// 切换到自动模式：
+        /// - Manager 置为 Auto（清理队列/停车/同步角度等）；
+        /// - AutoNavigator Enable；并清空目标等待 UI 重新选择；
+        /// - ResetAutoCommands：保证下一帧会从 provider 重新拉取指令；
+        /// - 禁用手动控制器。
+        /// </summary>
         public void EnableAuto()
         {
             lock (_robotLock)
             {
                 _robotManager.SetMode(EnumRobotControlMode.Auto);
                 _robotAutoNavigator.Enable();
-                _robotAutoNavigator.ClearGoal();  // 切换到自动后清空目标，等待 UI 重新设置
+
+                // 切换到自动后清空目标：
+                // - 避免沿用旧目标导致“模式切换后机器人突然跑走”
+                // - 需要 UI 重新 SetGoal 才会开始规划/运动
+                _robotAutoNavigator.ClearGoal();
 
                 // 关键：清空队列/当前指令，让下一帧从 provider 拉取矫正队列里的指令
                 _robotManager.ResetAutoCommands();
@@ -146,6 +158,33 @@ namespace GridDemo.Core
             }
         }
 
+        public void StartSerpentineToBottomRight()
+        {
+            lock (_robotLock)
+            {
+                _robotManager.SetMode(EnumRobotControlMode.Auto);
+
+                // 先配置算法与目标（确保 Enable() 内的首次 RebuildPath 能拿到 goal）
+                _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.Serpentine;
+
+                var goal = new GridPos(_gridCount - 1, _gridCount - 1);
+                _robotAutoNavigator.SetGoal(goal, rebuildIfEnabled: false);
+
+                // 再启用（Enable 内会 RebuildPath_NoLock，并生成对齐队列/路径）
+                _robotAutoNavigator.Enable();
+
+                // 保证下一帧必定从 provider 拉取最新的对齐/蛇形指令
+                _robotManager.ResetAutoCommands();
+                _robotManual.Disable();
+            }
+        }
+
+        /// <summary>
+        /// 切换到手动模式：
+        /// - Manager 置为 Manual；
+        /// - 禁用 AutoNavigator（不再产生命令）；
+        /// - 启用 Manual（清理按键输入状态）。
+        /// </summary>
         public void EnableManual()
         {
             lock (_robotLock)
@@ -156,26 +195,35 @@ namespace GridDemo.Core
             }
         }
 
-        public void SetGoal(GridPos gridGoal)
-        {
-            _robotAutoNavigator.SetGoal(gridGoal, rebuildIfEnabled: true);
-        }
-
+        /// <summary>
+        /// 外部主动要求重建路径：用于障碍物变更/算法切换。
+        /// </summary>
         public void RebuildPath()
         {
             _robotAutoNavigator.RebuildPath();
         }
 
+        /// <summary>
+        /// 获取路径点（世界坐标）快照：用于 UI 绘制路径线。
+        /// </summary>
         public List<(double X, double Y)> GetPathWorldPointsSnapshot()
         {
             return _robotAutoNavigator.GetPathWorldPointsSnapshot();
         }
 
+        /// <summary>
+        /// 获取障碍物网格的快照：用于 UI 绘制障碍物。
+        /// </summary>
         public bool[,] GetObstacleSnapshot()
         {
             return _obstacleMap.GetSnapshot();
         }
 
+        /// <summary>
+        /// 切换指定格子的障碍物状态：
+        /// - Toggle 成为障碍（返回 true）时，若自动模式打开则触发重规划；
+        /// - 取消障碍（返回 false）时，这里不触发重规划（当前逻辑仅在设置障碍时触发）。
+        /// </summary>
         public void ToggleObstacle(GridPos p)
         {
             if (_obstacleMap.Toggle(p) && _robotAutoNavigator.IsEnabled)
@@ -184,6 +232,11 @@ namespace GridDemo.Core
             }
         }
 
+        /// <summary>
+        /// 设置前进加速度参数：
+        /// - 自动模式 MoveDistance 下发时会读取该值；
+        /// - 手动模式 W 按住时每帧 Tick 也会读取该值。
+        /// </summary>
         public void SetForwardAcc(double acc)
         {
             lock (_robotLock)
@@ -192,6 +245,9 @@ namespace GridDemo.Core
             }
         }
 
+        /// <summary>
+        /// 设置最大速度：由 RobotMove.Update 在每帧积分后进行夹紧。
+        /// </summary>
         public void SetMaxSpeed(double vmax)
         {
             lock (_robotLock)
@@ -214,7 +270,8 @@ namespace GridDemo.Core
         }
 
         /// <summary>
-        /// UI 绘制和文本显示用的状态快照
+        /// UI 绘制/文本显示用的状态快照：
+        /// - 在 lock 内复制一份值类型快照，UI 可在锁外安全读。
         /// </summary>
         public RobotStateSnapshot GetStateSnapshot()
         {
@@ -232,8 +289,14 @@ namespace GridDemo.Core
         #endregion
     }
 
+    /// <summary>
+    /// 机器人状态快照（值类型）：用于 UI/绘制读取。
+    /// </summary>
     internal readonly struct RobotStateSnapshot
     {
+        /// <summary>
+        /// 构造快照：一次性拷贝当前帧需要展示的状态。
+        /// </summary>
         public RobotStateSnapshot(double X, double Y, double Speed, double Acc, double OrientationAngle)
         {
             this.X = X;

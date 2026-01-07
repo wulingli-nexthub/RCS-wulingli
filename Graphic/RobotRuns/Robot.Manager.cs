@@ -18,15 +18,16 @@ namespace GridDemo.RobotRuns
     }
 
     /// <summary>
-    /// 机器人基础运动模型 + 指令调度：
-    /// - Form 只设置模式/输入；
-    /// - Robot 将模式翻译成两类指令并下发（MoveDistance / Turn）；
-    /// - Robot 定时监测指令执行情况，完成后切换下一条。
+    /// 机器人基础运动模型 + 指令调度（调度层/状态中心）：
+    /// - UI（Form）只写入“模式切换”和“按键输入”；
+    /// - 本类把输入或自动导航结果翻译成标准化的 <see cref="RobotCommand"/> 并下发给执行器；
+    /// - 执行器（<see cref="RobotMove"/> / <see cref="RobotTurn"/>）只负责“怎么做”（积分/动画），不负责选择下一条指令；
+    /// - 本类在每帧 <see cref="Tick"/> 中轮询当前执行状态，完成后切换下一条指令。
     ///
     /// 设计要点：
-    /// - 指令队列（`_commandQueue`）负责“将来要做什么”；
-    /// - `_currentCommand` 负责“正在做什么”；
-    /// - Move/Turn 负责“怎么做”（落地执行与动画/积分），但由 Robot 串行调度，避免并发冲突。
+    /// - 指令队列（<see cref="_commandQueue"/>）负责“将来要做什么”；
+    /// - <see cref="_currentCommand"/> 负责“正在做什么”；
+    /// - 本类保证 Move/Turn 串行执行，避免“边转边走”或多命令叠加的不可控行为。
     /// </summary>
     internal class RobotManager
     {
@@ -65,7 +66,6 @@ namespace GridDemo.RobotRuns
         public double TargetOrientationAngle { get; set; }          // 目标朝向角度（弧度），用于转向动画插值
         public bool IsTurning { get; set; }           // 由 RobotTurn 控制，指示当前是否正在转向
         public double TurnAngularSpeed { get; set; } = Math.PI;         // 转向速度（弧度/秒），默认 180°/s
-        //public int ManualTurnSign { get; internal set; }      // 手动转向符号：-1=左，0=不转，1=右
 
         public RobotManager(double acc, double maxSpeed, EnumMoveDirection direction)
         {
@@ -184,7 +184,7 @@ namespace GridDemo.RobotRuns
 
                 if (isDown)
                 {
-                    // 手动模式：发送“前进无穷距离”——一条新的 MoveDistance 指令
+                    // 手动模式：W 按下 => 发送“前进无穷距离”——一条新的 MoveDistance 指令
                     // 这里不用队列，直接作为“当前手动指令”下发给 Move。
                     const double infiniteDist = double.MaxValue;   // 或者一个你认为合理的大值
 
@@ -280,9 +280,8 @@ namespace GridDemo.RobotRuns
         /// 由仿真线程每帧调用：生成/下发/监测指令（调度核心）。
         /// 调度流程：
         /// 1) 自动模式：当“无当前指令且队列为空”时，从 provider 拉取一条新指令；
-        /// 2) 手动模式：按住键盘时，一直运动（不入队指令，实时积分位移与角速度）；
-        /// 3) 若当前无指令且队列非空：出队一条并下发给 Move/Turn；
-        /// 4) 轮询检测当前指令是否完成：完成后清理，下一帧进入下一条。
+        /// 2) 若当前无指令且队列非空：出队一条并下发给 Move/Turn；
+        /// 3) 轮询检测当前指令是否完成：完成后清理，下一帧进入下一条。
         /// </summary>
         public void Tick(double dt, Func<double> getForwardAcc)
         {
@@ -353,20 +352,6 @@ namespace GridDemo.RobotRuns
 
                     return;  // 自动模式到此结束
                 }
-
-                // 手动模式：
-                // 1) 前进：按住 W 时持续加速积分位移；松开时 Acc 归零且 Move.Stop 已在 InputManualForwardKey 做过
-                //if (_manualForwardKeyDown)
-                //{
-                //    Acc = getForwardAcc();
-                //    // 不再入队 MoveDistance，实际积分在 RobotMove.Update 中按 Acc/Speed 计算
-                //}
-                //else
-                //{
-                //    Acc = 0.0;
-                //}
-
-                // 手动模式不使用命令队列
                 _commandQueue.Clear();
                 _hasCurrentCommand = false;
                 _currentCommand = null;

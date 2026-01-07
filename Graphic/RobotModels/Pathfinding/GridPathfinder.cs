@@ -9,7 +9,8 @@ namespace GridDemo.RobotModels.Pathfinding
     internal enum EnumPathfindingAlgorithm
     {
         Dijkstra = 0,
-        AStar = 1
+        AStar = 1,
+        Serpentine = 2
     }
 
     /// <summary>
@@ -75,6 +76,12 @@ namespace GridDemo.RobotModels.Pathfinding
 
             // 起点/终点不可通行，直接返回空路径
             if (!isWalkable(start) || !isWalkable(goal))
+            {
+                return new List<GridPos>();
+            }
+
+            // 兼容：蛇形算法不走这里（由 RobotAutoNavigator 直接调用 SerpentinePathfinder 生成路径）
+            if (algorithm == EnumPathfindingAlgorithm.Serpentine)
             {
                 return new List<GridPos>();
             }
