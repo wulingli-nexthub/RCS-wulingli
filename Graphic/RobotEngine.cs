@@ -155,6 +155,9 @@ namespace GridDemo.Core
                 // 关键：清空队列/当前指令，让下一帧从 provider 拉取矫正队列里的指令
                 _robotManager.ResetAutoCommands();
                 _robotManual.Disable();
+
+                // 切到自动后，让箭头通过转向动画对齐到最近的离散方向
+                _robotManager.AlignOrientationToDirectionWithTurn();
             }
         }
 

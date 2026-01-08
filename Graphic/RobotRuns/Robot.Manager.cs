@@ -154,10 +154,56 @@ namespace GridDemo.RobotRuns
 
                 // 可选：若正在转向，也一并终止，避免“半转旧方向”
                 IsTurning = false;
-                double angle = DirectionToAngle(Direction);
-                OrientationAngle = angle;
-                TargetOrientationAngle = angle;
             }
+        }
+
+        /// <summary>
+        /// 在自动模式下，让当前箭头朝向通过转向动画对齐到当前离散方向的标准角度。
+        /// </summary>
+        public void AlignOrientationToDirectionWithTurn()
+        {
+            lock (_robotLock)
+            {
+                if (_mode != EnumRobotControlMode.Auto)
+                {
+                    return;
+                }
+
+                double delta = GetShortestDeltaToDirection(OrientationAngle, Direction);
+                if (Math.Abs(delta) < 1e-6)
+                {
+                    return; // 已对齐，无需插入转向命令
+                }
+
+                // 清空现有指令，避免和其它自动命令纠缠
+                _commandQueue.Clear();
+                _hasCurrentCommand = false;
+                _currentCommand = null;
+
+                var cmd = RobotCommand.TurnAngle(delta);
+                _commandQueue.Enqueue(cmd);
+            }
+        }
+
+        /// <summary>
+        /// 计算从当前连续角度旋转到目标离散方向标准角度的最短角度差（弧度，[-π, π]）。
+        /// 正数表示顺时针（右转），负数表示逆时针（左转）。
+        /// </summary>
+        private static double GetShortestDeltaToDirection(double currentAngle, EnumMoveDirection targetDir)
+        {
+            double targetAngle = DirectionToAngle(targetDir);
+
+            currentAngle = currentAngle % (2 * Math.PI);
+            if (currentAngle < 0) currentAngle += 2 * Math.PI;
+
+            targetAngle = targetAngle % (2 * Math.PI);
+            if (targetAngle < 0) targetAngle += 2 * Math.PI;
+
+            double delta = targetAngle - currentAngle;
+            if (delta > Math.PI) delta -= 2 * Math.PI;
+            else if (delta < -Math.PI) delta += 2 * Math.PI;
+
+            return delta;
         }
 
         #region UI 输入（Form 仅调用这些）
