@@ -96,31 +96,6 @@ namespace GridDemo.RobotModels
         }
 
         /// <summary>
-        /// 手动切换到自动模式时调用：
-        /// - 不改变目标；
-        /// - 基于当前机器人世界坐标重新规划（得到 start 格）；
-        /// - 生成“矫正到 start 格中心”的对齐队列；
-        /// - 调用方可再 ResetAutoCommands() 以便自动模式立即拉取矫正指令。
-        /// </summary>
-        public void SyncAfterManualToAuto()
-        {
-            lock (_robotLock)
-            {
-                if (!IsEnabled)
-                {
-                    return;
-                }
-
-                // 不清目标；仅重建路径与对齐队列
-                _path.Clear();
-                _pathIndex = 0;
-                _alignQueue.Clear();
-
-                RebuildPath_NoLock();
-            }
-        }
-
-        /// <summary>
         /// 寻路算法切换：
         /// - 切换时清空路径与索引，避免继续沿用旧算法生成的路径；
         /// - 是否立刻重建由调用方决定（本类在 set 中不自动 rebuild，避免频繁/重复规划）。

@@ -161,27 +161,6 @@ namespace GridDemo.Core
             }
         }
 
-        public void StartSerpentineToBottomRight()
-        {
-            lock (_robotLock)
-            {
-                _robotManager.SetMode(EnumRobotControlMode.Auto);
-
-                // 先配置算法与目标（确保 Enable() 内的首次 RebuildPath 能拿到 goal）
-                _robotAutoNavigator.Algorithm = EnumPathfindingAlgorithm.Serpentine;
-
-                var goal = new GridPos(_gridCount - 1, _gridCount - 1);
-                _robotAutoNavigator.SetGoal(goal, rebuildIfEnabled: false);
-
-                // 再启用（Enable 内会 RebuildPath_NoLock，并生成对齐队列/路径）
-                _robotAutoNavigator.Enable();
-
-                // 保证下一帧必定从 provider 拉取最新的对齐/蛇形指令
-                _robotManager.ResetAutoCommands();
-                _robotManual.Disable();
-            }
-        }
-
         /// <summary>
         /// 切换到手动模式：
         /// - Manager 置为 Manual；
