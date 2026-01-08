@@ -24,7 +24,7 @@ namespace GridDemo
 
         // 业务引擎与仿真循环
         private RobotEngine _engine;
-        private UiRobotSimulation _simulation;
+        private RobotSimulationLoop _simulation;
 
         // 画图相关（基本保持原有）
         private WorldView.WorldTransform _worldTransform;
@@ -155,7 +155,7 @@ namespace GridDemo
                 cellSizeM: _engine.CellSizeM);
 
             // 4. 创建仿真循环
-            _simulation = new UiRobotSimulation(_engine, skControl, _dt);
+            _simulation = new RobotSimulationLoop(_engine, skControl, _dt);
             _simulation.Start();
 
             // 5. 默认模式与算法

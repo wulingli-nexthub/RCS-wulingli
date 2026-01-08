@@ -12,6 +12,9 @@ namespace GridDemo.Core
     /// - 统一封装机器人运动学（Move/Turn）、自动寻路（AutoNavigator）、手动控制（Manual）、障碍物地图（ObstacleMap）；
     /// - 对 UI 暴露“控制接口 + 快照接口”，UI 不直接接触底层执行器细节；
     /// - 通过一把共享锁 <see cref="_robotLock"/> 保护所有机器人状态的一致性（位置/速度/加速度/转向/指令等）。
+    /// 
+    /// 说明：
+    /// - Tick()：先逻辑层调度指令，再物理层积分更新位置与朝向。
     /// </summary>
     internal sealed class RobotEngine
     {
@@ -21,7 +24,6 @@ namespace GridDemo.Core
         private readonly RobotMove _robotMove;
         private readonly RobotAutoNavigator _robotAutoNavigator;
         private readonly RobotManual _robotManual;
-        private readonly RobotMotionFacade _motionFacade;
         private readonly ObstacleMap _obstacleMap;
 
         private readonly double _cellSizeM;
@@ -81,14 +83,8 @@ namespace GridDemo.Core
                     }
 
                     return !_obstacleMap.IsObstacle(new GridPos(gx, gy));
-                });
-
-            _motionFacade = new RobotMotionFacade(
-                robotLock: _robotLock,
-                move: _robotMove,
-                robotManager: _robotManager,
-                dt: _dt,
-                getForwardAcc: () => _robotAcc);
+                }
+            );
 
             _obstacleMap = new ObstacleMap(gridCount, gridCount);
 
@@ -244,11 +240,17 @@ namespace GridDemo.Core
         public void ManualTurnRightKey(bool down) => _robotManager.InputManualTurnRightKey(down);
 
         /// <summary>
-        /// 仿真步进（供后台线程调用）
+        /// 仿真步进：
+        /// - ① 逻辑层：生成/调度指令（自动/手动）；
+        /// - ② 物理层：根据 Acc/Speed/方向，积分更新位置和转向动画。
         /// </summary>
         public void Tick()
         {
-            _motionFacade.Update();
+            // ① 逻辑：调度指令
+            _robotManager.Tick(_dt, () => _robotAcc);
+
+            // ② 物理：根据指令与加速度、速度等积分
+            _robotMove.Update();
         }
 
         /// <summary>

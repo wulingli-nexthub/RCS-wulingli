@@ -102,11 +102,9 @@
     <Compile Include="RobotModels\Robot.Manual.cs" />
     <Compile Include="RobotRuns\Robot.Manager.cs" />
     <Compile Include="RobotRuns\Robot.Move.cs" />
-    <Compile Include="RobotRuns\Robot.Simulator.cs" />
     <Compile Include="RobotRuns\Robot.Turn.cs" />
     <Compile Include="RobotRuns\RobotCommand.cs" />
-    <Compile Include="RobotRuns\RobotMotionFacade.cs" />
-    <Compile Include="UIRobotSimulation.cs" />
+    <Compile Include="RobotSimulationLoop.cs" />
     <Compile Include="WorldView\CenterGrid\CenterGrid.cs" />
     <Compile Include="WorldView\WorldTransform.cs" />
     <EmbeddedResource Include="Form1.resx">
