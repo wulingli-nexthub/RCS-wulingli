@@ -151,9 +151,6 @@ namespace GridDemo.RobotRuns
                 // 停车
                 Acc = 0.0;
                 _move.StopImmediately_NoLock();
-
-                // 可选：若正在转向，也一并终止，避免“半转旧方向”
-                IsTurning = false;
             }
         }
 
