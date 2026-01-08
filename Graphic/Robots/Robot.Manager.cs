@@ -1,7 +1,8 @@
-﻿using System;
+﻿using GridDemo.RobotRuns;
+using System;
 using System.Collections.Generic;
 
-namespace GridDemo.RobotRuns
+namespace GridDemo.Robots
 {
     public enum EnumMoveDirection
     {

@@ -1,9 +1,8 @@
-﻿using GridDemo.Core;
-using System;
+﻿using System;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace GridDemo
+namespace GridDemo.Robots
 {
     internal sealed class RobotSimulationLoop
     {

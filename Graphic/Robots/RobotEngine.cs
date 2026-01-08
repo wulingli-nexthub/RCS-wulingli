@@ -5,7 +5,7 @@ using GridDemo.RobotRuns;
 using System;
 using System.Collections.Generic;
 
-namespace GridDemo.Core
+namespace GridDemo.Robots
 {
     /// <summary>
     /// 业务引擎（无 UI 依赖）：

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using GridDemo.Robots;
+using System;
 
 namespace GridDemo.RobotRuns
 {

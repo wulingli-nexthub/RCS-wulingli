@@ -1,6 +1,5 @@
-﻿using GridDemo.Core;
-using GridDemo.RobotModels.Pathfinding;
-using GridDemo.RobotRuns;
+﻿using GridDemo.RobotModels.Pathfinding;
+using GridDemo.Robots;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using System;
