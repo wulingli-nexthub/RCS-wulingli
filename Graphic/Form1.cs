@@ -166,10 +166,10 @@ namespace GridDemo
             _engine.EnableAuto();
 
             cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;
-            cmbPathAlgorithm.SelectedIndex = 1; // A*
+            cmbPathAlgorithm.SelectedIndex = 2; // A*
             cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
-            _engine.Algorithm = EnumPathfindingAlgorithm.AStar;
-            _currentAlgorithm = EnumPathfindingAlgorithm.AStar;
+            _engine.Algorithm = EnumPathfindingAlgorithm.Serpentine;
+            _currentAlgorithm = EnumPathfindingAlgorithm.Serpentine;
             ActiveControl = null;
             BeginInvoke(new Action(() => Focus()));
         }
@@ -407,10 +407,12 @@ namespace GridDemo
             if (cmbPathAlgorithm.SelectedIndex == 0)
             {
                 _engine.Algorithm = EnumPathfindingAlgorithm.Dijkstra;
+                _currentAlgorithm = EnumPathfindingAlgorithm.Dijkstra;
             }
             else if (cmbPathAlgorithm.SelectedIndex == 1)
             {
                 _engine.Algorithm = EnumPathfindingAlgorithm.AStar;
+                _currentAlgorithm = EnumPathfindingAlgorithm.AStar;
             }
             else if (cmbPathAlgorithm.SelectedIndex == 2)
             {
@@ -442,6 +444,12 @@ namespace GridDemo
 
             btnObstacle.Text = _isObstacleEditMode ? "设置障碍物：开" : "设置障碍物：关";
 
+            // 通知业务引擎进入/退出障碍物编辑模式
+            if (_engine != null)
+            {
+                _engine.SetObstacleEditMode(_isObstacleEditMode);
+            }
+
             // 避免设置障碍物时误触发平移的 Hand 光标残留
             if (!_isObstacleEditMode)
             {
@@ -450,6 +458,7 @@ namespace GridDemo
 
             skControl.Invalidate();
         }
+
         private void TryToggleObstacleAtMouse(MouseEventArgs e)
         {
             if (_engine == null || _worldTransform == null)

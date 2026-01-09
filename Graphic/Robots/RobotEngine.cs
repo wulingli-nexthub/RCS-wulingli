@@ -39,6 +39,7 @@ namespace GridDemo.Robots
         private double _robotSpeed;
         private double _robotAcc;
 
+        private bool _obstacleEditModeEnabled;
         public RobotEngine(int gridCount, double cellSizeM, double dt,
             double initialMaxSpeed, EnumMoveDirection initialDirection)
         {
@@ -130,6 +131,48 @@ namespace GridDemo.Robots
         public bool AutoEnabled => _robotAutoNavigator.IsEnabled;
 
         /// <summary>
+        /// 障碍物编辑模式开关：
+        /// - 开启：暂停自动导航 + 清空自动指令 + 立即停车；
+        /// - 关闭：恢复自动导航 + 重规划路径 + 刷新自动指令，下一帧开始运动。
+        /// </summary>
+        public void SetObstacleEditMode(bool enabled)
+        {
+            lock (_robotLock)
+            {
+                if (_obstacleEditModeEnabled == enabled)
+                {
+                    return;
+                }
+
+                _obstacleEditModeEnabled = enabled;
+
+                if (enabled)
+                {
+                    // 1) 立即停车：防止本帧/下一帧继续按旧指令积分位移
+                    _robotSpeed = 0.0;
+                    _robotManager.Acc = 0.0;
+                    _robotMove.StopImmediately_NoLock();
+
+                    // 2) 停止自动输出（避免继续产生指令）
+                    if (_robotAutoNavigator.IsEnabled)
+                    {
+                        _robotAutoNavigator.Disable();
+                    }
+
+                    // 3) 清掉队列/当前指令（保险：避免恢复时残留）
+                    _robotManager.ResetAutoCommands();
+                }
+                else
+                {
+                    // 退出编辑：恢复自动 -> 统一重规划一次 -> 刷新自动指令，下一帧即可继续走
+                    _robotAutoNavigator.Enable();
+                    _robotAutoNavigator.RebuildPath();
+                    _robotManager.ResetAutoCommands();
+                }
+            }
+        }
+
+        /// <summary>
         /// 切换到自动模式：
         /// - Manager 置为 Auto（清理队列/停车/同步角度等）；
         /// - AutoNavigator Enable；并清空目标等待 UI 重新选择；
@@ -204,7 +247,15 @@ namespace GridDemo.Robots
         /// </summary>
         public void ToggleObstacle(GridPos p)
         {
-            if (_obstacleMap.Toggle(p) && _robotAutoNavigator.IsEnabled)
+            _obstacleMap.Toggle(p);
+
+            // 设置障碍物模式：只改地图，不重规划；退出模式时再统一重规划一次
+            if (_obstacleEditModeEnabled)
+            {
+                return;
+            }
+
+            if (_robotAutoNavigator.IsEnabled)
             {
                 _robotAutoNavigator.RebuildPath();
             }
@@ -216,6 +267,12 @@ namespace GridDemo.Robots
         public void ClearObstacles()
         {
             _obstacleMap.Clear();
+
+            // 设置障碍物模式：只改地图，不重规划；退出模式时再统一重规划一次
+            if (_obstacleEditModeEnabled)
+            {
+                return;
+            }
 
             if (_robotAutoNavigator.IsEnabled)
             {
@@ -259,6 +316,12 @@ namespace GridDemo.Robots
         /// </summary>
         public void Tick()
         {
+            // 编辑障碍物时：完全停止逻辑推进（保持画面刷新但不走）
+            if (_obstacleEditModeEnabled)
+            {
+                return;
+            }
+
             // ① 逻辑：调度指令
             _robotManager.Tick(_dt, () => _robotAcc);
 
