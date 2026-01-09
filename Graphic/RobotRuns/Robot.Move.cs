@@ -172,44 +172,70 @@ namespace GridDemo.RobotRuns
                 {
                     // 1) 读取当前运动学状态
                     double v = _getRobotSpeed();     // 当前速度（米/秒）
-                    double a = _robotManager.Acc;           // 当前加速度（米/秒^2）
                     double vmax = _robotManager.MaxSpeed;   // 最大速度（米/秒）
                     double x = _getRobotX();         // 当前 x（米）
                     double y = _getRobotY();         // 当前 y（米）
                     EnumMoveDirection dir = _robotManager.Direction;
 
-                    // 2) 欧拉积分更新速度：v(t+dt) = v(t) + a*dt
+                    bool isManualInfiniteMove = _moveDistanceRemainM == double.MaxValue;
+
+                    // 2) 计算本帧加速度：自动模式使用“加速-匀速-减速”，手动无限移动保持原逻辑
+                    double configuredAcc = _robotManager.Acc;
+                    double aMag = Math.Abs(configuredAcc);
+
+                    double a;
+                    if (isManualInfiniteMove || aMag <= 0.000001)
+                    { // 手动无限前进：加速度按配置（允许为 0）即可
+                        a = configuredAcc;
+                    }
+                    else
+                    {
+                        // 自动 MoveDistance：根据剩余距离决定加速/减速
+                        // 刹车距离 d = v^2 / (2a)
+                        double dStop = (v * v) / (2.0 * aMag);
+
+                        if (dStop >= _moveDistanceRemainM)
+                        {
+                            // 需要开始刹车，确保能在剩余距离内停下
+                            a = -aMag;
+                        }
+                        else
+                        {
+                            // 还在加速/匀速阶段
+                            a = aMag;
+                        }
+                    }
+
+                    // 3) 欧拉积分更新速度：v(t+dt) = v(t) + a*dt
                     v += a * _dt;
-                    if (v < 0)
-                    { // 将速度限制在 [0, vmax]：避免负速度导致“倒退”
-                        v = 0;
+                    if (v < 0.0)
+                    {
+                        v = 0.0;
                     }
                     if (v > vmax)
-                    { // 避免速度超出最大值
+                    {
                         v = vmax;
                     }
 
-                    // 3) 计算本帧位移步长，并确保不超过剩余距离
+                    // 4) 计算步长，并确保不超过剩余距离（仅对固定距离移动有限制）
                     double step = v * _dt;
-                    if (step > _moveDistanceRemainM)
+                    if (!isManualInfiniteMove && step > _moveDistanceRemainM)
                     {
                         step = _moveDistanceRemainM;
                     }
 
-                    // 4) 按方向更新坐标：仅允许四向网格移动
+                    // 5) 更新坐标
                     double newX = x;
                     double newY = y;
-                    bool isManualInfiniteMove = _moveDistanceRemainM == double.MaxValue;   // 判断是否为“手动无限移动”模式
 
                     if (isManualInfiniteMove)
-                    { // 当 _moveDistanceRemainM == double.MaxValue
-                      // 表示一种“手动无限移动”的特殊模式，不再是“走固定距离”，而是一直往朝向方向走。
+                    { // 手动模式的无限前进：按朝向角移动
                         double angle = _robotManager.OrientationAngle;
                         newX += Math.Cos(angle) * step;
                         newY += Math.Sin(angle) * step;
                     }
                     else
-                    { // 自动模式，普通 MoveDistance 指令：按固定方向走
+                    { // 自动模式的 MoveDistance：按固定离散方向移动
                         switch (dir)
                         {
                             case EnumMoveDirection.Right:
@@ -227,31 +253,36 @@ namespace GridDemo.RobotRuns
                         }
                     }
 
-                    // 5) 边界夹紧，碰到障碍物
+                    // 6) 边界夹紧 + 障碍物处理
                     ClampToWorld_NoLock(ref newX, ref newY);
 
                     if (IsHitObstacle_NoLock(newX, newY))
-                    { // 命中障碍物：停止（不允许穿过）
+                    {
                         StopImmediately_NoLock();
                         return;
                     }
 
-                    // 6) 扣减剩余距离
-                    _moveDistanceRemainM -= step;
+                    // 7) 扣减剩余距离（固定距离移动）
+                    if (!isManualInfiniteMove)
+                    {
+                        _moveDistanceRemainM -= step;
+                    }
 
-                    // 7) 回写速度与位置
+                    // 8) 回写速度与位置
                     _setRobotSpeed(v);
                     _setRobotX(newX);
                     _setRobotY(newY);
 
-                    // 8) 指令完成判定：用一个很小的阈值避免浮点误差导致“永远差一点”
-                    if (_moveDistanceRemainM <= 0.000001)
+                    // 9) 指令完成判定：距离到 0，或速度已降为 0 且剩余距离很小（避免抖动/卡死）
+                    if (!isManualInfiniteMove)
                     {
-                        // 清理指令并立即停车：保证完成后速度归零，便于上层下一步决策。
-                        _moveDistanceActive = false;
-                        _moveDistanceRemainM = 0.0;
-                        _setRobotSpeed(0.0);
-                        _robotManager.Acc = 0.0;
+                        if (_moveDistanceRemainM <= 0.000001 || (v <= 0.000001 && _moveDistanceRemainM <= 0.01))
+                        {
+                            _moveDistanceActive = false;
+                            _moveDistanceRemainM = 0.0;
+                            _setRobotSpeed(0.0);
+                            _robotManager.Acc = 0.0;
+                        }
                     }
                 }
             }
