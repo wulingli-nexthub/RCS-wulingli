@@ -80,6 +80,17 @@ namespace Graphic.Maps
         }
 
         /// <summary>
+        /// 清空所有障碍物（线程安全）。
+        /// </summary>
+        public void Clear()
+        {
+            lock (_syncRoot)
+            {
+                Array.Clear(_cells, 0, _cells.Length);
+            }
+        }
+
+        /// <summary>
         /// 获取当前障碍物网格的快照（深拷贝）。
         /// </summary>
         /// <remarks>

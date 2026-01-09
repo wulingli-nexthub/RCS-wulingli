@@ -162,9 +162,8 @@ namespace GridDemo.RobotRuns
         {
             lock (_robotLock)
             {
-                // 先更新转向动画（转向期间不移动）
-                // 注意：RobotTurn.Update 内部也 lock，同一把锁会死锁，所以这里不提前调用
-                // 转向 Update 移到锁外执行
+                // 如果当前正在转向，则本帧不执行平移逻辑
+                // 注意：真正的转向更新在锁外调用 _turnController.Update()
                 if (_robotManager.IsTurning)
                 {
                     // 转向期间不走位移
@@ -200,7 +199,7 @@ namespace GridDemo.RobotRuns
                     // 4) 按方向更新坐标：仅允许四向网格移动
                     double newX = x;
                     double newY = y;
-                    bool isManualInfiniteMove = _moveDistanceRemainM == double.MaxValue;
+                    bool isManualInfiniteMove = _moveDistanceRemainM == double.MaxValue;   // 判断是否为“手动无限移动”模式
 
                     if (isManualInfiniteMove)
                     { // 当 _moveDistanceRemainM == double.MaxValue
@@ -210,7 +209,7 @@ namespace GridDemo.RobotRuns
                         newY += Math.Sin(angle) * step;
                     }
                     else
-                    {
+                    { // 自动模式，普通 MoveDistance 指令：按固定方向走
                         switch (dir)
                         {
                             case EnumMoveDirection.Right:
@@ -231,9 +230,8 @@ namespace GridDemo.RobotRuns
                     // 5) 边界夹紧，碰到障碍物
                     ClampToWorld_NoLock(ref newX, ref newY);
 
-                    // 命中障碍物：停止（不允许穿过）
                     if (IsHitObstacle_NoLock(newX, newY))
-                    {
+                    { // 命中障碍物：停止（不允许穿过）
                         StopImmediately_NoLock();
                         return;
                     }
@@ -257,7 +255,7 @@ namespace GridDemo.RobotRuns
                     }
                 }
             }
-
+            // 转向更新（锁外调用以避免死锁）
             _turnController.Update();
         }
 
@@ -272,23 +270,29 @@ namespace GridDemo.RobotRuns
         /// </remarks>
         private bool IsHitObstacle_NoLock(double centerX, double centerY)
         {
-            double r = _robotRadiusM;
+            double r = _robotRadiusM;      // 机器人半径
 
+            // 第一步：直接用传入的可行走函数判断机器人中心点是否在可行走区域上
+            // 若中心点都不可走，则一定视为已经碰撞
             if (!_isWorldWalkable(centerX, centerY))
             {
                 return true;
             }
 
+            // 第二步：枚举机器人圆形包围范围附近的格子，检测碰撞
             double worldW = _getWorldWidthM();
             double worldH = _getWorldHeightM();
             int gridW = (int)Math.Floor(worldW / _cellSizeM);
             int gridH = (int)Math.Floor(worldH / _cellSizeM);
 
+            // 以机器人中心为圆心、半径为 r 的圆，向外再多预留一圈格子，
+            // 计算其在网格坐标系下覆盖到的格子索引范围 [minX, maxX], [minY, maxY]
             int minX = (int)Math.Floor((centerX - r) / _cellSizeM) - 1;
             int maxX = (int)Math.Floor((centerX + r) / _cellSizeM) + 1;
             int minY = (int)Math.Floor((centerY - r) / _cellSizeM) - 1;
             int maxY = (int)Math.Floor((centerY + r) / _cellSizeM) + 1;
 
+            // 第三步：遍历所有候选格子，查找障碍格并做圆-矩形相交检测
             for (int gy = minY; gy <= maxY; gy++)
             {
                 for (int gx = minX; gx <= maxX; gx++)
@@ -308,12 +312,13 @@ namespace GridDemo.RobotRuns
                         continue;
                     }
 
-                    // 圆-矩形相交检测
-                    double rectLeft = gx * _cellSizeM;
+                    // 圆-矩形相交检测，对机器人“圆形包围体”与该障碍格的矩形边界做精确相交检测
+                    double rectLeft = gx * _cellSizeM;          // 障碍格的矩形边界
                     double rectRight = rectLeft + _cellSizeM;
                     double rectTop = gy * _cellSizeM;
                     double rectBottom = rectTop + _cellSizeM;
 
+                    // 找矩形和圆心的最近点：坐标夹紧
                     double closestX = Clamp(centerX, rectLeft, rectRight);
                     double closestY = Clamp(centerY, rectTop, rectBottom);
 
@@ -321,12 +326,12 @@ namespace GridDemo.RobotRuns
                     double dy = centerY - closestY;
 
                     if (dx * dx + dy * dy <= r * r)
-                    {
+                    { // 若最近点与圆心的距离 <= 半径，则碰撞成立
                         return true;
                     }
                 }
             }
-
+            // 遍历完所有相关格子都没撞上障碍，则认为当前位置是安全的
             return false;
         }
 
@@ -335,8 +340,14 @@ namespace GridDemo.RobotRuns
         /// </summary>
         private static double Clamp(double v, double min, double max)
         {
-            if (v < min) return min;
-            if (v > max) return max;
+            if (v < min)
+            {
+                return min;
+            }
+            if (v > max)
+            {
+                return max;
+            }
             return v;
         }
 

@@ -35,7 +35,7 @@ namespace GridDemo
         private Events.MousePan _mousePan;
         private WorldView.CenterGrid.CenterGrid _centerGrid;
         private Events.DestinationPicker _destinationPicker;
-
+        private EnumPathfindingAlgorithm _currentAlgorithm;
         private readonly double _dt = 0.02;  // 仿真步长 20ms
 
         public Form1()
@@ -169,7 +169,7 @@ namespace GridDemo
             cmbPathAlgorithm.SelectedIndex = 1; // A*
             cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
             _engine.Algorithm = EnumPathfindingAlgorithm.AStar;
-
+            _currentAlgorithm = EnumPathfindingAlgorithm.AStar;
             ActiveControl = null;
             BeginInvoke(new Action(() => Focus()));
         }
@@ -257,7 +257,9 @@ namespace GridDemo
                 skControl.Invalidate();
                 return;
             }
-            if (_destinationPicker != null && _destinationPicker.TryPick(e))
+            if (_currentAlgorithm != EnumPathfindingAlgorithm.Serpentine
+                && _destinationPicker != null
+                && _destinationPicker.TryPick(e))
             {
                 skControl.Invalidate();
                 return;
@@ -293,7 +295,13 @@ namespace GridDemo
 
             _drawGrid.Draw(canvas);
             _drawObstacles.Draw(canvas);
-            _drawPath.Draw(canvas);
+
+            // 蛇形模式不画路径
+            if (_currentAlgorithm != EnumPathfindingAlgorithm.Serpentine)
+            {
+                _drawPath.Draw(canvas);
+            }
+
             _drawRobot.Draw(canvas);
 
             RobotStateSnapshot s = default;
@@ -407,6 +415,10 @@ namespace GridDemo
             else if (cmbPathAlgorithm.SelectedIndex == 2)
             {
                 _engine.Algorithm = EnumPathfindingAlgorithm.Serpentine;
+                _currentAlgorithm = EnumPathfindingAlgorithm.Serpentine;
+
+                // 蛇形模式：目标点自动设置为右下角，不需要鼠标右键
+                _engine.AutoNavigator.SetGoal(new GridPos(GridCount - 1, GridCount - 1), rebuildIfEnabled: true);
             }
 
 
@@ -456,6 +468,19 @@ namespace GridDemo
             }
 
             _engine.ToggleObstacle(new GridPos(gx, gy));
+            skControl.Invalidate();
+        }
+
+        private void btnClearObstacle_Click(object sender, EventArgs e)
+        {
+            if (_engine == null)
+            {
+                return;
+            }
+
+            _engine.ClearObstacles();
+
+            // 清空障碍物后，保持“设置障碍物模式”的 UI 不变，只刷新画面即可
             skControl.Invalidate();
         }
     }

@@ -33,6 +33,7 @@
             this.cmbChooseModel = new System.Windows.Forms.ComboBox();
             this.cmbPathAlgorithm = new System.Windows.Forms.ComboBox();
             this.btnObstacle = new System.Windows.Forms.Button();
+            this.btnClearObstacle = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).BeginInit();
             this.SuspendLayout();
@@ -146,11 +147,22 @@
             this.btnObstacle.UseVisualStyleBackColor = true;
             this.btnObstacle.Click += new System.EventHandler(this.btnObstacle_Click);
             // 
+            // btnClearObstacle
+            // 
+            this.btnClearObstacle.Location = new System.Drawing.Point(700, 18);
+            this.btnClearObstacle.Name = "btnClearObstacle";
+            this.btnClearObstacle.Size = new System.Drawing.Size(118, 39);
+            this.btnClearObstacle.TabIndex = 11;
+            this.btnClearObstacle.Text = "清空障碍物";
+            this.btnClearObstacle.UseVisualStyleBackColor = true;
+            this.btnClearObstacle.Click += new System.EventHandler(this.btnClearObstacle_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 18F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1221, 774);
+            this.Controls.Add(this.btnClearObstacle);
             this.Controls.Add(this.btnObstacle);
             this.Controls.Add(this.cmbPathAlgorithm);
             this.Controls.Add(this.cmbChooseModel);
@@ -180,6 +192,7 @@
         private System.Windows.Forms.ComboBox cmbChooseModel;
         private System.Windows.Forms.ComboBox cmbPathAlgorithm;
         private System.Windows.Forms.Button btnObstacle;
+        private System.Windows.Forms.Button btnClearObstacle;
     }
 }
 

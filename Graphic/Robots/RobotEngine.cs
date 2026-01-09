@@ -211,6 +211,19 @@ namespace GridDemo.Robots
         }
 
         /// <summary>
+        /// 清空所有障碍物。
+        /// </summary>
+        public void ClearObstacles()
+        {
+            _obstacleMap.Clear();
+
+            if (_robotAutoNavigator.IsEnabled)
+            {
+                _robotAutoNavigator.RebuildPath();
+            }
+        }
+
+        /// <summary>
         /// 设置前进加速度参数：
         /// - 自动模式 MoveDistance 下发时会读取该值；
         /// - 手动模式 W 按住时每帧 Tick 也会读取该值。

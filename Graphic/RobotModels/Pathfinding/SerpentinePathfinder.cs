@@ -22,17 +22,28 @@ namespace GridDemo.RobotModels.Pathfinding
             var path = new List<GridPos>();
 
             if (width <= 0)
+            {
                 throw new ArgumentOutOfRangeException(nameof(width));
+            }
             if (height <= 0)
+            {
                 throw new ArgumentOutOfRangeException(nameof(height));
+            }
             if (isWalkable == null)
+            {
                 throw new ArgumentNullException(nameof(isWalkable));
+            }
 
             if (!IsInBounds(start, width, height) || !IsInBounds(goal, width, height))
+            {
                 return path;
+            }
+
 
             if (!isWalkable(start) || !isWalkable(goal))
+            {
                 return path;
+            }
 
             if (start.Equals(goal))
             {
@@ -90,13 +101,17 @@ namespace GridDemo.RobotModels.Pathfinding
                     path.Add(cur);
 
                     if (cur.Equals(goal))
+                    {
                         return path;
+                    }
                 }
 
                 // 当前行已经完成：
                 // 如果已经是目标行（刚刚走到 goal.X），则结束
                 if (cur.Y == goal.Y)
+                {
                     break;
+                }
 
                 // 2) 纵向移动一格（向 goal.Y 方向）
                 var verticalNext = new GridPos(cur.X, cur.Y + verticalSign);
@@ -109,7 +124,9 @@ namespace GridDemo.RobotModels.Pathfinding
                 path.Add(cur);
 
                 if (cur.Equals(goal))
+                {
                     break;
+                }
 
                 // 3) 新行反转蛇形方向
                 goRight = !goRight;
