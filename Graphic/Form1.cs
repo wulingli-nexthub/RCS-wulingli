@@ -22,6 +22,7 @@ namespace GridDemo
         private bool _isObstacleEditMode;
 
         // 业务引擎与仿真循环
+        private MultiRobotEngine _multiEngine;
         private RobotEngine _engine;
         private RobotSimulationLoop _simulation;
 
@@ -37,6 +38,9 @@ namespace GridDemo
         private Events.DestinationPicker _destinationPicker;
         private EnumPathfindingAlgorithm _currentAlgorithm;
         private readonly double _dt = 0.02;  // 仿真步长 20ms
+
+        private int _robotCount = 1;
+        private double _collisionStopSeconds = 2.0;
 
         public Form1()
         {
@@ -60,6 +64,9 @@ namespace GridDemo
             numericVinit.KeyDown += Numeric_KeyDown_OnEnter;
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
             cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
+
+            // 新增：机器人数量 NumericUpDown
+            numericRobots.ValueChanged += numericRobots_ValueChanged;
         }
 
         /// <summary>
@@ -73,6 +80,17 @@ namespace GridDemo
         private void Form1_Load(object sender, EventArgs e)
         {
             // 1. 创建业务引擎
+            _robotCount = (int)numericRobots.Value;
+
+            _multiEngine = new MultiRobotEngine(
+                gridCount: GridCount,
+                cellSizeM: CellSizeM,
+                dt: _dt,
+                initialMaxSpeed: (double)numericVinit.Value);
+
+            _multiEngine.CollisionStopSeconds = _collisionStopSeconds;
+            _multiEngine.SetRobotCount(_robotCount);
+
             _engine = new RobotEngine(
                 gridCount: GridCount,
                 cellSizeM: CellSizeM,
@@ -154,7 +172,7 @@ namespace GridDemo
                 cellSizeM: _engine.CellSizeM);
 
             // 4. 创建仿真循环
-            _simulation = new RobotSimulationLoop(_engine, skControl, _dt);
+            _simulation = new RobotSimulationLoop(() => _multiEngine.Tick(), skControl, _dt);
             _simulation.Start();
 
             // 5. 默认模式与算法
@@ -192,7 +210,10 @@ namespace GridDemo
 
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
-            if (_engine == null) return;
+            if (_engine == null)
+            {
+                return;
+            }
 
             switch (e.KeyCode)
             {
@@ -213,7 +234,10 @@ namespace GridDemo
 
         private void Form1_KeyUp(object sender, KeyEventArgs e)
         {
-            if (_engine == null) return;
+            if (_engine == null)
+            {
+                return;
+            }
 
             switch (e.KeyCode)
             {
@@ -491,6 +515,19 @@ namespace GridDemo
 
             // 清空障碍物后，保持“设置障碍物模式”的 UI 不变，只刷新画面即可
             skControl.Invalidate();
+        }
+
+        private void numericRobots_ValueChanged(object sender, EventArgs e)
+        {
+            if (_multiEngine == null)
+            {
+                return;
+            }
+
+            int count = (int)((NumericUpDown)sender).Value;
+            _robotCount = count;
+
+            _multiEngine.SetRobotCount(count);
         }
     }
 }

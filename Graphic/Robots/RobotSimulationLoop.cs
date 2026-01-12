@@ -6,16 +6,16 @@ namespace GridDemo.Robots
 {
     internal sealed class RobotSimulationLoop
     {
-        private readonly RobotEngine _engine;
+        private readonly Action _tick;
         private readonly Control _host;
         private readonly double _dt;
 
         private Thread _thread;
         private bool _running;
 
-        public RobotSimulationLoop(RobotEngine engine, Control host, double dt)
+        public RobotSimulationLoop(Action tick, Control host, double dt)
         {
-            _engine = engine ?? throw new ArgumentNullException(nameof(engine));
+            _tick = tick ?? throw new ArgumentNullException(nameof(tick));
             _host = host ?? throw new ArgumentNullException(nameof(host));
             _dt = dt;
         }
@@ -49,7 +49,7 @@ namespace GridDemo.Robots
             while (_running)
             {
                 // 运动学更新在工作线程执行
-                _engine.Tick();
+                _tick();
 
                 // 通知 UI 线程重绘
                 if (!_host.IsDisposed)

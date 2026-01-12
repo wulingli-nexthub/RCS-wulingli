@@ -34,8 +34,11 @@
             this.cmbPathAlgorithm = new System.Windows.Forms.ComboBox();
             this.btnObstacle = new System.Windows.Forms.Button();
             this.btnClearObstacle = new System.Windows.Forms.Button();
+            this.btnResetRobot = new System.Windows.Forms.Button();
+            this.numericRobots = new System.Windows.Forms.NumericUpDown();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.numericRobots)).BeginInit();
             this.SuspendLayout();
             // 
             // skControl
@@ -157,11 +160,40 @@
             this.btnClearObstacle.UseVisualStyleBackColor = true;
             this.btnClearObstacle.Click += new System.EventHandler(this.btnClearObstacle_Click);
             // 
+            // btnResetRobot
+            // 
+            this.btnResetRobot.Location = new System.Drawing.Point(166, 74);
+            this.btnResetRobot.Name = "btnResetRobot";
+            this.btnResetRobot.Size = new System.Drawing.Size(106, 40);
+            this.btnResetRobot.TabIndex = 12;
+            this.btnResetRobot.Text = "重置机器人";
+            this.btnResetRobot.UseVisualStyleBackColor = true;
+            // 
+            // numericRobots
+            // 
+            this.numericRobots.Location = new System.Drawing.Point(166, 159);
+            this.numericRobots.Minimum = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
+            this.numericRobots.Name = "numericRobots";
+            this.numericRobots.Size = new System.Drawing.Size(56, 28);
+            this.numericRobots.TabIndex = 13;
+            this.numericRobots.Value = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
+            this.numericRobots.ValueChanged += new System.EventHandler(this.numericRobots_ValueChanged);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 18F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1221, 774);
+            this.Controls.Add(this.numericRobots);
+            this.Controls.Add(this.btnResetRobot);
             this.Controls.Add(this.btnClearObstacle);
             this.Controls.Add(this.btnObstacle);
             this.Controls.Add(this.cmbPathAlgorithm);
@@ -176,6 +208,7 @@
             this.Text = " RCS Ver 2.3.3 吴灵丽（三期 28号）";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.numericRobots)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -193,6 +226,8 @@
         private System.Windows.Forms.ComboBox cmbPathAlgorithm;
         private System.Windows.Forms.Button btnObstacle;
         private System.Windows.Forms.Button btnClearObstacle;
+        private System.Windows.Forms.Button btnResetRobot;
+        private System.Windows.Forms.NumericUpDown numericRobots;
     }
 }
 

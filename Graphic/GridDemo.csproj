@@ -80,6 +80,7 @@
     <Compile Include="Draws\Draw.Obstacles.cs" />
     <Compile Include="Draws\Draw.Path.cs" />
     <Compile Include="Draws\Draw.Robot.cs" />
+    <Compile Include="Draws\DrawRobots.cs" />
     <Compile Include="Events\DestinationPicker.cs" />
     <Compile Include="Events\MousePan.cs" />
     <Compile Include="Events\MouseWheel.cs" />
@@ -95,6 +96,7 @@
     <Compile Include="Maps\ObstacleMap.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Robots\MultiRobotEngine.cs" />
     <Compile Include="Robots\RobotEngine.cs" />
     <Compile Include="RobotModels\Pathfinding\GridPathfinder.cs" />
     <Compile Include="RobotModels\Pathfinding\SerpentinePathfinder.cs" />

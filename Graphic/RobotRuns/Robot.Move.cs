@@ -39,6 +39,9 @@ namespace GridDemo.RobotRuns
         private bool _moveDistanceActive;
         private double _moveDistanceRemainM;
 
+        // 新增：机器人-机器人碰撞判定（new center -> 是否撞到其它机器人）
+        private readonly Func<double, double, bool> _isHitOtherRobot;
+
         public RobotMove(
             object robotLock,
             Func<double> getRobotX,
@@ -52,7 +55,8 @@ namespace GridDemo.RobotRuns
             Func<double> getWorldHeightM,
             double cellSizeM,
             double dt,
-            Func<double, double, bool> isWorldWalkable = null
+            Func<double, double, bool> isWorldWalkable = null,
+            Func<double, double, bool> isHitOtherRobot = null
             )
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
@@ -69,6 +73,8 @@ namespace GridDemo.RobotRuns
             _dt = dt;
             // 默认全可走，保持兼容
             _isWorldWalkable = isWorldWalkable ?? ((x, y) => true);
+            _isHitOtherRobot = isHitOtherRobot;
+
             _robotRadiusM = _cellSizeM / 3.0; // 机器人半径
             _turnController = new RobotTurn(_robotLock, _robotManager, this, _dt);
         }
@@ -257,6 +263,13 @@ namespace GridDemo.RobotRuns
                     ClampToWorld_NoLock(ref newX, ref newY);
 
                     if (IsHitObstacle_NoLock(newX, newY))
+                    {
+                        StopImmediately_NoLock();
+                        return;
+                    }
+
+                    // 新增：机器人-机器人碰撞
+                    if (_isHitOtherRobot != null && _isHitOtherRobot(newX, newY))
                     {
                         StopImmediately_NoLock();
                         return;
