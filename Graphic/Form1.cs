@@ -23,7 +23,6 @@ namespace GridDemo
 
         // 业务引擎与仿真循环
         private MultiRobotEngine _multiEngine;
-        private RobotEngine _engine;
         private RobotSimulationLoop _simulation;
 
         // 画图相关（基本保持原有）
@@ -31,7 +30,7 @@ namespace GridDemo
         private Draws.DrawGrid _drawGrid;
         private Draws.DrawObstacles _drawObstacles;
         private Draws.DrawPath _drawPath;
-        private Draws.DrawRobot _drawRobot;
+        private Draws.DrawRobots _drawRobots;
         private Events.MouseWheel _mouseWheel;
         private Events.MousePan _mousePan;
         private WorldView.CenterGrid.CenterGrid _centerGrid;
@@ -41,7 +40,7 @@ namespace GridDemo
 
         private int _robotCount = 1;
         private double _collisionStopSeconds = 2.0;
-
+        private int? _selectedRobotId;
         public Form1()
         {
             InitializeComponent();
@@ -91,15 +90,8 @@ namespace GridDemo
             _multiEngine.CollisionStopSeconds = _collisionStopSeconds;
             _multiEngine.SetRobotCount(_robotCount);
 
-            _engine = new RobotEngine(
-                gridCount: GridCount,
-                cellSizeM: CellSizeM,
-                dt: _dt,
-                initialMaxSpeed: 1.5,
-                initialDirection: EnumMoveDirection.Right);
-
-            _worldWidthM = _engine.WorldWidthM;
-            _worldHeightM = _engine.WorldHeightM;
+            _worldWidthM = _multiEngine.WorldWidthM;
+            _worldHeightM = _multiEngine.WorldHeightM;
 
             // 2. 初始化 WorldTransform 与 Draw 层
             _scale = 50;          // 比如一个默认缩放，可以重用你原来的初始值
@@ -112,23 +104,20 @@ namespace GridDemo
 
             _drawObstacles = new Draws.DrawObstacles(
                 _worldTransform,
-                getObstacleSnapshot: () => _engine.GetObstacleSnapshot(),
-                getCellSizeM: () => _engine.CellSizeM);
+                getObstacleSnapshot: () => _multiEngine.GetObstacleSnapshot(),
+                getCellSizeM: () => _multiEngine.CellSizeM);
 
-            _drawPath = new Draws.DrawPath(
-                _worldTransform,
-                getPathPointsSnapshot: () => _engine.GetPathWorldPointsSnapshot());
+            //_drawPath = new Draws.DrawPath(
+            //    _worldTransform,
+            //    getPathPointsSnapshot: () => _engine.GetPathWorldPointsSnapshot());
 
-            _drawRobot = new Draws.DrawRobot(
+            _drawRobots = new Draws.DrawRobots(
                 _worldTransform,
-                robotLock: new object(), // DrawRobot 内部只在绘制时读位置，不需要真实锁，可传一个 dummy
-                getRobotPosition: () =>
-                {
-                    var s = _engine.GetStateSnapshot();
-                    return (s.X, s.Y);
-                },
+                robotLock: new object(),
+                getRobots: () => _multiEngine.GetRobotSnapshots(),
                 getScale: () => _scale,
-                getOrientationAngle: () => _engine.GetStateSnapshot().OrientationAngle);
+                getSelectedRobotId: () => _selectedRobotId);
+
 
             // 3. 鼠标缩放/平移
             _mouseWheel = new Events.MouseWheel(
@@ -164,12 +153,12 @@ namespace GridDemo
                 updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
             );
 
-            _destinationPicker = new Events.DestinationPicker(
-                transform: _worldTransform,
-                navigator: _engine.AutoNavigator,           // 直接传引擎内部的导航器
-                getWorldWidthM: () => _worldWidthM,
-                getWorldHeightM: () => _worldHeightM,
-                cellSizeM: _engine.CellSizeM);
+            //_destinationPicker = new Events.DestinationPicker(
+            //    transform: _worldTransform,
+            //    navigator: _engine.AutoNavigator,           // 直接传引擎内部的导航器
+            //    getWorldWidthM: () => _worldWidthM,
+            //    getWorldHeightM: () => _worldHeightM,
+            //    cellSizeM: _engine.CellSizeM);
 
             // 4. 创建仿真循环
             _simulation = new RobotSimulationLoop(() => _multiEngine.Tick(), skControl, _dt);
@@ -178,16 +167,16 @@ namespace GridDemo
             // 5. 默认模式与算法
             _centerGrid.Center();
 
-            cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;
-            cmbChooseModel.SelectedIndex = 1;  // Auto
-            cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
-            _engine.EnableAuto();
+            //cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;
+            //cmbChooseModel.SelectedIndex = 1;  // Auto
+            //cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
+            //_engine.EnableAuto();
 
-            cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;
-            cmbPathAlgorithm.SelectedIndex = 2; // A*
-            cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
-            _engine.Algorithm = EnumPathfindingAlgorithm.Serpentine;
-            _currentAlgorithm = EnumPathfindingAlgorithm.Serpentine;
+            //cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;
+            //cmbPathAlgorithm.SelectedIndex = 2; // A*
+            //cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
+            //_engine.Algorithm = EnumPathfindingAlgorithm.Serpentine;
+            //_currentAlgorithm = EnumPathfindingAlgorithm.Serpentine;
             ActiveControl = null;
             BeginInvoke(new Action(() => Focus()));
         }
@@ -210,50 +199,50 @@ namespace GridDemo
 
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
-            if (_engine == null)
-            {
-                return;
-            }
+            //if (_engine == null)
+            //{
+            //    return;
+            //}
 
-            switch (e.KeyCode)
-            {
-                case Keys.W:
-                    _engine.ManualForwardKey(true);
-                    e.Handled = true;
-                    break;
-                case Keys.A:
-                    _engine.ManualTurnLeftKey(true);
-                    e.Handled = true;
-                    break;
-                case Keys.D:
-                    _engine.ManualTurnRightKey(true);
-                    e.Handled = true;
-                    break;
-            }
+            //switch (e.KeyCode)
+            //{
+            //    case Keys.W:
+            //        _engine.ManualForwardKey(true);
+            //        e.Handled = true;
+            //        break;
+            //    case Keys.A:
+            //        _engine.ManualTurnLeftKey(true);
+            //        e.Handled = true;
+            //        break;
+            //    case Keys.D:
+            //        _engine.ManualTurnRightKey(true);
+            //        e.Handled = true;
+            //        break;
+            //}
         }
 
         private void Form1_KeyUp(object sender, KeyEventArgs e)
         {
-            if (_engine == null)
-            {
-                return;
-            }
+            //if (_engine == null)
+            //{
+            //    return;
+            //}
 
-            switch (e.KeyCode)
-            {
-                case Keys.W:
-                    _engine.ManualForwardKey(false);
-                    e.Handled = true;
-                    break;
-                case Keys.A:
-                    _engine.ManualTurnLeftKey(false);
-                    e.Handled = true;
-                    break;
-                case Keys.D:
-                    _engine.ManualTurnRightKey(false);
-                    e.Handled = true;
-                    break;
-            }
+            //switch (e.KeyCode)
+            //{
+            //    case Keys.W:
+            //        _engine.ManualForwardKey(false);
+            //        e.Handled = true;
+            //        break;
+            //    case Keys.A:
+            //        _engine.ManualTurnLeftKey(false);
+            //        e.Handled = true;
+            //        break;
+            //    case Keys.D:
+            //        _engine.ManualTurnRightKey(false);
+            //        e.Handled = true;
+            //        break;
+            //}
         }
 
         /// <summary>
@@ -275,18 +264,35 @@ namespace GridDemo
         /// </summary>
         private void Form1_MouseDown(object sender, MouseEventArgs e)
         {
-            if (_isObstacleEditMode && e.Button == MouseButtons.Left)
+            //if (_isObstacleEditMode && e.Button == MouseButtons.Left)
+            //{
+            //    TryToggleObstacleAtMouse(e);
+            //    skControl.Invalidate();
+            //    return;
+            //}
+            //if (_currentAlgorithm != EnumPathfindingAlgorithm.Serpentine
+            //    && _destinationPicker != null
+            //    && _destinationPicker.TryPick(e))
+            //{
+            //    skControl.Invalidate();
+            //    return;
+            //}
+
+            // 左键点选机器人：优先选中；没点中再进入拖拽
+            if (e.Button == MouseButtons.Left && _multiEngine != null && _worldTransform != null)
             {
-                TryToggleObstacleAtMouse(e);
-                skControl.Invalidate();
-                return;
-            }
-            if (_currentAlgorithm != EnumPathfindingAlgorithm.Serpentine
-                && _destinationPicker != null
-                && _destinationPicker.TryPick(e))
-            {
-                skControl.Invalidate();
-                return;
+                var w = _worldTransform.ScreenToWorld(e.X, e.Y);
+
+                // 选取半径：按一个“视觉像素半径”换算到世界（约等于画圆半径）
+                double pickRadiusM = Math.Max(0.10, (1.0 / Math.Max(1.0, _scale)) * 12.0);
+
+                int id = _multiEngine.TryPickRobot(w.X, w.Y, pickRadiusM);
+                if (id > 0)
+                {
+                    _selectedRobotId = id;
+                    skControl.Invalidate();
+                    return;
+                }
             }
 
             _mousePan.MouseDown(e);
@@ -317,23 +323,11 @@ namespace GridDemo
         {
             SKCanvas canvas = e.Surface.Canvas;
 
-            _drawGrid.Draw(canvas);
+            _drawGrid.Draw(canvas, () => _multiEngine.GetRobotSnapshots());
             _drawObstacles.Draw(canvas);
+            _drawRobots.Draw(canvas);
 
-            // 蛇形模式不画路径
-            if (_currentAlgorithm != EnumPathfindingAlgorithm.Serpentine)
-            {
-                _drawPath.Draw(canvas);
-            }
-
-            _drawRobot.Draw(canvas);
-
-            RobotStateSnapshot s = default;
-            if (_engine != null)
-            {
-                s = _engine.GetStateSnapshot();
-            }
-
+            // 下面文字部分保持不变
             using (var textPaint = new SKPaint
             {
                 Color = SKColors.Black,
@@ -341,10 +335,27 @@ namespace GridDemo
             })
             using (var font = new SKFont { Size = 15 })
             {
-                string infoRobot =
-                    $"Robot: ({s.X:F2}, {s.Y:F2}), v={s.Speed:F2}m/s, a={s.Acc:F2}m/s2";
+                canvas.DrawText(
+                    $"Robots: {_robotCount}, collision stop: {_collisionStopSeconds:F1}s",
+                    10, 25, SKTextAlign.Left, font, textPaint);
 
-                canvas.DrawText(infoRobot, 10, 25, SKTextAlign.Left, font, textPaint);
+                if (_selectedRobotId.HasValue && _multiEngine != null)
+                {
+                    var s = _multiEngine.TryGetRobotSnapshotById(_selectedRobotId.Value);
+                    if (s.HasValue)
+                    {
+                        var r = s.Value;
+                        canvas.DrawText(
+                            $"Selected: #{r.Id}  pos=({r.X:F2},{r.Y:F2})  v={r.Speed:F2}m/s",
+                            10, 50, SKTextAlign.Left, font, textPaint);
+                    }
+                    else
+                    {
+                        canvas.DrawText(
+                            "Selected: (not found)",
+                            10, 50, SKTextAlign.Left, font, textPaint);
+                    }
+                }
             }
         }
 
@@ -354,12 +365,12 @@ namespace GridDemo
         /// </summary>
         private void numericAcc_ValueChanged(object sender, EventArgs e)
         {
-            if (_engine == null)
-            {
-                return;
-            }
+            //if (_engine == null)
+            //{
+            //    return;
+            //}
 
-            _engine.SetForwardAcc((double)((NumericUpDown)sender).Value);
+            //_engine.SetForwardAcc((double)((NumericUpDown)sender).Value);
         }
 
         /// <summary>
@@ -367,12 +378,12 @@ namespace GridDemo
         /// </summary>
         private void numericVmax_ValueChanged(object sender, EventArgs e)
         {
-            if (_engine == null)
-            {
-                return;
-            }
+            //if (_engine == null)
+            //{
+            //    return;
+            //}
 
-            _engine.SetMaxSpeed((double)((NumericUpDown)sender).Value);
+            //_engine.SetMaxSpeed((double)((NumericUpDown)sender).Value);
         }
 
         /// <summary>
@@ -399,22 +410,22 @@ namespace GridDemo
         /// </summary>
         private void cmbChooseModel_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (_engine == null)
-            {
-                return;
-            }
+            //if (_engine == null)
+            //{
+            //    return;
+            //}
 
-            if (cmbChooseModel.SelectedIndex == 1)
-            {
-                _engine.EnableAuto();
-            }
-            else
-            {
-                cmbChooseModel.SelectedIndex = 0;
-                _engine.EnableManual();
-                this.ActiveControl = null;
-                BeginInvoke(new Action(() => Focus()));
-            }
+            //if (cmbChooseModel.SelectedIndex == 1)
+            //{
+            //    _engine.EnableAuto();
+            //}
+            //else
+            //{
+            //    cmbChooseModel.SelectedIndex = 0;
+            //    _engine.EnableManual();
+            //    this.ActiveControl = null;
+            //    BeginInvoke(new Action(() => Focus()));
+            //}
         }
 
         /// <summary>
@@ -422,36 +433,36 @@ namespace GridDemo
         /// </summary>
         private void cmbPathAlgorithm_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (_engine == null)
-            {
-                return;
-            }
+            //if (_engine == null)
+            //{
+            //    return;
+            //}
 
-            // 0: Dijkstra, 1: A*, 2: Serpentine
-            if (cmbPathAlgorithm.SelectedIndex == 0)
-            {
-                _engine.Algorithm = EnumPathfindingAlgorithm.Dijkstra;
-                _currentAlgorithm = EnumPathfindingAlgorithm.Dijkstra;
-            }
-            else if (cmbPathAlgorithm.SelectedIndex == 1)
-            {
-                _engine.Algorithm = EnumPathfindingAlgorithm.AStar;
-                _currentAlgorithm = EnumPathfindingAlgorithm.AStar;
-            }
-            else if (cmbPathAlgorithm.SelectedIndex == 2)
-            {
-                _engine.Algorithm = EnumPathfindingAlgorithm.Serpentine;
-                _currentAlgorithm = EnumPathfindingAlgorithm.Serpentine;
+            //// 0: Dijkstra, 1: A*, 2: Serpentine
+            //if (cmbPathAlgorithm.SelectedIndex == 0)
+            //{
+            //    _engine.Algorithm = EnumPathfindingAlgorithm.Dijkstra;
+            //    _currentAlgorithm = EnumPathfindingAlgorithm.Dijkstra;
+            //}
+            //else if (cmbPathAlgorithm.SelectedIndex == 1)
+            //{
+            //    _engine.Algorithm = EnumPathfindingAlgorithm.AStar;
+            //    _currentAlgorithm = EnumPathfindingAlgorithm.AStar;
+            //}
+            //else if (cmbPathAlgorithm.SelectedIndex == 2)
+            //{
+            //    _engine.Algorithm = EnumPathfindingAlgorithm.Serpentine;
+            //    _currentAlgorithm = EnumPathfindingAlgorithm.Serpentine;
 
-                // 蛇形模式：目标点自动设置为右下角，不需要鼠标右键
-                _engine.AutoNavigator.SetGoal(new GridPos(GridCount - 1, GridCount - 1), rebuildIfEnabled: true);
-            }
+            //    // 蛇形模式：目标点自动设置为右下角，不需要鼠标右键
+            //    _engine.AutoNavigator.SetGoal(new GridPos(GridCount - 1, GridCount - 1), rebuildIfEnabled: true);
+            //}
 
 
-            if (_engine.AutoEnabled)
-            {
-                _engine.RebuildPath();
-            }
+            //if (_engine.AutoEnabled)
+            //{
+            //    _engine.RebuildPath();
+            //}
         }
 
         /// <summary>
@@ -469,52 +480,52 @@ namespace GridDemo
             btnObstacle.Text = _isObstacleEditMode ? "设置障碍物：开" : "设置障碍物：关";
 
             // 通知业务引擎进入/退出障碍物编辑模式
-            if (_engine != null)
-            {
-                _engine.SetObstacleEditMode(_isObstacleEditMode);
-            }
+            //if (_engine != null)
+            //{
+            //    _engine.SetObstacleEditMode(_isObstacleEditMode);
+            //}
 
-            // 避免设置障碍物时误触发平移的 Hand 光标残留
-            if (!_isObstacleEditMode)
-            {
-                this.Cursor = Cursors.Default;
-            }
+            //// 避免设置障碍物时误触发平移的 Hand 光标残留
+            //if (!_isObstacleEditMode)
+            //{
+            //    this.Cursor = Cursors.Default;
+            //}
 
-            skControl.Invalidate();
+            //skControl.Invalidate();
         }
 
         private void TryToggleObstacleAtMouse(MouseEventArgs e)
         {
-            if (_engine == null || _worldTransform == null)
-            {
-                return;
-            }
+            //if (_engine == null || _worldTransform == null)
+            //{
+            //    return;
+            //}
 
-            var world = _worldTransform.ScreenToWorld(e.X, e.Y);
+            //var world = _worldTransform.ScreenToWorld(e.X, e.Y);
 
-            int gx = (int)Math.Floor(world.X / _engine.CellSizeM);
-            int gy = (int)Math.Floor(world.Y / _engine.CellSizeM);
+            //int gx = (int)Math.Floor(world.X / _engine.CellSizeM);
+            //int gy = (int)Math.Floor(world.Y / _engine.CellSizeM);
 
-            if (gx < 0 || gy < 0 || gx >= _engine.GridCount || gy >= _engine.GridCount)
-            {
-                return;
-            }
+            //if (gx < 0 || gy < 0 || gx >= _engine.GridCount || gy >= _engine.GridCount)
+            //{
+            //    return;
+            //}
 
-            _engine.ToggleObstacle(new GridPos(gx, gy));
-            skControl.Invalidate();
+            //_engine.ToggleObstacle(new GridPos(gx, gy));
+            //skControl.Invalidate();
         }
 
         private void btnClearObstacle_Click(object sender, EventArgs e)
         {
-            if (_engine == null)
-            {
-                return;
-            }
+            //if (_engine == null)
+            //{
+            //    return;
+            //}
 
-            _engine.ClearObstacles();
+            //_engine.ClearObstacles();
 
-            // 清空障碍物后，保持“设置障碍物模式”的 UI 不变，只刷新画面即可
-            skControl.Invalidate();
+            //// 清空障碍物后，保持“设置障碍物模式”的 UI 不变，只刷新画面即可
+            //skControl.Invalidate();
         }
 
         private void numericRobots_ValueChanged(object sender, EventArgs e)

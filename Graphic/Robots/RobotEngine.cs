@@ -338,11 +338,14 @@ namespace GridDemo.Robots
             lock (_robotLock)
             {
                 return new RobotStateSnapshot(
+                    Id: 0,
                     X: _robotX,
                     Y: _robotY,
                     Speed: _robotSpeed,
                     Acc: _robotAcc,
-                    OrientationAngle: _robotManager.OrientationAngle);
+                    OrientationAngle: _robotManager.OrientationAngle,
+                    future3: new List<(double X, double Y)>(0),
+                    history2: new List<(double X, double Y)>(0));
             }
         }
 
@@ -354,22 +357,41 @@ namespace GridDemo.Robots
     /// </summary>
     internal readonly struct RobotStateSnapshot
     {
-        /// <summary>
-        /// 构造快照：一次性拷贝当前帧需要展示的状态。
-        /// </summary>
-        public RobotStateSnapshot(double X, double Y, double Speed, double Acc, double OrientationAngle)
+        public RobotStateSnapshot(
+            int Id,
+            double X,
+            double Y,
+            double Speed,
+            double Acc,
+            double OrientationAngle,
+            IReadOnlyList<(double X, double Y)> future3,
+            IReadOnlyList<(double X, double Y)> history2)
         {
+            this.Id = Id;
             this.X = X;
             this.Y = Y;
             this.Speed = Speed;
             this.Acc = Acc;
             this.OrientationAngle = OrientationAngle;
+            Future3 = future3;
+            History2 = history2;
         }
 
+        public int Id { get; }
         public double X { get; }
         public double Y { get; }
         public double Speed { get; }
         public double Acc { get; }
         public double OrientationAngle { get; }
+
+        /// <summary>
+        /// 将要运动的前三格（格中心世界坐标）。
+        /// </summary>
+        public IReadOnlyList<(double X, double Y)> Future3 { get; }
+
+        /// <summary>
+        /// 已经走过的后两格（格中心世界坐标）。
+        /// </summary>
+        public IReadOnlyList<(double X, double Y)> History2 { get; }
     }
 }
