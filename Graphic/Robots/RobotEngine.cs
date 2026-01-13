@@ -7,13 +7,16 @@ using System.Collections.Generic;
 
 namespace GridDemo.Robots
 {
+    /// <summary>
+    /// 流程状态枚举
+    /// </summary>
     internal enum EnumRobotProcessState
     {
-        Idle,
-        AutoNavigating,
-        ManualControl,
-        ObstacleEditing,
-        Error
+        Idle,                  // 待命状态
+        AutoNavigating,       // 自动导航中，拉取指令进入指令队列
+        ManualControl,        // 手动控制中，响应按键输入
+        ObstacleEditing,      // 障碍物编辑中，进入该状态立即停车
+        Error                  // 错误状态（停机）
     }
 
     /// <summary>
@@ -144,6 +147,10 @@ namespace GridDemo.Robots
 
         public bool AutoEnabled => _robotAutoNavigator.IsEnabled;
 
+        /// <summary>
+        /// 改变流程状态：
+        /// </summary>
+        /// <param name="newState"></param>
         private void ChangeProcessState(EnumRobotProcessState newState)
         {
             lock (_robotLock)
