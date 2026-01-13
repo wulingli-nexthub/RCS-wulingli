@@ -7,6 +7,15 @@ using System.Collections.Generic;
 
 namespace GridDemo.Robots
 {
+    internal enum EnumRobotProcessState
+    {
+        Idle,
+        AutoNavigating,
+        ManualControl,
+        ObstacleEditing,
+        Error
+    }
+
     /// <summary>
     /// 业务引擎（无 UI 依赖）：
     /// - 统一封装机器人运动学（Move/Turn）、自动寻路（AutoNavigator）、手动控制（Manual）、障碍物地图（ObstacleMap）；
@@ -18,6 +27,7 @@ namespace GridDemo.Robots
     /// </summary>
     internal sealed class RobotEngine
     {
+        private EnumRobotProcessState _processState = EnumRobotProcessState.Idle;
         private readonly object _robotLock = new object();
 
         private readonly RobotManager _robotManager;
@@ -39,7 +49,6 @@ namespace GridDemo.Robots
         private double _robotSpeed;
         private double _robotAcc;
 
-        private bool _obstacleEditModeEnabled;
         public RobotEngine(int gridCount, double cellSizeM, double dt,
             double initialMaxSpeed, EnumMoveDirection initialDirection)
         {
@@ -112,6 +121,11 @@ namespace GridDemo.Robots
                 turn: _robotMove.TurnController,
                 autoCommandProvider: () => _robotAutoNavigator.TryBuildNextCommand(),
                 getForwardAcc: () => _robotAcc);
+
+            // 默认进入自动导航流程（也可以先 Idle，等 UI 触发）
+            _processState = EnumRobotProcessState.AutoNavigating;
+            _robotManager.SetMode(EnumRobotControlMode.Auto);
+            _robotAutoNavigator.Enable();
         }
 
         #region 公共属性/方法（供 UI 调用）
@@ -130,6 +144,88 @@ namespace GridDemo.Robots
 
         public bool AutoEnabled => _robotAutoNavigator.IsEnabled;
 
+        private void ChangeProcessState(EnumRobotProcessState newState)
+        {
+            lock (_robotLock)
+            {
+                if (_processState == newState)
+                {
+                    return;
+                }
+
+                // 离开旧状态时的清理
+                switch (_processState)
+                {
+                    case EnumRobotProcessState.AutoNavigating:
+                        _robotAutoNavigator.Disable();
+                        _robotManager.ResetAutoCommands();
+                        _robotMove.StopImmediately_NoLock();
+                        break;
+
+                    case EnumRobotProcessState.ManualControl:
+                        _robotManual.Disable();
+                        _robotMove.StopImmediately_NoLock();
+                        break;
+
+                    case EnumRobotProcessState.ObstacleEditing:
+                        // ObstacleEditing 离开时，不需要额外清理
+                        break;
+
+                    case EnumRobotProcessState.Error:
+                        // Error 离开由外部调用 Reset 之类来处理
+                        break;
+
+                    case EnumRobotProcessState.Idle:
+                        break;
+                }
+
+                _processState = newState;
+
+                // 进入新状态时的初始化
+                switch (newState)
+                {
+                    case EnumRobotProcessState.AutoNavigating:
+                        _robotManager.SetMode(EnumRobotControlMode.Auto);
+                        _robotAutoNavigator.Enable();
+                        _robotAutoNavigator.RebuildPath();
+                        _robotManager.ResetAutoCommands();
+                        _robotManager.AlignOrientationToDirectionWithTurn();
+                        break;
+
+                    case EnumRobotProcessState.ManualControl:
+                        _robotManager.SetMode(EnumRobotControlMode.Manual);
+                        _robotManual.Enable();
+                        break;
+
+                    case EnumRobotProcessState.ObstacleEditing:
+                        // 进入障碍编辑：立即停车 + 关闭自动导航
+                        _robotSpeed = 0.0;
+                        _robotManager.Acc = 0.0;
+                        _robotMove.StopImmediately_NoLock();
+
+                        if (_robotAutoNavigator.IsEnabled)
+                        {
+                            _robotAutoNavigator.Disable();
+                        }
+                        _robotManager.ResetAutoCommands();
+                        break;
+
+                    case EnumRobotProcessState.Idle:
+                        _robotManager.SetMode(EnumRobotControlMode.Auto);
+                        _robotAutoNavigator.Disable();
+                        _robotMove.StopImmediately_NoLock();
+                        break;
+
+                    case EnumRobotProcessState.Error:
+                        _robotMove.StopImmediately_NoLock();
+                        _robotAutoNavigator.Disable();
+                        _robotManual.Disable();
+                        _robotManager.ResetAutoCommands();
+                        break;
+                }
+            }
+        }
+
         /// <summary>
         /// 障碍物编辑模式开关：
         /// - 开启：暂停自动导航 + 清空自动指令 + 立即停车；
@@ -139,33 +235,14 @@ namespace GridDemo.Robots
         {
             lock (_robotLock)
             {
-                if (_obstacleEditModeEnabled == enabled)
-                {
-                    return;
-                }
-
-                _obstacleEditModeEnabled = enabled;
-
                 if (enabled)
                 {
-                    // 1) 立即停车：防止本帧/下一帧继续按旧指令积分位移
-                    _robotSpeed = 0.0;
-                    _robotManager.Acc = 0.0;
-                    _robotMove.StopImmediately_NoLock();
-
-                    // 2) 停止自动输出（避免继续产生指令）
-                    if (_robotAutoNavigator.IsEnabled)
-                    {
-                        _robotAutoNavigator.Disable();
-                    }
-
-                    // 3) 清掉队列/当前指令（保险：避免恢复时残留）
-                    _robotManager.ResetAutoCommands();
+                    ChangeProcessState(EnumRobotProcessState.ObstacleEditing);
                 }
                 else
                 {
-                    // 退出编辑：恢复自动 -> 统一重规划一次 -> 刷新自动指令，下一帧即可继续走
-                    _robotAutoNavigator.Enable();
+                    // 退出编辑：恢复自动导航 + 重规划路径
+                    ChangeProcessState(EnumRobotProcessState.AutoNavigating);
                     _robotAutoNavigator.RebuildPath();
                     _robotManager.ResetAutoCommands();
                 }
@@ -183,8 +260,7 @@ namespace GridDemo.Robots
         {
             lock (_robotLock)
             {
-                _robotManager.SetMode(EnumRobotControlMode.Auto);
-                _robotAutoNavigator.Enable();
+                ChangeProcessState(EnumRobotProcessState.AutoNavigating);
 
                 // 切换到自动后清空目标：
                 // - 避免沿用旧目标导致“模式切换后机器人突然跑走”
@@ -193,7 +269,6 @@ namespace GridDemo.Robots
 
                 // 关键：清空队列/当前指令，让下一帧从 provider 拉取矫正队列里的指令
                 _robotManager.ResetAutoCommands();
-                _robotManual.Disable();
 
                 // 切到自动后，让箭头通过转向动画对齐到最近的离散方向
                 _robotManager.AlignOrientationToDirectionWithTurn();
@@ -210,9 +285,7 @@ namespace GridDemo.Robots
         {
             lock (_robotLock)
             {
-                _robotManager.SetMode(EnumRobotControlMode.Manual);
-                _robotAutoNavigator.Disable();
-                _robotManual.Enable();
+                ChangeProcessState(EnumRobotProcessState.ManualControl);
             }
         }
 
@@ -250,7 +323,7 @@ namespace GridDemo.Robots
             _obstacleMap.Toggle(p);
 
             // 设置障碍物模式：只改地图，不重规划；退出模式时再统一重规划一次
-            if (_obstacleEditModeEnabled)
+            if (_processState == EnumRobotProcessState.ObstacleEditing)
             {
                 return;
             }
@@ -269,7 +342,7 @@ namespace GridDemo.Robots
             _obstacleMap.Clear();
 
             // 设置障碍物模式：只改地图，不重规划；退出模式时再统一重规划一次
-            if (_obstacleEditModeEnabled)
+            if (_processState == EnumRobotProcessState.ObstacleEditing)
             {
                 return;
             }
@@ -316,17 +389,30 @@ namespace GridDemo.Robots
         /// </summary>
         public void Tick()
         {
-            // 编辑障碍物时：完全停止逻辑推进（保持画面刷新但不走）
-            if (_obstacleEditModeEnabled)
+            // 根据流程状态做时间片调度
+            switch (_processState)
             {
-                return;
+                case EnumRobotProcessState.ObstacleEditing:
+                    // 编辑模式下：不推进逻辑/物理，只靠 UI 重绘
+                    return;
+
+                case EnumRobotProcessState.Idle:
+                    // 空闲状态：也不推进逻辑/物理
+                    return;
+
+                case EnumRobotProcessState.Error:
+                    // 错误状态：停机不动
+                    return;
+
+                case EnumRobotProcessState.AutoNavigating:
+                case EnumRobotProcessState.ManualControl:
+                    // ① 逻辑：调度指令（自动/手动都通过 RobotManager 管）
+                    _robotManager.Tick(_dt, () => _robotAcc);
+
+                    // ② 物理：根据指令与加速度、速度等积分
+                    _robotMove.Update();
+                    break;
             }
-
-            // ① 逻辑：调度指令
-            _robotManager.Tick(_dt, () => _robotAcc);
-
-            // ② 物理：根据指令与加速度、速度等积分
-            _robotMove.Update();
         }
 
         /// <summary>
