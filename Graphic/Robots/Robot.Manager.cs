@@ -81,7 +81,7 @@ namespace GridDemo.Robots
 
         /// <summary>
         /// 绑定运动执行器（在 Form 初始化阶段调用一次）。
-        /// 说明：Robot 只负责调度；Move/Turn 才是“实际执行器”。
+        /// 说明：RobotManager 只负责调度；Move/Turn 才是“实际执行器”。
         /// </summary>
         public void BindRuntime(
             object robotLock,
@@ -192,14 +192,24 @@ namespace GridDemo.Robots
             double targetAngle = DirectionToAngle(targetDir);
 
             currentAngle = currentAngle % (2 * Math.PI);
-            if (currentAngle < 0) currentAngle += 2 * Math.PI;
-
+            if (currentAngle < 0)
+            {
+                currentAngle += 2 * Math.PI;
+            }
             targetAngle = targetAngle % (2 * Math.PI);
-            if (targetAngle < 0) targetAngle += 2 * Math.PI;
-
+            if (targetAngle < 0)
+            {
+                targetAngle += 2 * Math.PI;
+            }
             double delta = targetAngle - currentAngle;
-            if (delta > Math.PI) delta -= 2 * Math.PI;
-            else if (delta < -Math.PI) delta += 2 * Math.PI;
+            if (delta > Math.PI)
+            {
+                delta -= 2 * Math.PI;
+            }
+            else if (delta < -Math.PI)
+            {
+                delta += 2 * Math.PI;
+            }
 
             return delta;
         }
@@ -322,8 +332,14 @@ namespace GridDemo.Robots
         /// </summary>
         public void Tick(double dt, Func<double> getForwardAcc)
         {
-            if (dt <= 0) throw new ArgumentOutOfRangeException(nameof(dt));
-            if (getForwardAcc == null) throw new ArgumentNullException(nameof(getForwardAcc));
+            if (dt <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(dt));
+            }
+            if (getForwardAcc == null)
+            {
+                throw new ArgumentNullException(nameof(getForwardAcc));
+            }
 
             lock (_robotLock)
             {

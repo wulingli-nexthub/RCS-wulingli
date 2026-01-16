@@ -52,8 +52,8 @@ namespace GridDemo.Draws
                 Style = SKPaintStyle.Stroke
             })
             {
-                for (int i = 0; i <= GridCount; i++)                    // 绘制竖线
-                {
+                for (int i = 0; i <= GridCount; i++)
+                { // 绘制竖线
                     double xWorld = i * CellSizeM;
                     var p1 = _transform.WorldToScreen(xWorld, 0);
                     var p2 = _transform.WorldToScreen(xWorld, _worldHeightM);
@@ -62,8 +62,8 @@ namespace GridDemo.Draws
                     canvas.DrawLine(p1.X, p1.Y, p2.X, p2.Y, paint);
                 }
 
-                for (int j = 0; j <= GridCount; j++)                      // 绘制横线
-                {
+                for (int j = 0; j <= GridCount; j++)
+                { // 绘制横线
                     double yWorld = j * CellSizeM;
                     var p1 = _transform.WorldToScreen(0, yWorld);
                     var p2 = _transform.WorldToScreen(_worldWidthM, yWorld);

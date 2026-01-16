@@ -190,6 +190,12 @@ namespace GridDemo
             _centerGrid.Center();
         }
 
+        /// <summary>
+        /// 键盘输入控制手动模式下机器人移动：W 前进，A 左转，D 右转。
+        ///  - 注意：只修改按键状态，实际加速度/转向在仿真循环中应用。
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
             if (_engine == null) return;
@@ -246,7 +252,7 @@ namespace GridDemo
 
         /// <summary>
         /// 鼠标按下：
-        /// - 若在自动模式下用于拾取目的地（DestinationPicker），则优先处理并触发重绘；
+        /// - 若在自动模式下且不是蛇形（因为蛇形模式固定目标点是右下角）用于拾取目的地（DestinationPicker），则优先处理并触发重绘；
         /// - 否则进入拖拽平移模式（MousePan）。
         /// </summary>
         private void Form1_MouseDown(object sender, MouseEventArgs e)

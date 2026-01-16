@@ -33,7 +33,11 @@ namespace GridDemo.RobotRuns
 
         public static RobotCommand MoveDistance(double distanceM)
         {
-            if (distanceM < 0) throw new ArgumentOutOfRangeException(nameof(distanceM));
+            if (distanceM < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(distanceM));
+            }
+
             return new RobotCommand(EnumRobotCommandType.MoveDistance, distanceM, null);
         }
 
