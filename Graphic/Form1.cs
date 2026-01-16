@@ -3,6 +3,7 @@ using GridDemo.RobotRuns;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using System;
+using System.Diagnostics;
 using System.Windows.Forms;
 
 namespace GridDemo
@@ -360,6 +361,91 @@ namespace GridDemo
         private void btnReset_Click(object sender, EventArgs e)
         {
             _centerGrid.Center();
+
+            // 临时：压测（需要时再移除）
+            RunPathfindingPressureTest();
         }
+<<<<<<< Updated upstream
+=======
+
+        private void btnObstacle_Click(object sender, EventArgs e)
+        {
+            _isObstacleEditMode = !_isObstacleEditMode;
+
+            btnObstacle.Text = _isObstacleEditMode ? "设置障碍物：开" : "设置障碍物：关";
+
+            // 通知业务引擎进入/退出障碍物编辑模式
+            if (_engine != null)
+            {
+                _engine.SetObstacleEditMode(_isObstacleEditMode);
+            }
+
+            // 避免设置障碍物时误触发平移的 Hand 光标残留
+            if (!_isObstacleEditMode)
+            {
+                this.Cursor = Cursors.Default;
+            }
+
+            skControl.Invalidate();
+        }
+
+        private void TryToggleObstacleAtMouse(MouseEventArgs e)
+        {
+            if (_engine == null || _worldTransform == null)
+            {
+                return;
+            }
+
+            var world = _worldTransform.ScreenToWorld(e.X, e.Y);
+
+            int gx = (int)Math.Floor(world.X / _engine.CellSizeM);
+            int gy = (int)Math.Floor(world.Y / _engine.CellSizeM);
+
+            if (gx < 0 || gy < 0 || gx >= _engine.GridCount || gy >= _engine.GridCount)
+            {
+                return;
+            }
+
+            _engine.ToggleObstacle(new GridPos(gx, gy));
+            skControl.Invalidate();
+        }
+
+        private void btnClearObstacle_Click(object sender, EventArgs e)
+        {
+            if (_engine == null)
+            {
+                return;
+            }
+
+            _engine.ClearObstacles();
+
+            // 清空障碍物后，保持“设置障碍物模式”的 UI 不变，只刷新画面即可
+            skControl.Invalidate();
+        }
+
+        private void RunPathfindingPressureTest()
+        {
+            // 对齐你项目：GridCount=30
+            int width = _engine != null ? _engine.GridCount : 30;
+            int height = width;
+
+            // 这里用 A* 或 Dijkstra（蛇形不走 FindPath）
+            var scenario = new PathfindingBenchmarkScenario(
+                width: width,
+                height: height,
+                seed: 12345,
+                obstacleRate: 0.20,                 // 障碍率：建议 0.1~0.3
+                algorithm: EnumPathfindingAlgorithm.AStar);
+
+            var result = PathfindingBenchmark.Run(
+                duration: TimeSpan.FromSeconds(3),
+                warmupIterations: 200,
+                runOnce: scenario.RunOnce);
+
+            var text = result.ToString();
+            Debug.WriteLine("[PathfindingBenchmark] " + text);
+            MessageBox.Show(this, text, "寻路压测");
+        }
+>>>>>>> Stashed changes
     }
 }

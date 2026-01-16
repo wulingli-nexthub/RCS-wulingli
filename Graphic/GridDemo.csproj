@@ -94,6 +94,12 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+<<<<<<< Updated upstream
+=======
+    <Compile Include="RobotModels\Pathfinding\PathfindingBenchmarkScenario.cs" />
+    <Compile Include="RobotModels\Pathfinding\PathFindingBenchmark.cs" />
+    <Compile Include="Robots\RobotEngine.cs" />
+>>>>>>> Stashed changes
     <Compile Include="RobotModels\Pathfinding\GridPathfinder.cs" />
     <Compile Include="RobotModels\Robot.AutoNavigator.cs" />
     <Compile Include="RobotModels\Robot.Manual.cs" />
