@@ -3,12 +3,19 @@ using GridDemo.Robots;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using System;
+using System.Diagnostics;
+using System.IO;
+using System.Text;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace GridDemo
 {
     public partial class Form1 : Form
     {
+        private static readonly object _logLock = new object();
+        private static string _logFilePath;
+
         private const int GridCount = 30;               // 网格数30
         private const double CellSizeM = 0.55;          // 一格代表距离0.55米
 
@@ -42,6 +49,10 @@ namespace GridDemo
         {
             InitializeComponent();
 
+            InitLogging();
+            HookUnhandledExceptions();
+            Log("Form1.ctor: init, dt=" + _dt);
+
             this.Load += Form1_Load;
             this.FormClosing += Form1_FormClosing;
             this.Resize += Form1_Resize;
@@ -72,6 +83,8 @@ namespace GridDemo
         /// </summary>
         private void Form1_Load(object sender, EventArgs e)
         {
+            Log("Form1_Load: begin");
+
             // 1. 创建业务引擎
             _engine = new RobotEngine(
                 gridCount: GridCount,
@@ -83,10 +96,16 @@ namespace GridDemo
             _worldWidthM = _engine.WorldWidthM;
             _worldHeightM = _engine.WorldHeightM;
 
+            Log("Engine created. GridCount=" + _engine.GridCount
+                + ", CellSizeM=" + _engine.CellSizeM
+                + ", World=(" + _worldWidthM.ToString("F2") + "m," + _worldHeightM.ToString("F2") + "m)");
+
             // 2. 初始化 WorldTransform 与 Draw 层
             _scale = 50;          // 比如一个默认缩放，可以重用你原来的初始值
             _offsetX = 0;
             _offsetY = 0;
+
+            Log("Init view: scale=" + _scale.ToString("F2") + ", offset=(" + _offsetX.ToString("F2") + "," + _offsetY.ToString("F2") + ")");
 
             _worldTransform = new WorldView.WorldTransform(_scale, (float)_offsetX, (float)_offsetY);
 
@@ -156,22 +175,30 @@ namespace GridDemo
             // 4. 创建仿真循环
             _simulation = new RobotSimulationLoop(_engine, skControl, _dt);
             _simulation.Start();
+            Log("Simulation started. dt=" + _dt);
 
             // 5. 默认模式与算法
             _centerGrid.Center();
+            Log("CenterGrid.Center applied.");
 
             cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;
             cmbChooseModel.SelectedIndex = 1;  // Auto
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
             _engine.EnableAuto();
+            Log("Default control mode: Auto");
 
             cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;
             cmbPathAlgorithm.SelectedIndex = 2; // A*
             cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
             _engine.Algorithm = EnumPathfindingAlgorithm.Serpentine;
             _currentAlgorithm = EnumPathfindingAlgorithm.Serpentine;
+
+            Log("Default algorithm: " + _currentAlgorithm);
+
             ActiveControl = null;
             BeginInvoke(new Action(() => Focus()));
+
+            Log("Form1_Load: end");
         }
 
         /// <summary>
@@ -179,7 +206,9 @@ namespace GridDemo
         /// </summary>
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
+            Log("Form1_FormClosing: begin");
             _simulation?.Stop();
+            Log("Form1_FormClosing: simulation stop requested");
         }
 
         /// <summary>
@@ -187,6 +216,7 @@ namespace GridDemo
         /// </summary>
         private void Form1_Resize(object sender, EventArgs e)
         {
+            Log("Form1_Resize: client=(" + ClientSize.Width + "," + ClientSize.Height + "), scale=" + _scale.ToString("F2"));
             _centerGrid.Center();
         }
 
@@ -243,9 +273,20 @@ namespace GridDemo
         /// </summary>
         private void Form1_MouseWheel(object sender, MouseEventArgs e)
         {
+            if (_worldTransform != null)
+            {
+                var before = _worldTransform.ScreenToWorld(e.X, e.Y);
+                Log("MouseWheel: delta=" + e.Delta
+                    + ", mouse=(" + e.X + "," + e.Y + ")"
+                    + ", worldBefore=(" + before.X.ToString("F2") + "," + before.Y.ToString("F2") + ")"
+                    + ", scaleBefore=" + _scale.ToString("F2"));
+            }
+
             _mouseWheel.Wheel(
                 e,
                 screen => _worldTransform.ScreenToWorld(screen.X, screen.Y));
+
+            Log("MouseWheel: scaleAfter=" + _scale.ToString("F2") + ", offset=(" + _offsetX.ToString("F2") + "," + _offsetY.ToString("F2") + ")");
 
             skControl.Invalidate();
         }
@@ -257,6 +298,9 @@ namespace GridDemo
         /// </summary>
         private void Form1_MouseDown(object sender, MouseEventArgs e)
         {
+            // 仅记录关键点击，不记录 MouseMove
+            Log("MouseDown: button=" + e.Button + ", pos=(" + e.X + "," + e.Y + "), obstacleEdit=" + _isObstacleEditMode);
+
             if (_isObstacleEditMode && e.Button == MouseButtons.Left)
             {
                 TryToggleObstacleAtMouse(e);
@@ -267,6 +311,7 @@ namespace GridDemo
                 && _destinationPicker != null
                 && _destinationPicker.TryPick(e))
             {
+                Log("DestinationPicker: picked at (" + e.X + "," + e.Y + ")");
                 skControl.Invalidate();
                 return;
             }
@@ -288,6 +333,7 @@ namespace GridDemo
         /// </summary>
         private void Form1_MouseUp(object sender, MouseEventArgs e)
         {
+            Log("MouseUp: button=" + e.Button + ", pos=(" + e.X + "," + e.Y + "), offset=(" + _offsetX.ToString("F2") + "," + _offsetY.ToString("F2") + ")");
             _mousePan.MouseUp(e);
         }
 
@@ -341,7 +387,9 @@ namespace GridDemo
                 return;
             }
 
-            _engine.SetForwardAcc((double)((NumericUpDown)sender).Value);
+            double a = (double)((NumericUpDown)sender).Value;
+            Log("numericAcc_ValueChanged: acc=" + a.ToString("F3"));
+            _engine.SetForwardAcc(a);
         }
 
         /// <summary>
@@ -354,7 +402,9 @@ namespace GridDemo
                 return;
             }
 
-            _engine.SetMaxSpeed((double)((NumericUpDown)sender).Value);
+            double v = (double)((NumericUpDown)sender).Value;
+            Log("numericVmax_ValueChanged: vmax=" + v.ToString("F3"));
+            _engine.SetMaxSpeed(v);
         }
 
         /// <summary>
@@ -367,8 +417,9 @@ namespace GridDemo
         {
             if (e.KeyCode == Keys.Enter)
             {
+                Log("Numeric Enter: focus->form");
                 this.ActiveControl = null;  // 让数值框失去焦点，触发 ValueChanged 事件
-                this.Focus();                 // 焦点回到窗体，W/A/D 立刻可用
+                this.Focus();              // 焦点回到窗体，W/A/D 立刻可用
                 e.Handled = true;
                 e.SuppressKeyPress = true;    // 防止系统“叮”一声
             }
@@ -386,14 +437,19 @@ namespace GridDemo
                 return;
             }
 
+            Log("cmbChooseModel_SelectedIndexChanged: index=" + cmbChooseModel.SelectedIndex);
+
             if (cmbChooseModel.SelectedIndex == 1)
             {
                 _engine.EnableAuto();
+                Log("ControlMode -> Auto");
             }
             else
             {
                 cmbChooseModel.SelectedIndex = 0;
                 _engine.EnableManual();
+                Log("ControlMode -> Manual");
+
                 this.ActiveControl = null;
                 BeginInvoke(new Action(() => Focus()));
             }
@@ -408,6 +464,8 @@ namespace GridDemo
             {
                 return;
             }
+
+            EnumPathfindingAlgorithm old = _currentAlgorithm;
 
             // 0: Dijkstra, 1: A*, 2: Serpentine
             if (cmbPathAlgorithm.SelectedIndex == 0)
@@ -427,8 +485,10 @@ namespace GridDemo
 
                 // 蛇形模式：目标点自动设置为右下角，不需要鼠标右键
                 _engine.AutoNavigator.SetGoal(new GridPos(GridCount - 1, GridCount - 1), rebuildIfEnabled: true);
+                Log("Serpentine goal forced: (" + (GridCount - 1) + "," + (GridCount - 1) + ")");
             }
 
+            Log("Algorithm changed: " + old + " -> " + _currentAlgorithm + ", autoEnabled=" + _engine.AutoEnabled);
 
             if (_engine.AutoEnabled)
             {
@@ -441,6 +501,7 @@ namespace GridDemo
         /// </summary>
         private void btnReset_Click(object sender, EventArgs e)
         {
+            Log("btnReset_Click");
             _centerGrid.Center();
         }
 
@@ -449,6 +510,8 @@ namespace GridDemo
             _isObstacleEditMode = !_isObstacleEditMode;
 
             btnObstacle.Text = _isObstacleEditMode ? "设置障碍物：开" : "设置障碍物：关";
+
+            Log("btnObstacle_Click: obstacleEdit=" + _isObstacleEditMode);
 
             // 通知业务引擎进入/退出障碍物编辑模式
             if (_engine != null)
@@ -483,6 +546,7 @@ namespace GridDemo
             }
 
             _engine.ToggleObstacle(new GridPos(gx, gy));
+            Log("ToggleObstacle: (" + gx + "," + gy + ")");
             skControl.Invalidate();
         }
 
@@ -494,9 +558,55 @@ namespace GridDemo
             }
 
             _engine.ClearObstacles();
+            Log("btnClearObstacle_Click: cleared");
 
             // 清空障碍物后，保持“设置障碍物模式”的 UI 不变，只刷新画面即可
             skControl.Invalidate();
+        }
+
+
+        private static void InitLogging()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+            Directory.CreateDirectory(dir);
+
+            _logFilePath = Path.Combine(dir, "app.log");
+
+            Log("=== App start ===");
+            Log("BaseDirectory=" + AppDomain.CurrentDomain.BaseDirectory);
+        }
+
+        private static void HookUnhandledExceptions()
+        {
+            Application.ThreadException += (s, e) =>
+            {
+                Log("Application.ThreadException: " + e.Exception);
+            };
+
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                Log("AppDomain.UnhandledException: " + (e.ExceptionObject as Exception));
+            };
+
+            TaskScheduler.UnobservedTaskException += (s, e) =>
+            {
+                Log("TaskScheduler.UnobservedTaskException: " + e.Exception);
+                e.SetObserved();
+            };
+        }
+
+        private static void Log(string message)
+        {
+            string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " " + message;
+
+            // 1) 输出到 VS 输出窗口（调试/运行时可见）
+            Debug.WriteLine(line);
+
+            // 2) 输出到文件（发布后可追溯）
+            lock (_logLock)
+            {
+                File.AppendAllText(_logFilePath, line + Environment.NewLine, Encoding.UTF8);
+            }
         }
     }
 }
