@@ -49,6 +49,7 @@ namespace GridDemo.Robots
 
         private Func<double> _getForwardAcc;
         private RobotCommand _manualCurrentMoveCommand;
+
         // 依赖（执行落地由 Move/Turn 提供，但由 Robot 统一调度）
         private RobotMove _move;
         private RobotTurn _turn;
@@ -419,11 +420,16 @@ namespace GridDemo.Robots
         {
             switch (dir)
             {
-                case EnumMoveDirection.Right: return 0;
-                case EnumMoveDirection.Down: return Math.PI / 2;
-                case EnumMoveDirection.Left: return Math.PI;
-                case EnumMoveDirection.Up: return 3 * Math.PI / 2;
-                default: return 0;
+                case EnumMoveDirection.Right:
+                    return 0;
+                case EnumMoveDirection.Down:
+                    return Math.PI / 2;
+                case EnumMoveDirection.Left:
+                    return Math.PI;
+                case EnumMoveDirection.Up:
+                    return 3 * Math.PI / 2;
+                default:
+                    return 0;
             }
         }
     }
