@@ -49,7 +49,7 @@ namespace GridDemo.Robots
 
         private Func<double> _getForwardAcc;
         private RobotCommand _manualCurrentMoveCommand;
-
+        private Func<RobotCommand> _manualCommandProvider;
         // 依赖（执行落地由 Move/Turn 提供，但由 Robot 统一调度）
         private RobotMove _move;
         private RobotTurn _turn;
@@ -100,6 +100,17 @@ namespace GridDemo.Robots
         }
 
         /// <summary>
+        /// 绑定手动模式指令提供器（由 RobotManual 提供）。
+        /// </summary>
+        public void BindManualCommandProvider(Func<RobotCommand> manualCommandProvider)
+        {
+            lock (_robotLock)
+            {
+                _manualCommandProvider = manualCommandProvider;
+            }
+        }
+
+        /// <summary>
         /// 切换控制模式（Auto/Manual）。
         /// 切换时会：
         /// - 清空指令队列；
@@ -127,7 +138,6 @@ namespace GridDemo.Robots
                 _move.StopImmediately_NoLock();
 
                 _turn.ResetTargetAngle();
-                _manualCurrentMoveCommand = null;
             }
         }
 
@@ -215,114 +225,28 @@ namespace GridDemo.Robots
             return delta;
         }
 
-        #region UI 输入（Form 仅调用这些）
         /// <summary>
-        /// UI 通知手动前进键（如 W）按下/松开。
-        /// 松开时立即刹停。
+        /// 手动模式下，外部触发“输入变更”后需要立刻刷新队列：
+        /// - 清空队列与当前指令，避免旧输入残留；
+        /// - 下一个 Tick 会从 ManualProvider 拉取最新命令。
         /// </summary>
-        public void InputManualForwardKey(bool isDown)
+        public void ResetManualCommands()
         {
             lock (_robotLock)
             {
-                _manualForwardKeyDown = isDown;
                 if (_mode != EnumRobotControlMode.Manual)
                 {
                     return;
                 }
 
-                if (isDown)
-                {
-                    // 手动模式：W 按下 => 发送“前进无穷距离”——一条新的 MoveDistance 指令
-                    // 这里不用队列，直接作为“当前手动指令”下发给 Move。
-                    const double infiniteDist = double.MaxValue;   // 或者一个你认为合理的大值
+                _commandQueue.Clear();
+                _hasCurrentCommand = false;
+                _currentCommand = null;
 
-                    _manualCurrentMoveCommand = RobotCommand.MoveDistance(infiniteDist);
-
-                    // 下发给执行器：按当前前进加速度策略开始这条指令
-                    // 加速度通过外部策略获取
-                    if (_getForwardAcc == null)
-                    {
-                        throw new InvalidOperationException("Forward acceleration strategy (_getForwardAcc) is not set.");
-                    }
-
-                    double forwardAcc = _getForwardAcc();
-
-                    // 将当前加速度状态写入 Manager，供后续 Move.Update 积分
-                    Acc = forwardAcc;
-
-                    _move.StartMoveDistance_NoLock(_manualCurrentMoveCommand.DistanceM.Value, forwardAcc);
-                }
-                else
-                {
-                    // 手动模式：W 松开 => 发送“前进 0 距离”的一条新指令
-                    // 本质：旧的“无穷距离”指令被覆盖，不是被完成
-                    _manualCurrentMoveCommand = RobotCommand.MoveDistance(0.0);
-
-                    // 下发“0 距离”指令：由 Move 自己判定“无需前进”，并在内部把速度/加速度归零
-                    _move.StartMoveDistance_NoLock(_manualCurrentMoveCommand.DistanceM.Value, 0.0);
-
-                    // 注意：这里不直接 Speed=0，不 Acc=0
-                    // 真正的停止在 RobotMove.Update 里，由“距离已完成”来触发
-                }
+                // 不做 StopImmediately，让 Move/Turn 自己通过下一条命令决定怎么结束
+                // 例如：MoveDistance(0) 会自然停车，TurnAngle(0) 会停止转向
             }
         }
-
-        private const double ManualHugeTurnAngle = 1000.0; // 手动模式下的“持续转向”大角度
-        /// <summary>
-        /// UI 通知左转键（如 A）按下/松开。
-        /// </summary>
-        public void InputManualTurnLeftKey(bool isDown)
-        {
-            lock (_robotLock)
-            {
-                _manualTurnLeftKeyDown = isDown;
-                if (_mode != EnumRobotControlMode.Manual)
-                {
-                    return;
-                }
-
-                if (isDown)
-                {
-                    // 按下：给一个很大的负角度，相当于“持续左转”
-                    var cmd = RobotCommand.TurnAngle(-ManualHugeTurnAngle);
-                    _turn.StartTurnByDelta(cmd.TurnAngleRad.Value);
-                }
-                else
-                {
-                    // 松开：给角度 0 的指令，立即停止转向
-                    var cmd = RobotCommand.TurnAngle(0.0);
-                    _turn.StartTurnByDelta(cmd.TurnAngleRad.Value);
-                }
-            }
-        }
-
-        /// <summary>
-        /// UI 通知右转键（如 D）按下/松开。
-        /// </summary>
-        public void InputManualTurnRightKey(bool isDown)
-        {
-            lock (_robotLock)
-            {
-                _manualTurnRightKeyDown = isDown;
-                if (_mode != EnumRobotControlMode.Manual)
-                {
-                    return;
-                }
-
-                if (isDown)
-                {
-                    // 按下：给一个很大的正角度，相当于“持续右转”
-                    var cmd = RobotCommand.TurnAngle(ManualHugeTurnAngle);
-                    _turn.StartTurnByDelta(cmd.TurnAngleRad.Value);
-                }
-                else
-                {
-                    var cmd = RobotCommand.TurnAngle(0.0);
-                    _turn.StartTurnByDelta(cmd.TurnAngleRad.Value);
-                }
-            }
-        }
-        #endregion
 
         /// <summary>
         /// 由仿真线程每帧调用：生成/下发/监测指令（调度核心）。
@@ -344,7 +268,38 @@ namespace GridDemo.Robots
 
             lock (_robotLock)
             {
-                // 1) 自动模式：按需从 provider 拉取指令进入队列
+                if (_mode == EnumRobotControlMode.Manual)
+                {
+                    if (_manualCommandProvider == null)
+                    {
+                        return;
+                    }
+
+                    // 手动模式：每帧拉取 1 条命令并覆盖下发（不走队列/完成检测）
+                    RobotCommand cmd = _manualCommandProvider();
+                    if (cmd == null)
+                    {
+                        return;
+                    }
+
+                    _commandQueue.Clear();
+                    _hasCurrentCommand = false;
+                    _currentCommand = null;
+
+                    if (cmd.Type == EnumRobotCommandType.MoveDistance)
+                    {
+                        _move.StartMoveDistance_NoLock(cmd.DistanceM.Value, getForwardAcc());
+                    }
+                    else if (cmd.Type == EnumRobotCommandType.Turn)
+                    {
+                        double delta = cmd.TurnAngleRad ?? 0.0;
+                        _turn.StartTurnByDelta(delta);
+                    }
+
+                    return;
+                }
+
+                // Auto 模式维持原逻辑
                 if (_mode == EnumRobotControlMode.Auto)
                 {
                     if (_autoCommandProvider != null)
@@ -354,14 +309,13 @@ namespace GridDemo.Robots
                             RobotCommand cmd = _autoCommandProvider();
                             if (cmd != null)
                             {
-                                _commandQueue.Enqueue(cmd);          // 指令入队
+                                _commandQueue.Enqueue(cmd);
                             }
                         }
                     }
 
                     if (!_hasCurrentCommand)
-                    { // 2) 取出当前指令（若没有）
-
+                    {
                         if (_commandQueue.Count == 0)
                         {
                             return;
@@ -370,7 +324,6 @@ namespace GridDemo.Robots
                         _currentCommand = _commandQueue.Dequeue();
                         _hasCurrentCommand = true;
 
-                        // 下发给 Move/Turn（执行器内部会依据 IsTurning 等状态保护）
                         if (_currentCommand.Type == EnumRobotCommandType.MoveDistance)
                         {
                             _move.StartMoveDistance_NoLock(_currentCommand.DistanceM.Value, getForwardAcc());
@@ -382,8 +335,6 @@ namespace GridDemo.Robots
                         }
                     }
 
-                    // 3) 监测执行完成：完成则切下一条
-                    //    完成条件由执行器状态决定：Move 看自身指令状态；Turn 看 `IsTurning`。
                     if (_hasCurrentCommand)
                     {
                         bool done = false;
@@ -404,8 +355,9 @@ namespace GridDemo.Robots
                         }
                     }
 
-                    return;  // 自动模式到此结束
+                    return;
                 }
+
                 _commandQueue.Clear();
                 _hasCurrentCommand = false;
                 _currentCommand = null;

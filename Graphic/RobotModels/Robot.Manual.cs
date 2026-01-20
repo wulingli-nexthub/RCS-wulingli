@@ -1,4 +1,5 @@
-﻿using GridDemo.Robots;
+﻿using GridDemo.RobotRuns;
+using GridDemo.Robots;
 using System;
 
 namespace GridDemo.RobotModels
@@ -12,6 +13,11 @@ namespace GridDemo.RobotModels
     {
         private readonly object _robotLock;
         private readonly RobotManager _robotManager;
+        private bool _forwardKeyDown;
+        private bool _turnLeftKeyDown;
+        private bool _turnRightKeyDown;
+
+        private const double ManualHugeTurnAngle = 1000.0; // 手动模式下的“持续转向”大角度
 
         public RobotManual(
             object robotLock,
@@ -29,7 +35,11 @@ namespace GridDemo.RobotModels
             {
                 IsEnabled = true;
                 _robotManager.SetMode(EnumRobotControlMode.Manual);
-                _robotManager.InputManualForwardKey(false);
+
+                // 切到手动时清空输入，避免残留
+                _forwardKeyDown = false;
+                _turnLeftKeyDown = false;
+                _turnRightKeyDown = false;
             }
         }
 
@@ -38,7 +48,72 @@ namespace GridDemo.RobotModels
             lock (_robotLock)
             {
                 IsEnabled = false;
-                _robotManager.InputManualForwardKey(false);
+                _forwardKeyDown = false;
+                _turnLeftKeyDown = false;
+                _turnRightKeyDown = false;
+            }
+        }
+
+        public void InputForwardKey(bool isDown)
+        {
+            lock (_robotLock)
+            {
+                _forwardKeyDown = isDown;
+            }
+        }
+
+        public void InputTurnLeftKey(bool isDown)
+        {
+            lock (_robotLock)
+            {
+                _turnLeftKeyDown = isDown;
+            }
+        }
+
+        public void InputTurnRightKey(bool isDown)
+        {
+            lock (_robotLock)
+            {
+                _turnRightKeyDown = isDown;
+            }
+        }
+
+        /// <summary>
+        /// 手动模式产生命令（每次输入变化时最多产出 1 条）：
+        /// - A/D 优先：持续转向；
+        /// - 否则 W：无限前进；
+        /// - 否则：返回 MoveDistance(0) 触发停车。
+        /// </summary>
+        public RobotCommand TryBuildNextCommand()
+        {
+            lock (_robotLock)
+            {
+                if (!IsEnabled)
+                {
+                    return null;
+                }
+
+                if (_turnLeftKeyDown && !_turnRightKeyDown)
+                {
+                    return RobotCommand.TurnAngle(-ManualHugeTurnAngle);
+                }
+
+                if (_turnRightKeyDown && !_turnLeftKeyDown)
+                {
+                    return RobotCommand.TurnAngle(ManualHugeTurnAngle);
+                }
+
+                if ((_turnLeftKeyDown && _turnRightKeyDown) || (!_turnLeftKeyDown && !_turnRightKeyDown))
+                {
+                    return RobotCommand.TurnAngle(0.0); // 同时按下 A/D 或松开则不转向
+                }
+
+                if (_forwardKeyDown)
+                {
+                    return RobotCommand.MoveDistance(double.MaxValue);
+                }
+
+                return RobotCommand.MoveDistance(0.0);
             }
         }
     }

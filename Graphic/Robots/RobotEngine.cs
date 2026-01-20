@@ -125,6 +125,8 @@ namespace GridDemo.Robots
                 autoCommandProvider: () => _robotAutoNavigator.TryBuildNextCommand(),
                 getForwardAcc: () => _robotAcc);
 
+            _robotManager.BindManualCommandProvider(() => _robotManual.TryBuildNextCommand());
+
             // 默认进入自动导航流程（也可以先 Idle，等 UI 触发）
             _processState = EnumRobotProcessState.AutoNavigating;
             _robotManager.SetMode(EnumRobotControlMode.Auto);
@@ -385,9 +387,23 @@ namespace GridDemo.Robots
         }
 
         // 手动控制输入
-        public void ManualForwardKey(bool down) => _robotManager.InputManualForwardKey(down);
-        public void ManualTurnLeftKey(bool down) => _robotManager.InputManualTurnLeftKey(down);
-        public void ManualTurnRightKey(bool down) => _robotManager.InputManualTurnRightKey(down);
+        public void ManualForwardKey(bool down)
+        {
+            _robotManual.InputForwardKey(down);
+            _robotManager.ResetManualCommands();
+        }
+
+        public void ManualTurnLeftKey(bool down)
+        {
+            _robotManual.InputTurnLeftKey(down);
+            _robotManager.ResetManualCommands();
+        }
+
+        public void ManualTurnRightKey(bool down)
+        {
+            _robotManual.InputTurnRightKey(down);
+            _robotManager.ResetManualCommands();
+        }
 
         /// <summary>
         /// 仿真步进：

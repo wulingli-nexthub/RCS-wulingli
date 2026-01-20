@@ -63,7 +63,6 @@ namespace GridDemo.RobotRuns
 
                     double step = delta > 0 ? maxStep : -maxStep;
                     _robotManager.OrientationAngle = NormalizeAngle(cur + step);
-                    _robotManager.Direction = AngleToDirection(_robotManager.OrientationAngle);
                 }
             }
         }
