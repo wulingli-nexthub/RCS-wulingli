@@ -79,10 +79,11 @@ namespace GridDemo.RobotModels
         }
 
         /// <summary>
-        /// 手动模式产生命令（每次输入变化时最多产出 1 条）：
+        /// 手动模式产生命令（每帧根据当前按键状态返回 1 条“期望指令”）：
         /// - A/D 优先：持续转向；
+        /// - 若转向键已松开但仍处于转向中：下发 TurnAngle(0) 立即停转；
         /// - 否则 W：无限前进；
-        /// - 否则：返回 MoveDistance(0) 触发停车。
+        /// - 否则：MoveDistance(0) 触发停车。
         /// </summary>
         public RobotCommand TryBuildNextCommand()
         {
@@ -93,6 +94,7 @@ namespace GridDemo.RobotModels
                     return null;
                 }
 
+                // 1) 转向优先（避免 W 覆盖导致松开后无法停转）
                 if (_turnLeftKeyDown && !_turnRightKeyDown)
                 {
                     return RobotCommand.TurnAngle(-ManualHugeTurnAngle);
@@ -103,11 +105,19 @@ namespace GridDemo.RobotModels
                     return RobotCommand.TurnAngle(ManualHugeTurnAngle);
                 }
 
-                if ((_turnLeftKeyDown && _turnRightKeyDown) || (!_turnLeftKeyDown && !_turnRightKeyDown))
+                // 2) 两个转向键都按下：定义为“停转”
+                if (_turnLeftKeyDown && _turnRightKeyDown)
                 {
-                    return RobotCommand.TurnAngle(0.0); // 同时按下 A/D 或松开则不转向
+                    return RobotCommand.TurnAngle(0.0);
                 }
 
+                // 3) 转向键已松开：如果还在转向动画中，必须显式下发 TurnAngle(0) 立即停转
+                if (_robotManager.IsTurning)
+                {
+                    return RobotCommand.TurnAngle(0.0);
+                }
+
+                // 4) 再处理前进
                 if (_forwardKeyDown)
                 {
                     return RobotCommand.MoveDistance(double.MaxValue);

@@ -42,13 +42,7 @@ namespace GridDemo.Robots
 
         private EnumRobotControlMode _mode = EnumRobotControlMode.Auto;
 
-        // 手动输入状态（UI 写入，Robot 读取生成指令）
-        private bool _manualForwardKeyDown;
-        private bool _manualTurnLeftKeyDown;
-        private bool _manualTurnRightKeyDown;
-
         private Func<double> _getForwardAcc;
-        private RobotCommand _manualCurrentMoveCommand;
         private Func<RobotCommand> _manualCommandProvider;
         // 依赖（执行落地由 Move/Turn 提供，但由 Robot 统一调度）
         private RobotMove _move;
@@ -242,9 +236,6 @@ namespace GridDemo.Robots
                 _commandQueue.Clear();
                 _hasCurrentCommand = false;
                 _currentCommand = null;
-
-                // 不做 StopImmediately，让 Move/Turn 自己通过下一条命令决定怎么结束
-                // 例如：MoveDistance(0) 会自然停车，TurnAngle(0) 会停止转向
             }
         }
 
