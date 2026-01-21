@@ -55,6 +55,9 @@ namespace GridDemo.Robots
             public GridPos? TempAvoidCell;
             public double AvoidTtlSec;
             public double ReplanCooldownSec;
+
+            // 碰撞等待：一方原地停住一小段时间，另一方继续走
+            public double WaitTtlSec;
         }
 
         private readonly object _robotLock = new object();
@@ -85,7 +88,7 @@ namespace GridDemo.Robots
         private const double ArriveGoalEpsilonM = 0.25;
         private const double AvoidCellTtlSec = 1.0;
         private const double CollisionReplanCooldownSec = 0.35;
-
+        private const double CollisionWaitTtlSec = 0.5;
 
         public RobotEngine(
             int gridCount,
@@ -535,6 +538,12 @@ namespace GridDemo.Robots
                             r.AvoidTtlSec = 0;
                         }
                     }
+
+                    if (r.WaitTtlSec > 0)
+                    {
+                        r.WaitTtlSec -= _dt;
+                        if (r.WaitTtlSec < 0) r.WaitTtlSec = 0;
+                    }
                 }
 
                 // 2) 自动机器人：到达目标 -> 生成新目标并重规划
@@ -566,6 +575,14 @@ namespace GridDemo.Robots
                 for (int i = 0; i < _robots.Count; i++)
                 {
                     var r = _robots[i];
+
+                    // 碰撞等待：原地停住，不继续 Tick/Move，避免不断转向/重规划
+                    if (r.WaitTtlSec > 0)
+                    {
+                        r.Move.StopImmediately_NoLock();
+                        r.Manager.ResetAutoCommands();
+                        continue;
+                    }
 
                     if (r.State == EnumRobotProcessState.AutoNavigating || r.State == EnumRobotProcessState.ManualControl)
                     {
@@ -664,6 +681,7 @@ namespace GridDemo.Robots
                 ctx.TempAvoidCell = null;
                 ctx.AvoidTtlSec = 0;
                 ctx.ReplanCooldownSec = 0;
+                ctx.WaitTtlSec = 0;
 
                 ctx.Manager = new RobotManager(
                     acc: ctx.Acc,
@@ -920,31 +938,75 @@ namespace GridDemo.Robots
                     int dx = Math.Abs(cellA.X - cellB.X);
                     int dy = Math.Abs(cellA.Y - cellB.Y);
 
-                    // 网格相邻（8 邻域）或同格：视为碰撞
-                    if (dx > 1 || dy > 1)
+                    // 只判“同格”或“四邻域”（上下左右），不含对角
+                    // - 同格：dx==0 && dy==0
+                    // - 四邻域：dx+dy==1
+                    bool isSameCell = dx == 0 && dy == 0;
+                    bool is4Neighbor = (dx + dy) == 1;
+
+                    if (!isSameCell && !is4Neighbor)
                     {
                         continue;
                     }
 
-                    // 自动机器人让路；手动机器人不强制改道
-                    if (a.State == EnumRobotProcessState.AutoNavigating && a.ReplanCooldownSec <= 0)
+                    // 等待中的机器人不再重复处理，避免抖动
+                    if (a.WaitTtlSec > 0 || b.WaitTtlSec > 0)
                     {
-                        a.TempAvoidCell = cellB;
-                        a.AvoidTtlSec = AvoidCellTtlSec;
-                        EnsureRandomGoal_NoLock(a, force: true); // 可选：换目标减少拥挤
-                        a.AutoNavigator.RebuildPath();
-                        a.Manager.ResetAutoCommands();
-                        a.ReplanCooldownSec = CollisionReplanCooldownSec;
+                        continue;
                     }
 
-                    if (b.State == EnumRobotProcessState.AutoNavigating && b.ReplanCooldownSec <= 0)
+                    // 自动机器人参与时才处理（手动的不强制改道，但可让自动的等待）
+                    bool aAuto = a.State == EnumRobotProcessState.AutoNavigating;
+                    bool bAuto = b.State == EnumRobotProcessState.AutoNavigating;
+
+                    if (!aAuto && !bAuto)
                     {
-                        b.TempAvoidCell = cellA;
-                        b.AvoidTtlSec = AvoidCellTtlSec;
-                        EnsureRandomGoal_NoLock(b, force: true); // 可选：换目标减少拥挤
-                        b.AutoNavigator.RebuildPath();
-                        b.Manager.ResetAutoCommands();
-                        b.ReplanCooldownSec = CollisionReplanCooldownSec;
+                        continue;
+                    }
+
+                    // 选择“让步者”：优先选自动；若两者都自动，选 ID 大的等待（稳定、避免两边来回切）
+                    RobotContext yield;
+                    RobotContext go;
+
+                    if (aAuto && !bAuto)
+                    {
+                        yield = a;
+                        go = b;
+                    }
+                    else if (!aAuto && bAuto)
+                    {
+                        yield = b;
+                        go = a;
+                    }
+                    else
+                    {
+                        if (a.Id >= b.Id)
+                        {
+                            yield = a;
+                            go = b;
+                        }
+                        else
+                        {
+                            yield = b;
+                            go = a;
+                        }
+                    }
+
+                    // 让步者：原地等待 + 清空自动指令 + 停车（关键：不再换目标、不再重规划）
+                    yield.WaitTtlSec = CollisionWaitTtlSec;
+                    yield.Move.StopImmediately_NoLock();
+                    yield.Manager.ResetAutoCommands();
+
+                    // 前进者：可选做轻量避让（把让步者所在格临时视为障碍），但不强制换目标
+                    if (go.State == EnumRobotProcessState.AutoNavigating && go.ReplanCooldownSec <= 0)
+                    {
+                        go.TempAvoidCell = WorldToGrid_NoLock(yield.X, yield.Y);
+                        go.AvoidTtlSec = AvoidCellTtlSec;
+
+                        // 只重规划一次，且不生成新目标
+                        go.AutoNavigator.RebuildPath();
+                        go.Manager.ResetAutoCommands();
+                        go.ReplanCooldownSec = CollisionReplanCooldownSec;
                     }
                 }
             }

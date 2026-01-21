@@ -516,7 +516,7 @@ namespace GridDemo
         {
             _isObstacleEditMode = !_isObstacleEditMode;
 
-            btnObstacle.Text = _isObstacleEditMode ? "设置障碍物：开" : "设置障碍物：关";
+            btnObstacle.Text = _isObstacleEditMode ? "开" : "关";
 
             Log("btnObstacle_Click: obstacleEdit=" + _isObstacleEditMode);
 
