@@ -1,7 +1,7 @@
 ﻿using GridDemo.RobotModels.Pathfinding;
 using System;
 
-namespace Graphic.Maps
+namespace GridDemo.Maps
 {
     /// <summary>
     /// 障碍物网格（线程安全）：

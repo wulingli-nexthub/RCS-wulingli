@@ -122,14 +122,9 @@ namespace GridDemo
 
             _drawRobot = new Draws.DrawRobot(
                 _worldTransform,
-                robotLock: new object(), // DrawRobot 内部只在绘制时读位置，不需要真实锁，可传一个 dummy
-                getRobotPosition: () =>
-                {
-                    var s = _engine.GetStateSnapshot();
-                    return (s.X, s.Y);
-                },
-                getScale: () => _scale,
-                getOrientationAngle: () => _engine.GetStateSnapshot().OrientationAngle);
+                robotLock: new object(),
+                getSnapshot: () => _engine.GetMultiStateSnapshot(),
+                getScale: () => _scale);
 
             // 3. 鼠标缩放/平移
             _mouseWheel = new Events.MouseWheel(
@@ -188,10 +183,10 @@ namespace GridDemo
             Log("Default control mode: Auto");
 
             cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;
-            cmbPathAlgorithm.SelectedIndex = 2; // A*
+            cmbPathAlgorithm.SelectedIndex = 1; // A*
             cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
-            _engine.Algorithm = EnumPathfindingAlgorithm.Serpentine;
-            _currentAlgorithm = EnumPathfindingAlgorithm.Serpentine;
+            _engine.Algorithm = EnumPathfindingAlgorithm.AStar;
+            _currentAlgorithm = EnumPathfindingAlgorithm.AStar;
 
             Log("Default algorithm: " + _currentAlgorithm);
 
@@ -298,6 +293,18 @@ namespace GridDemo
         /// </summary>
         private void Form1_MouseDown(object sender, MouseEventArgs e)
         {
+            // 左键优先：点选机器人（命中则仅切换选中，不进入设置障碍/平移等）
+            if (e.Button == MouseButtons.Left && _engine != null && _worldTransform != null)
+            {
+                var worldForPick = _worldTransform.ScreenToWorld(e.X, e.Y);
+                if (_engine.TrySelectRobotByWorld(worldForPick.X, worldForPick.Y))
+                {
+                    Log("PickRobot: id=" + _engine.SelectedRobotId + ", screen=(" + e.X + "," + e.Y + ")");
+                    skControl.Invalidate();
+                    return;
+                }
+            }
+
             // 仅记录关键点击，不记录 MouseMove
             Log("MouseDown: button=" + e.Button + ", pos=(" + e.X + "," + e.Y + "), obstacleEdit=" + _isObstacleEditMode);
 
@@ -307,14 +314,14 @@ namespace GridDemo
                 skControl.Invalidate();
                 return;
             }
-            if (_currentAlgorithm != EnumPathfindingAlgorithm.Serpentine
-                && _destinationPicker != null
-                && _destinationPicker.TryPick(e))
-            {
-                Log("DestinationPicker: picked at (" + e.X + "," + e.Y + ")");
-                skControl.Invalidate();
-                return;
-            }
+            //if (_currentAlgorithm != EnumPathfindingAlgorithm.Serpentine
+            //    && _destinationPicker != null
+            //    && _destinationPicker.TryPick(e))
+            //{
+            //    Log("DestinationPicker: picked at (" + e.X + "," + e.Y + ")");
+            //    skControl.Invalidate();
+            //    return;
+            //}
 
             _mousePan.MouseDown(e);
         }
@@ -348,11 +355,11 @@ namespace GridDemo
             _drawGrid.Draw(canvas);
             _drawObstacles.Draw(canvas);
 
-            // 蛇形模式不画路径
-            if (_currentAlgorithm != EnumPathfindingAlgorithm.Serpentine)
-            {
-                _drawPath.Draw(canvas);
-            }
+            //// 蛇形模式不画路径
+            //if (_currentAlgorithm != EnumPathfindingAlgorithm.Serpentine)
+            //{
+            //    _drawPath.Draw(canvas);
+            //}
 
             _drawRobot.Draw(canvas);
 
@@ -484,8 +491,8 @@ namespace GridDemo
                 _currentAlgorithm = EnumPathfindingAlgorithm.Serpentine;
 
                 // 蛇形模式：目标点自动设置为右下角，不需要鼠标右键
-                _engine.AutoNavigator.SetGoal(new GridPos(GridCount - 1, GridCount - 1), rebuildIfEnabled: true);
-                Log("Serpentine goal forced: (" + (GridCount - 1) + "," + (GridCount - 1) + ")");
+                //_engine.AutoNavigator.SetGoal(new GridPos(GridCount - 1, GridCount - 1), rebuildIfEnabled: true);
+                //Log("Serpentine goal forced: (" + (GridCount - 1) + "," + (GridCount - 1) + ")");
             }
 
             Log("Algorithm changed: " + old + " -> " + _currentAlgorithm + ", autoEnabled=" + _engine.AutoEnabled);

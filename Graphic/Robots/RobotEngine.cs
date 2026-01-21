@@ -1,4 +1,5 @@
-﻿using Graphic.Maps;
+﻿using GridDemo.Maps;
+using GridDemo.MultiRobots;
 using GridDemo.RobotModels;
 using GridDemo.RobotModels.Pathfinding;
 using GridDemo.RobotRuns;
@@ -30,13 +31,34 @@ namespace GridDemo.Robots
     /// </summary>
     internal sealed class RobotEngine
     {
-        private EnumRobotProcessState _processState = EnumRobotProcessState.Idle;
+        private sealed class RobotContext
+        {
+            public int Id;
+
+            public EnumRobotProcessState State;
+
+            public double X;
+            public double Y;
+            public double Speed;
+            public double Acc;
+
+            public RobotManager Manager;
+            public RobotMove Move;
+            public RobotAutoNavigator AutoNavigator;
+            public RobotManual Manual;
+
+            // 随机目标（网格）
+            public bool HasGoal;
+            public GridPos Goal;
+
+            // 碰撞让路：临时避让格（把对方格子视为障碍）
+            public GridPos? TempAvoidCell;
+            public double AvoidTtlSec;
+            public double ReplanCooldownSec;
+        }
+
         private readonly object _robotLock = new object();
 
-        private readonly RobotManager _robotManager;
-        private readonly RobotMove _robotMove;
-        private readonly RobotAutoNavigator _robotAutoNavigator;
-        private readonly RobotManual _robotManual;
         private readonly ObstacleMap _obstacleMap;
 
         private readonly double _cellSizeM;
@@ -46,14 +68,31 @@ namespace GridDemo.Robots
         private readonly double _worldWidthM;
         private readonly double _worldHeightM;
 
-        // 机器人状态（内存中）
-        private double _robotX;
-        private double _robotY;
-        private double _robotSpeed;
-        private double _robotAcc;
+        private readonly List<RobotContext> _robots = new List<RobotContext>();
+        private int _selectedIndex;
 
-        public RobotEngine(int gridCount, double cellSizeM, double dt,
-            double initialMaxSpeed, EnumMoveDirection initialDirection)
+        private EnumRobotProcessState _globalState = EnumRobotProcessState.Idle;
+        private bool _isObstacleEditMode;
+
+        private readonly Random _rng = new Random();
+
+        // 与 RobotMove 内部一致：cell/3
+        private readonly double _robotRadiusM;
+
+        // 策略参数
+        private const int DefaultRobotCount = 5;
+        private const double DefaultRobotAcc = 0.8;
+        private const double ArriveGoalEpsilonM = 0.25;
+        private const double AvoidCellTtlSec = 1.0;
+        private const double CollisionReplanCooldownSec = 0.35;
+
+
+        public RobotEngine(
+            int gridCount,
+            double cellSizeM,
+            double dt,
+            double initialMaxSpeed,
+            EnumMoveDirection initialDirection)
         {
             _gridCount = gridCount;
             _cellSizeM = cellSizeM;
@@ -61,76 +100,21 @@ namespace GridDemo.Robots
             _worldWidthM = gridCount * cellSizeM;
             _worldHeightM = gridCount * cellSizeM;
 
-            // 初始在(0,0)格中心
-            _robotX = cellSizeM / 2.0;
-            _robotY = cellSizeM / 2.0;
-            _robotSpeed = 0;
-            _robotAcc = 0;
+            _robotRadiusM = _cellSizeM / 3.0;
 
-            _robotManager = new RobotManager(
-                acc: _robotAcc,
-                maxSpeed: initialMaxSpeed,
-                direction: initialDirection);
+            _obstacleMap = new ObstacleMap(_gridCount, _gridCount);
 
-            _robotMove = new RobotMove(
-                robotLock: _robotLock,
-                getRobotX: () => _robotX,
-                setRobotX: x => _robotX = x,
-                getRobotY: () => _robotY,
-                setRobotY: y => _robotY = y,
-                getRobotSpeed: () => _robotSpeed,
-                setRobotSpeed: v => _robotSpeed = v,
-                robotManager: _robotManager,
-                getWorldWidthM: () => _worldWidthM,
-                getWorldHeightM: () => _worldHeightM,
-                cellSizeM: _cellSizeM,
-                dt: _dt,
-                isWorldWalkable: (wx, wy) =>
-                {
-                    int gx = (int)Math.Floor(wx / _cellSizeM);
-                    int gy = (int)Math.Floor(wy / _cellSizeM);
+            CreateRobots(DefaultRobotCount, initialMaxSpeed, initialDirection);
 
-                    if (gx < 0 || gy < 0 || gx >= _gridCount || gy >= _gridCount)
-                    {
-                        return false;
-                    }
+            _selectedIndex = _robots.Count > 0 ? 0 : -1;
 
-                    return !_obstacleMap.IsObstacle(new GridPos(gx, gy));
-                }
-            );
-
-            _obstacleMap = new ObstacleMap(gridCount, gridCount);
-
-            _robotAutoNavigator = new RobotAutoNavigator(
-                robotLock: _robotLock,
-                getRobotX: () => _robotX,
-                getRobotY: () => _robotY,
-                setRobotSpeed: v => _robotSpeed = v, // 兼容旧构造参数
-                getWorldWidthM: () => _worldWidthM,
-                getWorldHeightM: () => _worldHeightM,
-                cellSizeM: _cellSizeM,
-                robotManager: _robotManager);
-
-            _robotAutoNavigator.SetIsWalkableProvider(p => !_obstacleMap.IsObstacle(p));
-
-            _robotManual = new RobotManual(
-                robotLock: _robotLock,
-                robotManager: _robotManager);
-
-            // Robot 绑定运行时（自动指令源接入）
-            _robotManager.BindRuntime(
-                robotLock: _robotLock,
-                move: _robotMove,
-                turn: _robotMove.TurnController,
-                autoCommandProvider: () => _robotAutoNavigator.TryBuildNextCommand(),
-                getForwardAcc: () => _robotAcc);
-
-            _robotManager.BindManualCommandProvider(() => _robotManual.TryBuildNextCommand());
-
-            // 默认进入自动导航流程（也可以先 Idle，等 UI 触发）
-            _processState = EnumRobotProcessState.AutoNavigating;
-            _robotManager.SetMode(EnumRobotControlMode.Auto);
-            _robotAutoNavigator.Enable();
+            // 默认全自动 + 每台随机目标
+            _globalState = EnumRobotProcessState.AutoNavigating;
+            for (int i = 0; i < _robots.Count; i++)
+            {
+                SetRobotState_NoLock(_robots[i], EnumRobotProcessState.AutoNavigating);
+                EnsureRandomGoal_NoLock(_robots[i], force: true);
+            }
         }
 
         #region 公共属性/方法（供 UI 调用）
@@ -139,319 +123,830 @@ namespace GridDemo.Robots
         public double WorldHeightM => _worldHeightM;
         public double CellSizeM => _cellSizeM;
         public int GridCount => _gridCount;
-        public RobotAutoNavigator AutoNavigator => _robotAutoNavigator;
+        public int SelectedRobotId
+        {
+            get
+            {
+                lock (_robotLock)
+                {
+                    if (_selectedIndex < 0 || _selectedIndex >= _robots.Count)
+                    {
+                        return 0;
+                    }
+
+                    return _robots[_selectedIndex].Id;
+                }
+            }
+        }
+
+        // 兼容旧 Form1：返回“选中机器人”的 AutoNavigator（DestinationPicker 仍可存在，但不再作为目标来源）
+        public RobotAutoNavigator AutoNavigator
+        {
+            get
+            {
+                lock (_robotLock)
+                {
+                    if (_selectedIndex < 0 || _selectedIndex >= _robots.Count)
+                    {
+                        return null;
+                    }
+
+                    return _robots[_selectedIndex].AutoNavigator;
+                }
+            }
+        }
 
         public EnumPathfindingAlgorithm Algorithm
         {
-            get => _robotAutoNavigator.Algorithm;
-            set => _robotAutoNavigator.Algorithm = value;
-        }
-
-        public bool AutoEnabled => _robotAutoNavigator.IsEnabled;
-
-        /// <summary>
-        /// 改变流程状态：
-        /// </summary>
-        /// <param name="newState"></param>
-        private void ChangeProcessState(EnumRobotProcessState newState)
-        {
-            lock (_robotLock)
+            get
             {
-                if (_processState == newState)
+                lock (_robotLock)
                 {
-                    return;
+                    if (_selectedIndex < 0 || _selectedIndex >= _robots.Count)
+                    {
+                        return EnumPathfindingAlgorithm.AStar;
+                    }
+
+                    return _robots[_selectedIndex].AutoNavigator.Algorithm;
                 }
-
-                // 离开旧状态时的清理
-                switch (_processState)
+            }
+            set
+            {
+                lock (_robotLock)
                 {
-                    case EnumRobotProcessState.AutoNavigating:
-                        _robotAutoNavigator.Disable();
-                        _robotManager.ResetAutoCommands();
-                        _robotMove.StopImmediately_NoLock();
-                        break;
+                    for (int i = 0; i < _robots.Count; i++)
+                    {
+                        _robots[i].AutoNavigator.Algorithm = value;
+                    }
 
-                    case EnumRobotProcessState.ManualControl:
-                        _robotManual.Disable();
-                        _robotMove.StopImmediately_NoLock();
-                        break;
-
-                    case EnumRobotProcessState.ObstacleEditing:
-                        // ObstacleEditing 离开时，不需要额外清理
-                        break;
-
-                    case EnumRobotProcessState.Error:
-                        // Error 离开由外部调用 Reset 之类来处理
-                        break;
-
-                    case EnumRobotProcessState.Idle:
-                        break;
-                }
-
-                _processState = newState;
-
-                // 进入新状态时的初始化
-                switch (newState)
-                {
-                    case EnumRobotProcessState.AutoNavigating:
-                        _robotManager.SetMode(EnumRobotControlMode.Auto);
-                        _robotAutoNavigator.Enable();
-                        _robotAutoNavigator.RebuildPath();
-                        _robotManager.ResetAutoCommands();
-                        _robotManager.AlignOrientationToDirectionWithTurn();
-                        break;
-
-                    case EnumRobotProcessState.ManualControl:
-                        _robotManager.SetMode(EnumRobotControlMode.Manual);
-                        _robotManual.Enable();
-                        break;
-
-                    case EnumRobotProcessState.ObstacleEditing:
-                        // 进入障碍编辑：立即停车 + 关闭自动导航
-                        _robotSpeed = 0.0;
-                        _robotManager.Acc = 0.0;
-                        _robotMove.StopImmediately_NoLock();
-
-                        if (_robotAutoNavigator.IsEnabled)
+                    // 算法切换后统一刷新
+                    for (int i = 0; i < _robots.Count; i++)
+                    {
+                        if (_robots[i].State == EnumRobotProcessState.AutoNavigating)
                         {
-                            _robotAutoNavigator.Disable();
+                            _robots[i].AutoNavigator.RebuildPath();
+                            _robots[i].Manager.ResetAutoCommands();
                         }
-                        _robotManager.ResetAutoCommands();
-                        break;
-
-                    case EnumRobotProcessState.Idle:
-                        _robotManager.SetMode(EnumRobotControlMode.Auto);
-                        _robotAutoNavigator.Disable();
-                        _robotMove.StopImmediately_NoLock();
-                        break;
-
-                    case EnumRobotProcessState.Error:
-                        _robotMove.StopImmediately_NoLock();
-                        _robotAutoNavigator.Disable();
-                        _robotManual.Disable();
-                        _robotManager.ResetAutoCommands();
-                        break;
+                    }
                 }
             }
         }
 
-        /// <summary>
-        /// 障碍物编辑模式开关：
-        /// - 开启：暂停自动导航 + 清空自动指令 + 立即停车；
-        /// - 关闭：恢复自动导航 + 重规划路径 + 刷新自动指令，下一帧开始运动。
-        /// </summary>
-        public void SetObstacleEditMode(bool enabled)
+        public bool AutoEnabled
         {
-            lock (_robotLock)
+            get
             {
-                if (enabled)
+                lock (_robotLock)
                 {
-                    ChangeProcessState(EnumRobotProcessState.ObstacleEditing);
+                    if (_selectedIndex < 0 || _selectedIndex >= _robots.Count)
+                    {
+                        return false;
+                    }
+
+                    return _robots[_selectedIndex].State == EnumRobotProcessState.AutoNavigating;
                 }
-                else
+            }
+        }
+
+        public MultiRobotStateSnapshot GetMultiStateSnapshot()
+        {
+            lock (_robotLock)
+            {
+                var list = new List<RobotItemSnapshot>(_robots.Count);
+
+                for (int i = 0; i < _robots.Count; i++)
                 {
-                    // 退出编辑：恢复自动导航 + 重规划路径
-                    ChangeProcessState(EnumRobotProcessState.AutoNavigating);
-                    _robotAutoNavigator.RebuildPath();
-                    _robotManager.ResetAutoCommands();
+                    var r = _robots[i];
+
+                    double goalWorldX = 0;
+                    double goalWorldY = 0;
+                    int goalX = 0;
+                    int goalY = 0;
+
+                    if (r.HasGoal)
+                    {
+                        goalX = r.Goal.X;
+                        goalY = r.Goal.Y;
+                        goalWorldX = r.Goal.X * _cellSizeM + _cellSizeM / 2.0;
+                        goalWorldY = r.Goal.Y * _cellSizeM + _cellSizeM / 2.0;
+                    }
+
+                    list.Add(new RobotItemSnapshot(
+                        id: r.Id,
+                        x: r.X,
+                        y: r.Y,
+                        speed: r.Speed,
+                        acc: r.Acc,
+                        orientationAngle: r.Manager.OrientationAngle,
+                        direction: r.Manager.Direction,
+                        isSelected: i == _selectedIndex,
+                        hasGoal: r.HasGoal,
+                        goalGridX: goalX,
+                        goalGridY: goalY,
+                        goalWorldX: goalWorldX,
+                        goalWorldY: goalWorldY));
                 }
+
+                return new MultiRobotStateSnapshot(list);
             }
         }
 
-        /// <summary>
-        /// 切换到自动模式：
-        /// - Manager 置为 Auto（清理队列/停车/同步角度等）；
-        /// - AutoNavigator Enable；并清空目标等待 UI 重新选择；
-        /// - ResetAutoCommands：保证下一帧会从 provider 重新拉取指令；
-        /// - 禁用手动控制器。
-        /// </summary>
-        public void EnableAuto()
+        public bool TrySelectRobotByWorld(double worldX, double worldY)
         {
             lock (_robotLock)
             {
-                ChangeProcessState(EnumRobotProcessState.AutoNavigating);
+                if (_robots.Count == 0)
+                {
+                    return false;
+                }
 
-                // 切换到自动后清空目标：
-                // - 避免沿用旧目标导致“模式切换后机器人突然跑走”
-                // - 需要 UI 重新 SetGoal 才会开始规划/运动
-                _robotAutoNavigator.ClearGoal();
+                double pickR = _robotRadiusM * 1.5;
+                double pickR2 = pickR * pickR;
 
-                // 关键：清空队列/当前指令，让下一帧从 provider 拉取矫正队列里的指令
-                _robotManager.ResetAutoCommands();
+                int bestIndex = -1;
+                double bestD2 = double.MaxValue;
 
-                // 切到自动后，让箭头通过转向动画对齐到最近的离散方向
-                _robotManager.AlignOrientationToDirectionWithTurn();
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    double dx = _robots[i].X - worldX;
+                    double dy = _robots[i].Y - worldY;
+                    double d2 = dx * dx + dy * dy;
+
+                    if (d2 <= pickR2 && d2 < bestD2)
+                    {
+                        bestD2 = d2;
+                        bestIndex = i;
+                    }
+                }
+
+                if (bestIndex < 0)
+                {
+                    return false;
+                }
+
+                _selectedIndex = bestIndex;
+                return true;
             }
         }
 
-        /// <summary>
-        /// 切换到手动模式：
-        /// - Manager 置为 Manual；
-        /// - 禁用 AutoNavigator（不再产生命令）；
-        /// - 启用 Manual（清理按键输入状态）。
-        /// </summary>
-        public void EnableManual()
-        {
-            lock (_robotLock)
-            {
-                ChangeProcessState(EnumRobotProcessState.ManualControl);
-            }
-        }
-
-        /// <summary>
-        /// 外部主动要求重建路径：用于障碍物变更/算法切换。
-        /// </summary>
-        public void RebuildPath()
-        {
-            _robotAutoNavigator.RebuildPath();
-        }
-
-        /// <summary>
-        /// 获取路径点（世界坐标）快照：用于 UI 绘制路径线。
-        /// </summary>
         public List<(double X, double Y)> GetPathWorldPointsSnapshot()
         {
-            return _robotAutoNavigator.GetPathWorldPointsSnapshot();
+            lock (_robotLock)
+            {
+                if (_selectedIndex < 0 || _selectedIndex >= _robots.Count)
+                {
+                    return new List<(double X, double Y)>();
+                }
+
+                // 仅画选中机器人的路径
+                return _robots[_selectedIndex].AutoNavigator.GetPathWorldPointsSnapshot();
+            }
         }
 
-        /// <summary>
-        /// 获取障碍物网格的快照：用于 UI 绘制障碍物。
-        /// </summary>
         public bool[,] GetObstacleSnapshot()
         {
             return _obstacleMap.GetSnapshot();
         }
 
-        /// <summary>
-        /// 切换指定格子的障碍物状态：
-        /// - Toggle 成为障碍（返回 true）时，若自动模式打开则触发重规划；
-        /// - 取消障碍（返回 false）时，这里不触发重规划（当前逻辑仅在设置障碍时触发）。
-        /// </summary>
         public void ToggleObstacle(GridPos p)
         {
             _obstacleMap.Toggle(p);
 
-            // 设置障碍物模式：只改地图，不重规划；退出模式时再统一重规划一次
-            if (_processState == EnumRobotProcessState.ObstacleEditing)
+            if (_isObstacleEditMode)
             {
                 return;
             }
 
-            if (_robotAutoNavigator.IsEnabled)
+            lock (_robotLock)
             {
-                _robotAutoNavigator.RebuildPath();
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    if (_robots[i].State == EnumRobotProcessState.AutoNavigating)
+                    {
+                        _robots[i].AutoNavigator.RebuildPath();
+                        _robots[i].Manager.ResetAutoCommands();
+                    }
+                }
             }
         }
 
-        /// <summary>
-        /// 清空所有障碍物。
-        /// </summary>
         public void ClearObstacles()
         {
             _obstacleMap.Clear();
 
-            // 设置障碍物模式：只改地图，不重规划；退出模式时再统一重规划一次
-            if (_processState == EnumRobotProcessState.ObstacleEditing)
+            if (_isObstacleEditMode)
             {
                 return;
             }
 
-            if (_robotAutoNavigator.IsEnabled)
+            lock (_robotLock)
             {
-                _robotAutoNavigator.RebuildPath();
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    if (_robots[i].State == EnumRobotProcessState.AutoNavigating)
+                    {
+                        _robots[i].AutoNavigator.RebuildPath();
+                        _robots[i].Manager.ResetAutoCommands();
+                    }
+                }
             }
         }
 
-        /// <summary>
-        /// 设置前进加速度参数：
-        /// - 自动模式 MoveDistance 下发时会读取该值；
-        /// - 手动模式 W 按住时每帧 Tick 也会读取该值。
-        /// </summary>
+        public void SetObstacleEditMode(bool enabled)
+        {
+            lock (_robotLock)
+            {
+                _isObstacleEditMode = enabled;
+
+                if (enabled)
+                {
+                    _globalState = EnumRobotProcessState.ObstacleEditing;
+
+                    for (int i = 0; i < _robots.Count; i++)
+                    {
+                        SetRobotState_NoLock(_robots[i], EnumRobotProcessState.ObstacleEditing);
+                    }
+                }
+                else
+                {
+                    _globalState = EnumRobotProcessState.AutoNavigating;
+
+                    for (int i = 0; i < _robots.Count; i++)
+                    {
+                        SetRobotState_NoLock(_robots[i], EnumRobotProcessState.AutoNavigating);
+                        EnsureRandomGoal_NoLock(_robots[i], force: false);
+                        _robots[i].AutoNavigator.RebuildPath();
+                        _robots[i].Manager.ResetAutoCommands();
+                    }
+                }
+            }
+        }
+
+        public void EnableAuto()
+        {
+            lock (_robotLock)
+            {
+                _globalState = EnumRobotProcessState.AutoNavigating;
+
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    SetRobotState_NoLock(_robots[i], EnumRobotProcessState.AutoNavigating);
+                    EnsureRandomGoal_NoLock(_robots[i], force: false);
+                    _robots[i].AutoNavigator.RebuildPath();
+                    _robots[i].Manager.ResetAutoCommands();
+                    _robots[i].Manager.AlignOrientationToDirectionWithTurn();
+                }
+            }
+        }
+
+        public void EnableManual()
+        {
+            lock (_robotLock)
+            {
+                _globalState = EnumRobotProcessState.AutoNavigating;
+
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    if (i == _selectedIndex)
+                    {
+                        SetRobotState_NoLock(_robots[i], EnumRobotProcessState.ManualControl);
+                    }
+                    else
+                    {
+                        SetRobotState_NoLock(_robots[i], EnumRobotProcessState.AutoNavigating);
+                        EnsureRandomGoal_NoLock(_robots[i], force: false);
+                    }
+                }
+            }
+        }
+
+        public void RebuildPath()
+        {
+            lock (_robotLock)
+            {
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    if (_robots[i].State == EnumRobotProcessState.AutoNavigating)
+                    {
+                        _robots[i].AutoNavigator.RebuildPath();
+                        _robots[i].Manager.ResetAutoCommands();
+                    }
+                }
+            }
+        }
+
         public void SetForwardAcc(double acc)
         {
             lock (_robotLock)
             {
-                _robotAcc = acc;
+                if (_selectedIndex < 0 || _selectedIndex >= _robots.Count)
+                {
+                    return;
+                }
+
+                _robots[_selectedIndex].Acc = acc;
             }
         }
 
-        /// <summary>
-        /// 设置最大速度：由 RobotMove.Update 在每帧积分后进行夹紧。
-        /// </summary>
         public void SetMaxSpeed(double vmax)
         {
             lock (_robotLock)
             {
-                _robotManager.MaxSpeed = vmax;
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    _robots[i].Manager.MaxSpeed = vmax;
+                }
             }
         }
 
-        // 手动控制输入
         public void ManualForwardKey(bool down)
         {
-            _robotManual.InputForwardKey(down);
-            _robotManager.ResetManualCommands();
+            lock (_robotLock)
+            {
+                if (_selectedIndex < 0 || _selectedIndex >= _robots.Count)
+                {
+                    return;
+                }
+
+                var r = _robots[_selectedIndex];
+                r.Manual.InputForwardKey(down);
+                r.Manager.ResetManualCommands();
+            }
         }
 
         public void ManualTurnLeftKey(bool down)
         {
-            _robotManual.InputTurnLeftKey(down);
-            _robotManager.ResetManualCommands();
+            lock (_robotLock)
+            {
+                if (_selectedIndex < 0 || _selectedIndex >= _robots.Count)
+                {
+                    return;
+                }
+
+                var r = _robots[_selectedIndex];
+                r.Manual.InputTurnLeftKey(down);
+                r.Manager.ResetManualCommands();
+            }
         }
 
         public void ManualTurnRightKey(bool down)
         {
-            _robotManual.InputTurnRightKey(down);
-            _robotManager.ResetManualCommands();
-        }
-
-        /// <summary>
-        /// 仿真步进：
-        /// - ① 逻辑层：生成/调度指令（自动/手动）；
-        /// - ② 物理层：根据 Acc/Speed/方向，积分更新位置和转向动画。
-        /// </summary>
-        public void Tick()
-        {
-            // 根据流程状态做时间片调度
-            switch (_processState)
+            lock (_robotLock)
             {
-                case EnumRobotProcessState.ObstacleEditing:
-                    // 编辑模式下：不推进逻辑/物理，只靠 UI 重绘
+                if (_selectedIndex < 0 || _selectedIndex >= _robots.Count)
+                {
                     return;
+                }
 
-                case EnumRobotProcessState.Idle:
-                    // 空闲状态：也不推进逻辑/物理
-                    return;
-
-                case EnumRobotProcessState.Error:
-                    // 错误状态：停机不动
-                    return;
-
-                case EnumRobotProcessState.AutoNavigating:
-                case EnumRobotProcessState.ManualControl:
-                    // ① 逻辑：调度指令（自动/手动都通过 RobotManager 管）
-                    _robotManager.Tick(_dt, () => _robotAcc);
-
-                    // ② 物理：根据指令与加速度、速度等积分
-                    _robotMove.Update();
-                    break;
+                var r = _robots[_selectedIndex];
+                r.Manual.InputTurnRightKey(down);
+                r.Manager.ResetManualCommands();
             }
         }
 
-        /// <summary>
-        /// UI 绘制/文本显示用的状态快照：
-        /// - 在 lock 内复制一份值类型快照，UI 可在锁外安全读。
-        /// </summary>
+        public void Tick()
+        {
+            lock (_robotLock)
+            {
+                if (_globalState == EnumRobotProcessState.ObstacleEditing
+                    || _globalState == EnumRobotProcessState.Idle
+                    || _globalState == EnumRobotProcessState.Error)
+                {
+                    return;
+                }
+
+                // 1) 更新临时避让 TTL + 冷却
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    var r = _robots[i];
+
+                    if (r.ReplanCooldownSec > 0)
+                    {
+                        r.ReplanCooldownSec -= _dt;
+                        if (r.ReplanCooldownSec < 0) r.ReplanCooldownSec = 0;
+                    }
+
+                    if (r.TempAvoidCell.HasValue)
+                    {
+                        r.AvoidTtlSec -= _dt;
+                        if (r.AvoidTtlSec <= 0)
+                        {
+                            r.TempAvoidCell = null;
+                            r.AvoidTtlSec = 0;
+                        }
+                    }
+                }
+
+                // 2) 自动机器人：到达目标 -> 生成新目标并重规划
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    var r = _robots[i];
+                    if (r.State != EnumRobotProcessState.AutoNavigating)
+                    {
+                        continue;
+                    }
+
+                    if (!r.HasGoal)
+                    {
+                        EnsureRandomGoal_NoLock(r, force: true);
+                        r.AutoNavigator.RebuildPath();
+                        r.Manager.ResetAutoCommands();
+                        continue;
+                    }
+
+                    if (IsArrivedGoal_NoLock(r))
+                    {
+                        EnsureRandomGoal_NoLock(r, force: true);
+                        r.AutoNavigator.RebuildPath();
+                        r.Manager.ResetAutoCommands();
+                    }
+                }
+
+                // 3) 推进每台机器人
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    var r = _robots[i];
+
+                    if (r.State == EnumRobotProcessState.AutoNavigating || r.State == EnumRobotProcessState.ManualControl)
+                    {
+                        r.Manager.Tick(_dt, () => r.Acc);
+                        r.Move.Update();
+                    }
+                }
+
+                // 4) 碰撞 -> 让路并重规划
+                ResolveRobotRobotCollisionAndReplan_NoLock();
+            }
+        }
+
         public RobotStateSnapshot GetStateSnapshot()
         {
             lock (_robotLock)
             {
+                if (_selectedIndex < 0 || _selectedIndex >= _robots.Count)
+                {
+                    return default(RobotStateSnapshot);
+                }
+
+                var r = _robots[_selectedIndex];
+
                 return new RobotStateSnapshot(
-                    X: _robotX,
-                    Y: _robotY,
-                    Speed: _robotSpeed,
-                    Acc: _robotAcc,
-                    OrientationAngle: _robotManager.OrientationAngle);
+                    X: r.X,
+                    Y: r.Y,
+                    Speed: r.Speed,
+                    Acc: r.Acc,
+                    OrientationAngle: r.Manager.OrientationAngle);
+            }
+        }
+
+        #endregion
+
+        #region Private
+
+        private void CreateRobots(int robotCount, double initialMaxSpeed, EnumMoveDirection initialDirection)
+        {
+            _robots.Clear();
+
+            // 避免出生点重叠：记录已占用格子
+            var occupied = new HashSet<GridPos>();
+
+            // 若障碍很多，允许多尝试
+            int maxTryPerRobot = 500;
+
+            for (int i = 0; i < robotCount; i++)
+            {
+                int id = i + 1;
+
+                // 1) 随机挑一个可用起点格
+                GridPos start = default(GridPos);
+                bool found = false;
+
+                for (int t = 0; t < maxTryPerRobot; t++)
+                {
+                    int gx = _rng.Next(0, _gridCount);
+                    int gy = _rng.Next(0, _gridCount);
+                    var p = new GridPos(gx, gy);
+
+                    if (_obstacleMap.IsObstacle(p))
+                    {
+                        continue;
+                    }
+
+                    if (occupied.Contains(p))
+                    {
+                        continue;
+                    }
+
+                    start = p;
+                    found = true;
+                    break;
+                }
+
+                if (!found)
+                {
+                    // 找不到空位：允许重复，但继续运行（避免直接崩）
+                    start = new GridPos(_rng.Next(0, _gridCount), _rng.Next(0, _gridCount));
+                }
+
+                occupied.Add(start);
+
+                double x = start.X * _cellSizeM + _cellSizeM / 2.0;
+                double y = start.Y * _cellSizeM + _cellSizeM / 2.0;
+
+                var ctx = new RobotContext();
+                ctx.Id = id;
+                ctx.State = EnumRobotProcessState.Idle;
+                ctx.X = x;
+                ctx.Y = y;
+                ctx.Speed = 0.0;
+                ctx.Acc = DefaultRobotAcc;
+                ctx.HasGoal = false;
+                ctx.TempAvoidCell = null;
+                ctx.AvoidTtlSec = 0;
+                ctx.ReplanCooldownSec = 0;
+
+                ctx.Manager = new RobotManager(
+                    acc: ctx.Acc,
+                    maxSpeed: initialMaxSpeed,
+                    direction: initialDirection);
+
+                ctx.Move = new RobotMove(
+                    robotLock: _robotLock,
+                    getRobotX: () => ctx.X,
+                    setRobotX: v => ctx.X = v,
+                    getRobotY: () => ctx.Y,
+                    setRobotY: v => ctx.Y = v,
+                    getRobotSpeed: () => ctx.Speed,
+                    setRobotSpeed: v => ctx.Speed = v,
+                    robotManager: ctx.Manager,
+                    getWorldWidthM: () => _worldWidthM,
+                    getWorldHeightM: () => _worldHeightM,
+                    cellSizeM: _cellSizeM,
+                    dt: _dt,
+                    isWorldWalkable: (wx, wy) =>
+                    {
+                        int cgx = (int)Math.Floor(wx / _cellSizeM);
+                        int cgy = (int)Math.Floor(wy / _cellSizeM);
+
+                        if (cgx < 0 || cgy < 0 || cgx >= _gridCount || cgy >= _gridCount)
+                        {
+                            return false;
+                        }
+
+                        if (_obstacleMap.IsObstacle(new GridPos(cgx, cgy)))
+                        {
+                            return false;
+                        }
+
+                        if (ctx.TempAvoidCell.HasValue && ctx.TempAvoidCell.Value.Equals(new GridPos(cgx, cgy)))
+                        {
+                            return false;
+                        }
+
+                        return true;
+                    });
+
+                ctx.AutoNavigator = new RobotAutoNavigator(
+                    robotLock: _robotLock,
+                    getRobotX: () => ctx.X,
+                    getRobotY: () => ctx.Y,
+                    setRobotSpeed: v => ctx.Speed = v,
+                    getWorldWidthM: () => _worldWidthM,
+                    getWorldHeightM: () => _worldHeightM,
+                    cellSizeM: _cellSizeM,
+                    robotManager: ctx.Manager);
+
+                ctx.AutoNavigator.SetIsWalkableProvider(p =>
+                {
+                    if (_obstacleMap.IsObstacle(p))
+                    {
+                        return false;
+                    }
+
+                    if (ctx.TempAvoidCell.HasValue && ctx.TempAvoidCell.Value.Equals(p))
+                    {
+                        return false;
+                    }
+
+                    return true;
+                });
+
+                ctx.Manual = new RobotManual(
+                    robotLock: _robotLock,
+                    robotManager: ctx.Manager);
+
+                ctx.Manager.BindRuntime(
+                    robotLock: _robotLock,
+                    move: ctx.Move,
+                    turn: ctx.Move.TurnController,
+                    autoCommandProvider: () => ctx.AutoNavigator.TryBuildNextCommand(),
+                    getForwardAcc: () => ctx.Acc);
+
+                ctx.Manager.BindManualCommandProvider(() => ctx.Manual.TryBuildNextCommand());
+
+                _robots.Add(ctx);
+            }
+        }
+
+        private void SetRobotState_NoLock(RobotContext r, EnumRobotProcessState newState)
+        {
+            if (r.State == newState)
+            {
+                return;
+            }
+
+            switch (r.State)
+            {
+                case EnumRobotProcessState.AutoNavigating:
+                    r.AutoNavigator.Disable();
+                    r.Manager.ResetAutoCommands();
+                    r.Move.StopImmediately_NoLock();
+                    break;
+
+                case EnumRobotProcessState.ManualControl:
+                    r.Manual.Disable();
+                    r.Move.StopImmediately_NoLock();
+                    break;
+            }
+
+            r.State = newState;
+
+            switch (newState)
+            {
+                case EnumRobotProcessState.AutoNavigating:
+                    r.Manager.SetMode(EnumRobotControlMode.Auto);
+                    r.AutoNavigator.Enable();
+
+                    EnsureRandomGoal_NoLock(r, force: false);
+                    if (r.HasGoal)
+                    {
+                        r.AutoNavigator.SetGoal(r.Goal, rebuildIfEnabled: true);
+                    }
+
+                    r.Manager.ResetAutoCommands();
+                    r.Manager.AlignOrientationToDirectionWithTurn();
+                    break;
+
+                case EnumRobotProcessState.ManualControl:
+                    r.Manager.SetMode(EnumRobotControlMode.Manual);
+                    r.Manual.Enable();
+                    break;
+
+                case EnumRobotProcessState.ObstacleEditing:
+                    r.Speed = 0.0;
+                    r.Manager.Acc = 0.0;
+                    r.Move.StopImmediately_NoLock();
+
+                    r.AutoNavigator.Disable();
+                    r.Manual.Disable();
+                    r.Manager.ResetAutoCommands();
+                    break;
+
+                case EnumRobotProcessState.Idle:
+                    r.Manager.SetMode(EnumRobotControlMode.Auto);
+                    r.AutoNavigator.Disable();
+                    r.Move.StopImmediately_NoLock();
+                    break;
+
+                case EnumRobotProcessState.Error:
+                    r.Move.StopImmediately_NoLock();
+                    r.AutoNavigator.Disable();
+                    r.Manual.Disable();
+                    r.Manager.ResetAutoCommands();
+                    break;
+            }
+        }
+
+        private bool IsArrivedGoal_NoLock(RobotContext r)
+        {
+            if (!r.HasGoal)
+            {
+                return true;
+            }
+
+            double gx = r.Goal.X * _cellSizeM + _cellSizeM / 2.0;
+            double gy = r.Goal.Y * _cellSizeM + _cellSizeM / 2.0;
+
+            double dx = r.X - gx;
+            double dy = r.Y - gy;
+
+            return dx * dx + dy * dy <= ArriveGoalEpsilonM * ArriveGoalEpsilonM;
+        }
+
+        private void EnsureRandomGoal_NoLock(RobotContext r, bool force)
+        {
+            if (!force && r.HasGoal)
+            {
+                return;
+            }
+
+            const int maxTry = 300;
+
+            GridPos start = WorldToGrid_NoLock(r.X, r.Y);
+
+            // 收集其它机器人当前目标，尽量避开（降低拥挤）
+            var otherGoals = new HashSet<GridPos>();
+            for (int i = 0; i < _robots.Count; i++)
+            {
+                var o = _robots[i];
+                if (o != r && o.HasGoal)
+                {
+                    otherGoals.Add(o.Goal);
+                }
+            }
+
+            for (int k = 0; k < maxTry; k++)
+            {
+                int gx = _rng.Next(0, _gridCount);
+                int gy = _rng.Next(0, _gridCount);
+                var goal = new GridPos(gx, gy);
+
+                if (_obstacleMap.IsObstacle(goal))
+                {
+                    continue;
+                }
+
+                if (goal.Equals(start))
+                {
+                    continue;
+                }
+
+                if (r.TempAvoidCell.HasValue && r.TempAvoidCell.Value.Equals(goal))
+                {
+                    continue;
+                }
+
+                // 尽量避免与其他机器人目标重复
+                if (otherGoals.Contains(goal))
+                {
+                    continue;
+                }
+
+                r.Goal = goal;
+                r.HasGoal = true;
+
+                r.AutoNavigator.SetGoal(goal, rebuildIfEnabled: true);
+                return;
+            }
+
+            r.HasGoal = false;
+        }
+
+        private GridPos WorldToGrid_NoLock(double wx, double wy)
+        {
+            int gx = (int)Math.Floor(wx / _cellSizeM);
+            int gy = (int)Math.Floor(wy / _cellSizeM);
+
+            if (gx < 0) gx = 0;
+            if (gy < 0) gy = 0;
+            if (gx >= _gridCount) gx = _gridCount - 1;
+            if (gy >= _gridCount) gy = _gridCount - 1;
+
+            return new GridPos(gx, gy);
+        }
+
+        private void ResolveRobotRobotCollisionAndReplan_NoLock()
+        {
+            for (int i = 0; i < _robots.Count; i++)
+            {
+                for (int j = i + 1; j < _robots.Count; j++)
+                {
+                    var a = _robots[i];
+                    var b = _robots[j];
+
+                    GridPos cellA = WorldToGrid_NoLock(a.X, a.Y);
+                    GridPos cellB = WorldToGrid_NoLock(b.X, b.Y);
+
+                    int dx = Math.Abs(cellA.X - cellB.X);
+                    int dy = Math.Abs(cellA.Y - cellB.Y);
+
+                    // 网格相邻（8 邻域）或同格：视为碰撞
+                    if (dx > 1 || dy > 1)
+                    {
+                        continue;
+                    }
+
+                    // 自动机器人让路；手动机器人不强制改道
+                    if (a.State == EnumRobotProcessState.AutoNavigating && a.ReplanCooldownSec <= 0)
+                    {
+                        a.TempAvoidCell = cellB;
+                        a.AvoidTtlSec = AvoidCellTtlSec;
+                        EnsureRandomGoal_NoLock(a, force: true); // 可选：换目标减少拥挤
+                        a.AutoNavigator.RebuildPath();
+                        a.Manager.ResetAutoCommands();
+                        a.ReplanCooldownSec = CollisionReplanCooldownSec;
+                    }
+
+                    if (b.State == EnumRobotProcessState.AutoNavigating && b.ReplanCooldownSec <= 0)
+                    {
+                        b.TempAvoidCell = cellA;
+                        b.AvoidTtlSec = AvoidCellTtlSec;
+                        EnsureRandomGoal_NoLock(b, force: true); // 可选：换目标减少拥挤
+                        b.AutoNavigator.RebuildPath();
+                        b.Manager.ResetAutoCommands();
+                        b.ReplanCooldownSec = CollisionReplanCooldownSec;
+                    }
+                }
             }
         }
 
