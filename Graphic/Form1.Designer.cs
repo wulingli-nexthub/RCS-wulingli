@@ -38,10 +38,14 @@
             this.labelObstacles = new System.Windows.Forms.Label();
             this.panel1 = new System.Windows.Forms.Panel();
             this.labelRobot = new System.Windows.Forms.Label();
+            this.labelAddRobot = new System.Windows.Forms.Label();
+            this.numericAddRobot = new System.Windows.Forms.NumericUpDown();
+            this.btnResetRobot = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).BeginInit();
             this.panelObstacles.SuspendLayout();
             this.panel1.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.numericAddRobot)).BeginInit();
             this.SuspendLayout();
             // 
             // skControl
@@ -86,7 +90,7 @@
             0,
             -2147483648});
             this.numericAcc.Name = "numericAcc";
-            this.numericAcc.Size = new System.Drawing.Size(67, 28);
+            this.numericAcc.Size = new System.Drawing.Size(64, 28);
             this.numericAcc.TabIndex = 4;
             this.numericAcc.ValueChanged += new System.EventHandler(this.numericAcc_ValueChanged);
             // 
@@ -185,6 +189,9 @@
             // 
             // panel1
             // 
+            this.panel1.Controls.Add(this.btnResetRobot);
+            this.panel1.Controls.Add(this.numericAddRobot);
+            this.panel1.Controls.Add(this.labelAddRobot);
             this.panel1.Controls.Add(this.labelRobot);
             this.panel1.Controls.Add(this.labelVinit);
             this.panel1.Controls.Add(this.numericVinit);
@@ -192,7 +199,7 @@
             this.panel1.Controls.Add(this.numericAcc);
             this.panel1.Location = new System.Drawing.Point(12, 271);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(178, 132);
+            this.panel1.Size = new System.Drawing.Size(178, 210);
             this.panel1.TabIndex = 13;
             // 
             // labelRobot
@@ -203,6 +210,41 @@
             this.labelRobot.Size = new System.Drawing.Size(98, 18);
             this.labelRobot.TabIndex = 0;
             this.labelRobot.Text = "机器人设置";
+            // 
+            // labelAddRobot
+            // 
+            this.labelAddRobot.AutoSize = true;
+            this.labelAddRobot.Location = new System.Drawing.Point(3, 119);
+            this.labelAddRobot.Name = "labelAddRobot";
+            this.labelAddRobot.Size = new System.Drawing.Size(98, 18);
+            this.labelAddRobot.TabIndex = 7;
+            this.labelAddRobot.Text = "机器人数量";
+            // 
+            // numericAddRobot
+            // 
+            this.numericAddRobot.Location = new System.Drawing.Point(108, 114);
+            this.numericAddRobot.Minimum = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
+            this.numericAddRobot.Name = "numericAddRobot";
+            this.numericAddRobot.Size = new System.Drawing.Size(64, 28);
+            this.numericAddRobot.TabIndex = 8;
+            this.numericAddRobot.Value = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
+            // 
+            // btnResetRobot
+            // 
+            this.btnResetRobot.Location = new System.Drawing.Point(40, 157);
+            this.btnResetRobot.Name = "btnResetRobot";
+            this.btnResetRobot.Size = new System.Drawing.Size(86, 36);
+            this.btnResetRobot.TabIndex = 9;
+            this.btnResetRobot.Text = "重置";
+            this.btnResetRobot.UseVisualStyleBackColor = true;
             // 
             // Form1
             // 
@@ -223,6 +265,7 @@
             this.panelObstacles.PerformLayout();
             this.panel1.ResumeLayout(false);
             this.panel1.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.numericAddRobot)).EndInit();
             this.ResumeLayout(false);
 
         }
@@ -243,6 +286,9 @@
         private System.Windows.Forms.Label labelObstacles;
         private System.Windows.Forms.Panel panel1;
         private System.Windows.Forms.Label labelRobot;
+        private System.Windows.Forms.Label labelAddRobot;
+        private System.Windows.Forms.Button btnResetRobot;
+        private System.Windows.Forms.NumericUpDown numericAddRobot;
     }
 }
 
