@@ -384,8 +384,8 @@ namespace GridDemo.Robots
                 for (int i = 0; i < _robots.Count; i++) // 遍历全部机器人
                 {
                     SetRobotState_NoLock(_robots[i], EnumRobotProcessState.AutoNavigating); // 切换到自动状态
-                    EnsureRandomPathCommands_NoLock(_robots[i], force: true); // 若没有路径则生成路径
-                    _robots[i].AutoRandomCommandQueue.Clear(); // 重建路径
+                    _robots[i].AutoRandomCommandQueue.Clear();
+                    EnsureRandomPathCommands_NoLock(_robots[i], force: true);
                     _robots[i].Manager.ResetAutoCommands(); // 重置自动命令
                     _robots[i].Manager.AlignOrientationToDirectionWithTurn(); // 让朝向与方向一致（通过转向控制器）
                 }
@@ -605,7 +605,10 @@ namespace GridDemo.Robots
 
         #region Private
 
-        private void CreateRobots(int robotCount, double initialMaxSpeed, EnumMoveDirection initialDirection) // 创建并初始化机器人列表
+        private void CreateRobots(
+            int robotCount,
+            double initialMaxSpeed,
+            EnumMoveDirection initialDirection) // 创建并初始化机器人列表
         {
             _robots.Clear(); // 清空旧机器人列表
 
@@ -743,7 +746,7 @@ namespace GridDemo.Robots
                     robotLock: _robotLock, // 共享锁
                     move: ctx.Move, // 运动执行器
                     turn: ctx.Move.TurnController, // 转向控制器（由 Move 提供）
-                    autoCommandProvider: () => ctx.AutoNavigator.TryBuildNextCommand(), // 自动命令提供者：按需生成下一条
+                    autoCommandProvider: () => TryBuildRandomAutoCommand_NoLock(ctx), // 自动命令提供者：随机路径段
                     getForwardAcc: () => ctx.Acc); // 动态获取当前加速度（允许 UI 调整）
 
                 ctx.Manager.BindManualCommandProvider(() => ctx.Manual.TryBuildNextCommand()); // 绑定手动命令提供者
@@ -874,8 +877,42 @@ namespace GridDemo.Robots
 
         private void BuildCommandsFromCells_NoLock(RobotContext r, List<GridPos> cells)
         {
-            // 将格子序列转为 TurnAngle + MoveDistance（每步一格）
-            // 说明：不做“同方向合并”，避免命令计算复杂化；需要合并可后续加
+            // 将格子序列转为 TurnAngle + MoveDistance，并把“同方向连续格”合并为一次 MoveDistance
+            // 目标：减少“一格一动”的停顿（RobotManager 会在每条指令完成后再取下一条）
+            if (cells == null || cells.Count < 2)
+            {
+                return;
+            }
+
+            EnumMoveDirection? currentSegDir = null;
+            int currentSegLen = 0;
+
+            Action flushSegment = () =>
+            {
+                if (!currentSegDir.HasValue || currentSegLen <= 0)
+                {
+                    currentSegDir = null;
+                    currentSegLen = 0;
+                    return;
+                }
+
+                EnumMoveDirection desiredDir = currentSegDir.Value;
+
+                double? turnAngle = TryGetTurnAngleRad(r.Manager.Direction, desiredDir);
+                if (turnAngle.HasValue)
+                {
+                    r.AutoRandomCommandQueue.Enqueue(RobotCommand.TurnAngle(turnAngle.Value));
+                }
+
+                r.AutoRandomCommandQueue.Enqueue(RobotCommand.MoveDistance(_cellSizeM * currentSegLen));
+
+                // 同步离散方向，保证下一段转角计算正确
+                r.Manager.Direction = desiredDir;
+
+                currentSegDir = null;
+                currentSegLen = 0;
+            };
+
             for (int i = 1; i < cells.Count; i++)
             {
                 GridPos prev = cells[i - 1];
@@ -884,27 +921,38 @@ namespace GridDemo.Robots
                 int dx = cur.X - prev.X;
                 int dy = cur.Y - prev.Y;
 
-                EnumMoveDirection desiredDir;
-                if (dx == 1 && dy == 0) desiredDir = EnumMoveDirection.Right;
-                else if (dx == -1 && dy == 0) desiredDir = EnumMoveDirection.Left;
-                else if (dx == 0 && dy == 1) desiredDir = EnumMoveDirection.Down;
-                else if (dx == 0 && dy == -1) desiredDir = EnumMoveDirection.Up;
+                EnumMoveDirection stepDir;
+                if (dx == 1 && dy == 0) stepDir = EnumMoveDirection.Right;
+                else if (dx == -1 && dy == 0) stepDir = EnumMoveDirection.Left;
+                else if (dx == 0 && dy == 1) stepDir = EnumMoveDirection.Down;
+                else if (dx == 0 && dy == -1) stepDir = EnumMoveDirection.Up;
                 else
                 {
+                    // 非四邻域：直接截断当前段
+                    flushSegment();
                     continue;
                 }
 
-                double? turnAngle = TryGetTurnAngleRad(r.Manager.Direction, desiredDir);
-                if (turnAngle.HasValue)
+                if (!currentSegDir.HasValue)
                 {
-                    r.AutoRandomCommandQueue.Enqueue(RobotCommand.TurnAngle(turnAngle.Value));
+                    currentSegDir = stepDir;
+                    currentSegLen = 1;
+                    continue;
                 }
 
-                r.AutoRandomCommandQueue.Enqueue(RobotCommand.MoveDistance(_cellSizeM));
-
-                // 关键：这里要“同步”方向，否则下一步的转角计算会始终基于旧方向
-                r.Manager.Direction = desiredDir;
+                if (currentSegDir.Value == stepDir)
+                {
+                    currentSegLen++;
+                }
+                else
+                {
+                    flushSegment();
+                    currentSegDir = stepDir;
+                    currentSegLen = 1;
+                }
             }
+
+            flushSegment();
         }
 
         private static double? TryGetTurnAngleRad(EnumMoveDirection currentDir, EnumMoveDirection targetDir)
