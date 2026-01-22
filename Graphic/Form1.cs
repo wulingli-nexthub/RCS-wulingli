@@ -45,6 +45,8 @@ namespace GridDemo
         private EnumPathfindingAlgorithm _currentAlgorithm;
         private readonly double _dt = 0.02;  // 仿真步长 20ms
 
+        private const double SelectHitRadiusPx = 18.0;
+
         public Form1()
         {
             InitializeComponent();
@@ -71,6 +73,9 @@ namespace GridDemo
             numericVinit.KeyDown += Numeric_KeyDown_OnEnter;
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
             cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
+
+            numericAddRobot.ValueChanged += numericAddRobot_ValueChanged;
+            btnResetRobot.Click += btnResetRobot_Click;
         }
 
         /// <summary>
@@ -122,14 +127,19 @@ namespace GridDemo
 
             _drawRobot = new Draws.DrawRobot(
                 _worldTransform,
-                robotLock: new object(), // DrawRobot 内部只在绘制时读位置，不需要真实锁，可传一个 dummy
-                getRobotPosition: () =>
+                robotLock: new object(),
+                getRobotsSnapshot: () =>
                 {
-                    var s = _engine.GetStateSnapshot();
-                    return (s.X, s.Y);
+                    var states = _engine.GetRobotStatesSnapshot();
+                    var list = new System.Collections.Generic.List<(int Id, double X, double Y, double Angle)>(states.Count);
+                    for (int i = 0; i < states.Count; i++)
+                    {
+                        list.Add((i, states[i].X, states[i].Y, states[i].OrientationAngle));
+                    }
+                    return list;
                 },
-                getScale: () => _scale,
-                getOrientationAngle: () => _engine.GetStateSnapshot().OrientationAngle);
+                getSelectedId: () => _engine.SelectedRobotId,
+                getScale: () => _scale);
 
             // 3. 鼠标缩放/平移
             _mouseWheel = new Events.MouseWheel(
@@ -165,12 +175,12 @@ namespace GridDemo
                 updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
             );
 
-            _destinationPicker = new Events.DestinationPicker(
-                transform: _worldTransform,
-                navigator: _engine.AutoNavigator,           // 直接传引擎内部的导航器
-                getWorldWidthM: () => _worldWidthM,
-                getWorldHeightM: () => _worldHeightM,
-                cellSizeM: _engine.CellSizeM);
+            //_destinationPicker = new Events.DestinationPicker(
+            //    transform: _worldTransform,
+            //    navigator: _engine.AutoNavigator,           // 直接传引擎内部的导航器
+            //    getWorldWidthM: () => _worldWidthM,
+            //    getWorldHeightM: () => _worldHeightM,
+            //    cellSizeM: _engine.CellSizeM);
 
             // 4. 创建仿真循环
             _simulation = new RobotSimulationLoop(_engine, skControl, _dt);
@@ -229,6 +239,19 @@ namespace GridDemo
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
             if (_engine == null) return;
+
+            // 小键盘 1..9 选中机器人（编号显示为 1..N）
+            if (e.KeyCode >= Keys.NumPad1 && e.KeyCode <= Keys.NumPad9)
+            {
+                int id = (int)e.KeyCode - (int)Keys.NumPad1;
+                if (_engine.SelectRobot(id))
+                {
+                    Log("SelectRobot: " + (id + 1));
+                    skControl.Invalidate();
+                }
+                e.Handled = true;
+                return;
+            }
 
             switch (e.KeyCode)
             {
@@ -307,16 +330,72 @@ namespace GridDemo
                 skControl.Invalidate();
                 return;
             }
-            if (_currentAlgorithm != EnumPathfindingAlgorithm.Serpentine
-                && _destinationPicker != null
-                && _destinationPicker.TryPick(e))
+            // 左键：优先选中机器人
+            if (e.Button == MouseButtons.Left)
             {
-                Log("DestinationPicker: picked at (" + e.X + "," + e.Y + ")");
-                skControl.Invalidate();
-                return;
+                if (TrySelectRobotAtMouse(e.X, e.Y))
+                {
+                    skControl.Invalidate();
+                    return;
+                }
+            }
+
+            // 右键：仅在非蛇形时，给“选中机器人”选目的地
+            if (e.Button == MouseButtons.Right && _currentAlgorithm != EnumPathfindingAlgorithm.Serpentine)
+            {
+                var world = _worldTransform.ScreenToWorld(e.X, e.Y);
+
+                int gx = (int)Math.Floor(world.X / _engine.CellSizeM);
+                int gy = (int)Math.Floor(world.Y / _engine.CellSizeM);
+
+                if (gx >= 0 && gy >= 0 && gx < _engine.GridCount && gy < _engine.GridCount)
+                {
+                    _engine.TrySetSelectedRobotGoal(new GridPos(gx, gy));
+                    Log("SetGoal for selected robot: (" + gx + "," + gy + ")");
+                    skControl.Invalidate();
+                    return;
+                }
             }
 
             _mousePan.MouseDown(e);
+        }
+
+        private bool TrySelectRobotAtMouse(int mouseX, int mouseY)
+        {
+            if (_engine == null || _worldTransform == null)
+            {
+                return false;
+            }
+
+            var states = _engine.GetRobotStatesSnapshot();
+
+            double bestD2 = double.MaxValue;
+            int bestId = -1;
+
+            for (int i = 0; i < states.Count; i++)
+            {
+                var s = states[i];
+                var sp = _worldTransform.WorldToScreen(s.X, s.Y);
+
+                double dx = sp.X - mouseX;
+                double dy = sp.Y - mouseY;
+                double d2 = dx * dx + dy * dy;
+
+                if (d2 < bestD2)
+                {
+                    bestD2 = d2;
+                    bestId = i;
+                }
+            }
+
+            if (bestId >= 0 && bestD2 <= SelectHitRadiusPx * SelectHitRadiusPx)
+            {
+                _engine.SelectRobot(bestId);
+                Log("SelectRobot by mouse: " + (bestId + 1));
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -483,9 +562,9 @@ namespace GridDemo
                 _engine.Algorithm = EnumPathfindingAlgorithm.Serpentine;
                 _currentAlgorithm = EnumPathfindingAlgorithm.Serpentine;
 
-                // 蛇形模式：目标点自动设置为右下角，不需要鼠标右键
-                _engine.AutoNavigator.SetGoal(new GridPos(GridCount - 1, GridCount - 1), rebuildIfEnabled: true);
-                Log("Serpentine goal forced: (" + (GridCount - 1) + "," + (GridCount - 1) + ")");
+                //// 蛇形模式：目标点自动设置为右下角，不需要鼠标右键
+                //_engine.AutoNavigator.SetGoal(new GridPos(GridCount - 1, GridCount - 1), rebuildIfEnabled: true);
+                //Log("Serpentine goal forced: (" + (GridCount - 1) + "," + (GridCount - 1) + ")");
             }
 
             Log("Algorithm changed: " + old + " -> " + _currentAlgorithm + ", autoEnabled=" + _engine.AutoEnabled);
@@ -607,6 +686,39 @@ namespace GridDemo
             {
                 File.AppendAllText(_logFilePath, line + Environment.NewLine, Encoding.UTF8);
             }
+        }
+
+        private void numericAddRobot_ValueChanged(object sender, EventArgs e)
+        {
+            if (_engine == null)
+            {
+                return;
+            }
+
+            int count = (int)numericAddRobot.Value;
+            Log("numericAddRobot_ValueChanged: count=" + count);
+
+            _engine.SetRobotCount(count, initialMaxSpeed: (double)numericVinit.Value, initialDirection: EnumMoveDirection.Right);
+
+            skControl.Invalidate();
+        }
+
+        private void btnResetRobot_Click(object sender, EventArgs e)
+        {
+            if (_engine == null)
+            {
+                return;
+            }
+
+            Log("btnResetRobot_Click: reset single robot roam");
+
+            numericAddRobot.ValueChanged -= numericAddRobot_ValueChanged;
+            numericAddRobot.Value = 1;
+            numericAddRobot.ValueChanged += numericAddRobot_ValueChanged;
+
+            _engine.ResetToSingleRobotRandomRoam(initialMaxSpeed: (double)numericVinit.Value, initialDirection: EnumMoveDirection.Right);
+
+            skControl.Invalidate();
         }
     }
 }

@@ -236,6 +236,7 @@
             0,
             0,
             0});
+            this.numericAddRobot.ValueChanged += new System.EventHandler(this.numericAddRobot_ValueChanged);
             // 
             // btnResetRobot
             // 
@@ -245,6 +246,7 @@
             this.btnResetRobot.TabIndex = 9;
             this.btnResetRobot.Text = "重置";
             this.btnResetRobot.UseVisualStyleBackColor = true;
+            this.btnResetRobot.Click += new System.EventHandler(this.btnResetRobot_Click);
             // 
             // Form1
             // 
