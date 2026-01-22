@@ -196,9 +196,9 @@ namespace GridDemo.Robots
                     case EnumRobotProcessState.AutoNavigating:
                         _robotManager.SetMode(EnumRobotControlMode.Auto);
                         _robotAutoNavigator.Enable();
+                        _robotManager.AlignOrientationToDirectionWithTurn();
                         _robotAutoNavigator.RebuildPath();
                         _robotManager.ResetAutoCommands();
-                        _robotManager.AlignOrientationToDirectionWithTurn();
                         break;
 
                     case EnumRobotProcessState.ManualControl:
@@ -250,9 +250,8 @@ namespace GridDemo.Robots
                 }
                 else
                 {
-                    // 退出编辑：恢复自动导航 + 重规划路径
+                    // 退出编辑：恢复自动导航
                     ChangeProcessState(EnumRobotProcessState.AutoNavigating);
-                    _robotAutoNavigator.RebuildPath();
                     _robotManager.ResetAutoCommands();
                 }
             }
