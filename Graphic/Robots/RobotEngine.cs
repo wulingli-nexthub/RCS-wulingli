@@ -36,6 +36,10 @@ namespace GridDemo.Robots
         // 单机器人重置后的“随机运动”
         private bool _singleRandomRoamEnabled;
 
+        // --- 碰撞让步冷却：避免每帧 Stop + Rebuild 导致抖动 ---
+        private const int YieldCooldownFrames = 12; // 12 帧 * 20ms ≈ 240ms
+        private readonly Dictionary<int, int> _yieldCooldownTicks = new Dictionary<int, int>();
+
         public RobotEngine(int gridCount, double cellSizeM, double dt, double initialMaxSpeed, EnumMoveDirection initialDirection)
         {
             _gridCount = gridCount;
@@ -456,6 +460,25 @@ namespace GridDemo.Robots
 
             lock (_robotLock)
             {
+                // 0) 冷却计数递减
+                if (_yieldCooldownTicks.Count > 0)
+                {
+                    var keys = new List<int>(_yieldCooldownTicks.Keys);
+                    for (int i = 0; i < keys.Count; i++)
+                    {
+                        int id = keys[i];
+                        int t = _yieldCooldownTicks[id] - 1;
+                        if (t <= 0)
+                        {
+                            _yieldCooldownTicks.Remove(id);
+                        }
+                        else
+                        {
+                            _yieldCooldownTicks[id] = t;
+                        }
+                    }
+                }
+
                 // 1) 动态障碍：把其它机器人占用的格子注入 WalkableProvider
                 RebindDynamicWalkable_NoLock();
 
@@ -507,6 +530,147 @@ namespace GridDemo.Robots
                     }
                 }
             }
+        }
+
+        // -------------------------- 碰撞优化：新实现 -------------------------- //
+
+        private void HandleRobotCollisions_NoLock()
+        {
+            if (_robots.Count <= 1)
+            {
+                return;
+            }
+
+            // A) 预计算当前格、意图下一格
+            var cur = new GridPos[_robots.Count];
+            var next = new GridPos[_robots.Count];
+
+            for (int i = 0; i < _robots.Count; i++)
+            {
+                RobotInstance r = _robots[i];
+                cur[i] = r.GetGridPos_NoLock();
+                next[i] = GetIntendedNextCell_NoLock(r, cur[i]);
+            }
+
+            // B) 检测两类冲突：
+            //  - 同一目标格冲突：nextA == nextB
+            //  - 对向交换冲突：nextA == curB && nextB == curA
+            for (int i = 0; i < _robots.Count; i++)
+            {
+                for (int j = i + 1; j < _robots.Count; j++)
+                {
+                    bool sameTarget = next[i].Equals(next[j]);
+                    bool swap = next[i].Equals(cur[j]) && next[j].Equals(cur[i]);
+
+                    if (!sameTarget && !swap)
+                    {
+                        continue;
+                    }
+
+                    RobotInstance a = _robots[i];
+                    RobotInstance b = _robots[j];
+
+                    // 冷却中就别再反复“Stop+Rebuild”——这是抖动根源
+                    if (IsInYieldCooldown_NoLock(a.Id) && IsInYieldCooldown_NoLock(b.Id))
+                    {
+                        continue;
+                    }
+
+                    // 让步策略：
+                    // 1) 若一方冷却中，另一方让步（避免双方都停）
+                    // 2) 否则按 Id 大者让步（确定性）
+                    RobotInstance yield;
+                    if (IsInYieldCooldown_NoLock(a.Id))
+                    {
+                        yield = b;
+                    }
+                    else if (IsInYieldCooldown_NoLock(b.Id))
+                    {
+                        yield = a;
+                    }
+                    else
+                    {
+                        yield = a.Id > b.Id ? a : b;
+                    }
+
+                    ApplyYield_NoLock(yield);
+                }
+            }
+        }
+
+        private bool IsInYieldCooldown_NoLock(int robotId)
+        {
+            int t;
+            return _yieldCooldownTicks.TryGetValue(robotId, out t) && t > 0;
+        }
+
+        private void ApplyYield_NoLock(RobotInstance yield)
+        {
+            // 进入冷却：短时间内不重复 Rebuild，避免抖动
+            _yieldCooldownTicks[yield.Id] = YieldCooldownFrames;
+
+            // 让步行为：停车 + 清空命令 + 重规划
+            yield.Move.StopImmediately_NoLock();
+            yield.Manager.ResetAutoCommands();
+
+            // 强制把渲染角度拉回离散方向，防止“斜角残留”
+            NormalizeDirAngle_NoLock(yield);
+
+            if (yield.AutoNavigator.IsEnabled)
+            {
+                yield.AutoNavigator.RebuildPath();
+            }
+        }
+
+        private void NormalizeDirAngle_NoLock(RobotInstance r)
+        {
+            // 把 OrientationAngle 强制对齐到 Direction 对应角度，避免频繁打断转向导致停在中间角
+            r.Manager.IsTurning = false;
+            r.Manager.TargetOrientationAngle = RobotManager.DirectionToAngle(r.Manager.Direction);
+            r.Manager.OrientationAngle = r.Manager.TargetOrientationAngle;
+        }
+
+        private GridPos GetIntendedNextCell_NoLock(RobotInstance r, GridPos curCell)
+        {
+            // 默认意图为“不动”
+            GridPos target = curCell;
+
+            // 自动移动：按离散方向推进 1 格作为意图
+            // 手动模式不做意图预测（避免连续角导致意图抖动）
+            if (!r.AutoNavigator.IsEnabled)
+            {
+                return target;
+            }
+
+            // 若在转向中，认为本帧意图仍为当前格（减少误判）
+            if (r.Manager.IsTurning)
+            {
+                return target;
+            }
+
+            switch (r.Manager.Direction)
+            {
+                case EnumMoveDirection.Right:
+                    target = new GridPos(curCell.X + 1, curCell.Y);
+                    break;
+                case EnumMoveDirection.Left:
+                    target = new GridPos(curCell.X - 1, curCell.Y);
+                    break;
+                case EnumMoveDirection.Down:
+                    target = new GridPos(curCell.X, curCell.Y + 1);
+                    break;
+                case EnumMoveDirection.Up:
+                    target = new GridPos(curCell.X, curCell.Y - 1);
+                    break;
+            }
+
+            // 边界夹紧
+            if (target.X < 0) target = new GridPos(0, target.Y);
+            if (target.Y < 0) target = new GridPos(target.X, 0);
+            if (target.X >= _gridCount) target = new GridPos(_gridCount - 1, target.Y);
+            if (target.Y >= _gridCount) target = new GridPos(target.X, _gridCount - 1);
+
+            return target;
         }
 
         private void ChangeProcessState_NoLock(EnumRobotProcessState newState)
@@ -589,45 +753,6 @@ namespace GridDemo.Robots
 
                     return !occupied.Contains(key);
                 });
-            }
-        }
-
-        private void HandleRobotCollisions_NoLock()
-        {
-            // 让步策略：Id 大者让步（确定性，避免互相礼让死锁）
-            var cells = new GridPos[_robots.Count];
-            for (int i = 0; i < _robots.Count; i++)
-            {
-                cells[i] = _robots[i].GetGridPos_NoLock();
-            }
-
-            for (int i = 0; i < _robots.Count; i++)
-            {
-                for (int j = i + 1; j < _robots.Count; j++)
-                {
-                    GridPos a = cells[i];
-                    GridPos b = cells[j];
-
-                    bool adjacent =
-                        (a.X == b.X && a.Y == b.Y) ||
-                        (Math.Abs(a.X - b.X) == 1 && a.Y == b.Y) ||
-                        (Math.Abs(a.Y - b.Y) == 1 && a.X == b.X);
-
-                    if (!adjacent)
-                    {
-                        continue;
-                    }
-
-                    RobotInstance yield = _robots[i].Id > _robots[j].Id ? _robots[i] : _robots[j];
-
-                    // 让步方：停车+重规划（绕行通过动态障碍实现）
-                    yield.Move.StopImmediately_NoLock();
-                    yield.Manager.ResetAutoCommands();
-                    if (yield.AutoNavigator.IsEnabled)
-                    {
-                        yield.AutoNavigator.RebuildPath();
-                    }
-                }
             }
         }
     }
