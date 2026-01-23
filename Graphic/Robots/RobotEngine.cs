@@ -541,7 +541,6 @@ namespace GridDemo.Robots
                 return;
             }
 
-            // A) 预计算当前格、意图下一格
             var cur = new GridPos[_robots.Count];
             var next = new GridPos[_robots.Count];
 
@@ -552,17 +551,23 @@ namespace GridDemo.Robots
                 next[i] = GetIntendedNextCell_NoLock(r, cur[i]);
             }
 
-            // B) 检测两类冲突：
-            //  - 同一目标格冲突：nextA == nextB
-            //  - 对向交换冲突：nextA == curB && nextB == curA
             for (int i = 0; i < _robots.Count; i++)
             {
                 for (int j = i + 1; j < _robots.Count; j++)
                 {
+                    // 三类冲突：
+                    // 1) 同目标格：两者都想进同一格
                     bool sameTarget = next[i].Equals(next[j]);
+
+                    // 2) 交换格：对向互换
                     bool swap = next[i].Equals(cur[j]) && next[j].Equals(cur[i]);
 
-                    if (!sameTarget && !swap)
+                    // 3) 穿入对方格：任一方下一步将进入对方当前格（防穿模核心）
+                    bool enterOther =
+                        next[i].Equals(cur[j]) ||
+                        next[j].Equals(cur[i]);
+
+                    if (!sameTarget && !swap && !enterOther)
                     {
                         continue;
                     }
@@ -570,30 +575,44 @@ namespace GridDemo.Robots
                     RobotInstance a = _robots[i];
                     RobotInstance b = _robots[j];
 
-                    // 冷却中就别再反复“Stop+Rebuild”——这是抖动根源
                     if (IsInYieldCooldown_NoLock(a.Id) && IsInYieldCooldown_NoLock(b.Id))
                     {
                         continue;
                     }
 
-                    // 让步策略：
-                    // 1) 若一方冷却中，另一方让步（避免双方都停）
-                    // 2) 否则按 Id 大者让步（确定性）
                     RobotInstance yield;
+                    RobotInstance go;
+
                     if (IsInYieldCooldown_NoLock(a.Id))
                     {
                         yield = b;
+                        go = a;
                     }
                     else if (IsInYieldCooldown_NoLock(b.Id))
                     {
                         yield = a;
+                        go = b;
                     }
                     else
                     {
-                        yield = a.Id > b.Id ? a : b;
+                        // 默认策略：Id 大者让步（确定性）
+                        if (a.Id > b.Id)
+                        {
+                            yield = a;
+                            go = b;
+                        }
+                        else
+                        {
+                            yield = b;
+                            go = a;
+                        }
                     }
 
+                    // 让步方立即刹停并重规划
                     ApplyYield_NoLock(yield);
+
+                    // 通行方也刷新一下队列，避免仍在执行“会穿入”的旧 MoveDistance
+                    go.Manager.ResetAutoCommands();
                 }
             }
         }
@@ -635,41 +654,62 @@ namespace GridDemo.Robots
             // 默认意图为“不动”
             GridPos target = curCell;
 
-            // 自动移动：按离散方向推进 1 格作为意图
-            // 手动模式不做意图预测（避免连续角导致意图抖动）
+            // 只对自动巡航做预测（手动连续角移动更复杂，先不在这里做阻拦）
             if (!r.AutoNavigator.IsEnabled)
             {
                 return target;
             }
 
-            // 若在转向中，认为本帧意图仍为当前格（减少误判）
+            // 转向中不预测（避免误判）
             if (r.Manager.IsTurning)
             {
                 return target;
             }
 
+            // 关键：按“下一帧预测位置”推算下一格，避免速度较大时跨格穿模
+            // 预测距离：max(speed * dt, 一个很小的最小值)，保证低速也能预测到相邻格意图
+            double v = r.Speed;
+            double move = v * _dt;
+            if (move < _cellSizeM * 0.15) // 经验值：低速时也至少预测 0.15 格
+            {
+                move = _cellSizeM * 0.15;
+            }
+
+            int dx = 0;
+            int dy = 0;
+
             switch (r.Manager.Direction)
             {
                 case EnumMoveDirection.Right:
-                    target = new GridPos(curCell.X + 1, curCell.Y);
+                    dx = +1;
                     break;
                 case EnumMoveDirection.Left:
-                    target = new GridPos(curCell.X - 1, curCell.Y);
+                    dx = -1;
                     break;
                 case EnumMoveDirection.Down:
-                    target = new GridPos(curCell.X, curCell.Y + 1);
+                    dy = +1;
                     break;
                 case EnumMoveDirection.Up:
-                    target = new GridPos(curCell.X, curCell.Y - 1);
+                    dy = -1;
                     break;
             }
 
-            // 边界夹紧
-            if (target.X < 0) target = new GridPos(0, target.Y);
-            if (target.Y < 0) target = new GridPos(target.X, 0);
-            if (target.X >= _gridCount) target = new GridPos(_gridCount - 1, target.Y);
-            if (target.Y >= _gridCount) target = new GridPos(target.X, _gridCount - 1);
+            // 用当前格中心 + 预测位移，映射到将要进入的格子
+            double curCenterX = curCell.X * _cellSizeM + _cellSizeM / 2.0;
+            double curCenterY = curCell.Y * _cellSizeM + _cellSizeM / 2.0;
 
+            double predX = curCenterX + dx * move;
+            double predY = curCenterY + dy * move;
+
+            int gx = (int)Math.Floor(predX / _cellSizeM);
+            int gy = (int)Math.Floor(predY / _cellSizeM);
+
+            if (gx < 0) gx = 0;
+            if (gy < 0) gy = 0;
+            if (gx >= _gridCount) gx = _gridCount - 1;
+            if (gy >= _gridCount) gy = _gridCount - 1;
+
+            target = new GridPos(gx, gy);
             return target;
         }
 
