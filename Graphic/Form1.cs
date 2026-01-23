@@ -45,7 +45,7 @@ namespace GridDemo
         private EnumPathfindingAlgorithm _currentAlgorithm;
         private readonly double _dt = 0.02;  // 仿真步长 20ms
 
-        private const double SelectHitRadiusPx = 18.0;
+        private const double SelectHitRadiusPx = 18.0;   // 鼠标选中机器人时的命中半径（像素） 
 
         public Form1()
         {
@@ -198,10 +198,10 @@ namespace GridDemo
             Log("Default control mode: Auto");
 
             cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;
-            cmbPathAlgorithm.SelectedIndex = 2; // A*
+            cmbPathAlgorithm.SelectedIndex = 1; // A*
             cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
-            _engine.Algorithm = EnumPathfindingAlgorithm.Serpentine;
-            _currentAlgorithm = EnumPathfindingAlgorithm.Serpentine;
+            _engine.Algorithm = EnumPathfindingAlgorithm.AStar;
+            _currentAlgorithm = EnumPathfindingAlgorithm.AStar;
 
             Log("Default algorithm: " + _currentAlgorithm);
 
@@ -238,7 +238,10 @@ namespace GridDemo
         /// <param name="e"></param>
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
-            if (_engine == null) return;
+            if (_engine == null)
+            {
+                return;
+            }
 
             // 小键盘 1..9 选中机器人（编号显示为 1..N）
             if (e.KeyCode >= Keys.NumPad1 && e.KeyCode <= Keys.NumPad9)

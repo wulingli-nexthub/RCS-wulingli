@@ -17,6 +17,9 @@ namespace GridDemo.Robots
         private readonly int _gridCount;
         private readonly double _cellSizeM;
 
+        /// <summary>
+        /// 创建一个机器人实例所需的全部输入
+        /// </summary>
         public RobotInstance(
             int id,
             object robotLock,
@@ -97,6 +100,7 @@ namespace GridDemo.Robots
             Manager.BindManualCommandProvider(() => Manual.TryBuildNextCommand());
         }
 
+        // ---------------------------对外暴露的属性和方法--------------------------- //
         public int Id { get; }
 
         public double X { get; set; }
@@ -109,6 +113,9 @@ namespace GridDemo.Robots
         public RobotAutoNavigator AutoNavigator { get; }
         public RobotManual Manual { get; }
 
+        /// <summary>
+        /// 生成状态快照，将当前状态封装为不可变结构体。
+        /// </summary>
         public RobotStateSnapshot GetSnapshot()
         {
             return new RobotStateSnapshot(
@@ -119,6 +126,9 @@ namespace GridDemo.Robots
                 OrientationAngle: Manager.OrientationAngle);
         }
 
+        /// <summary>
+        /// 根据当前坐标计算网格位置
+        /// </summary>
         public GridPos GetGridPos_NoLock()
         {
             int gx = (int)Math.Floor(X / _cellSizeM);
