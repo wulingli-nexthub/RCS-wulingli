@@ -68,20 +68,6 @@ namespace GridDemo.Robots
         public int GridCount => _gridCount; // 对外暴露网格数量
 
         /// <summary>
-        /// 当前机器人数量
-        /// </summary>
-        public int RobotCount
-        {
-            get
-            {
-                lock (_robotLock) // 加锁读取机器人数量
-                {
-                    return _robots.Count; // 返回机器人数量
-                }
-            }
-        }
-
-        /// <summary>
         /// 当前选中机器人 Id（线程安全）
         /// </summary>
         public int SelectedRobotId
@@ -838,49 +824,6 @@ namespace GridDemo.Robots
         {
             int t; // 冷却剩余帧数
             return _yieldCooldownTicks.TryGetValue(robotId, out t) && t > 0; // 存在且大于 0 则表示在冷却
-        }
-
-        /// <summary>
-        /// 对指定机器人执行“让步”动作（停车 + 重规划）
-        /// </summary>
-        /// <param name="yield"></param>
-        private void ApplyYield_NoLock(RobotInstance yield)
-        {
-            // 进入冷却：短时间内不重复 Rebuild，避免抖动
-            _yieldCooldownTicks[yield.Id] = YieldCooldownFrames; // 写入冷却帧数
-
-            // 让步行为：停车 + 清空命令 + 重规划
-            yield.Move.StopImmediately_NoLock(); // 立即制动停止
-            yield.Manager.ResetAutoCommands(); // 清空自动命令队列
-
-            // 强制把渲染角度拉回离散方向，防止“斜角残留”
-            NormalizeDirAngle_NoLock(yield); // 将朝向角对齐到当前离散方向，避免停在中间角度
-
-            if (!yield.AutoNavigator.IsEnabled)
-            {
-                return;
-            }
-
-            yield.AutoNavigator.RebuildPath();
-
-            // 若重建后仍无路径，则重新选一个目标脱困
-            var p = yield.AutoNavigator.GetPathWorldPointsSnapshot();
-            if (p == null || p.Count == 0)
-            {
-                yield.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
-                yield.Manager.ResetAutoCommands();
-            }
-        }
-
-        /// <summary>
-        /// 将机器人朝向立即对齐到离散方向
-        /// </summary>
-        private void NormalizeDirAngle_NoLock(RobotInstance r)
-        {
-            // 把 OrientationAngle 强制对齐到 Direction 对应角度，避免频繁打断转向导致停在中间角
-            r.Manager.IsTurning = false; // 取消“正在转向”状态
-            r.Manager.TargetOrientationAngle = RobotManager.DirectionToAngle(r.Manager.Direction); // 计算离散方向对应目标角度
-            r.Manager.OrientationAngle = r.Manager.TargetOrientationAngle; // 立即将当前角度设置为目标角度（消除残留斜角）
         }
 
         /// <summary>
