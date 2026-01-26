@@ -658,6 +658,12 @@ namespace GridDemo.Robots
                 for (int j = i + 1; j < _robots.Count; j++) // j 从 i+1 开始避免重复/自比
                 {
                     // 三类冲突：
+                    bool iStationary = next[i].Equals(cur[i]);
+                    bool jStationary = next[j].Equals(cur[j]);
+                    if (iStationary && jStationary)
+                    {
+                        continue;
+                    }
                     // 1) 同目标格：两者都想进同一格
                     bool sameTarget = next[i].Equals(next[j]); // 预测下一格完全相同
 
@@ -713,8 +719,20 @@ namespace GridDemo.Robots
                     // 让步方立即刹停并重规划
                     ApplyYield_NoLock(yield); // 执行让步：停车+清命令+对齐角度+重规划
 
-                    // 通行方也刷新一下队列，避免仍在执行“会穿入”的旧 MoveDistance
-                    go.Manager.ResetAutoCommands(); // 刷新通行方命令队列，减少继续冲突的概率
+                    // ------------------ 关键修复 2：通行方也必须重规划，否则会持续抢同一格 ------------------
+                    if (go.AutoNavigator.IsEnabled)
+                    {
+                        go.Manager.ResetAutoCommands();
+                        go.AutoNavigator.RebuildPath();
+
+                        // 若仍无路径（或重建失败导致路径为空），给一个新目标，避免双方僵持
+                        var p = go.AutoNavigator.GetPathWorldPointsSnapshot();
+                        if (p == null || p.Count == 0)
+                        {
+                            go.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
+                            go.Manager.ResetAutoCommands();
+                        }
+                    }
                 }
             }
         }
@@ -744,9 +762,19 @@ namespace GridDemo.Robots
             // 强制把渲染角度拉回离散方向，防止“斜角残留”
             NormalizeDirAngle_NoLock(yield); // 将朝向角对齐到当前离散方向，避免停在中间角度
 
-            if (yield.AutoNavigator.IsEnabled) // 若自动导航开启
+            if (!yield.AutoNavigator.IsEnabled)
             {
-                yield.AutoNavigator.RebuildPath(); // 让步后强制重建路径（绕开冲突）
+                return;
+            }
+
+            yield.AutoNavigator.RebuildPath();
+
+            // 若重建后仍无路径，则重新选一个目标脱困
+            var p = yield.AutoNavigator.GetPathWorldPointsSnapshot();
+            if (p == null || p.Count == 0)
+            {
+                yield.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
+                yield.Manager.ResetAutoCommands();
             }
         }
 
@@ -776,10 +804,10 @@ namespace GridDemo.Robots
             }
 
             // 转向中不预测（避免误判）
-            if (r.Manager.IsTurning) // 若正在转向
-            {
-                return target; // 认为下一格不变
-            }
+            //if (r.Manager.IsTurning) // 若正在转向
+            //{
+            //    return target; // 认为下一格不变
+            //}
 
             // 关键：按“下一帧预测位置”推算下一格，避免速度较大时跨格穿模
             // 预测距离：max(speed * dt, 一个很小的最小值)，保证低速也能预测到相邻格意图
@@ -935,6 +963,26 @@ namespace GridDemo.Robots
                     }
 
                     return !occupied.Contains(key); // 其它机器人占用格不可走，否则可走
+                });
+
+                // 需要在 RobotMove 中提供 SetIsWorldWalkableProvider(wx, wy) 之类的接口
+                me.Move.SetIsWorldWalkableProvider((wx, wy) =>
+                {
+                    int gx = (int)Math.Floor(wx / _cellSizeM);
+                    int gy = (int)Math.Floor(wy / _cellSizeM);
+
+                    if (gx < 0 || gy < 0 || gx >= _gridCount || gy >= _gridCount)
+                        return false;
+
+                    var p = new GridPos(gx, gy);
+                    if (_obstacleMap.IsObstacle(p))
+                        return false;
+
+                    int key = p.Y * _gridCount + p.X;
+                    if (key == myKey)  // 自己当前位置始终可走
+                        return true;
+
+                    return !occupied.Contains(key);  // 其它机器人所在格视为不可走
                 });
             }
         }

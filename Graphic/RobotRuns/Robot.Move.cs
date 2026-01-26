@@ -32,7 +32,7 @@ namespace GridDemo.RobotRuns
         private readonly RobotTurn _turnController;
 
         // 可通行判定（世界坐标 -> 是否可走）
-        private readonly Func<double, double, bool> _isWorldWalkable;
+        private Func<double, double, bool> _isWorldWalkable;
         private readonly double _robotRadiusM;
 
         // 指令执行状态：MoveDistance
@@ -71,6 +71,16 @@ namespace GridDemo.RobotRuns
             _isWorldWalkable = isWorldWalkable ?? ((x, y) => true);
             _robotRadiusM = _cellSizeM / 3.0; // 机器人半径
             _turnController = new RobotTurn(_robotLock, _robotManager, this, _dt);
+        }
+
+        /// <summary>
+        /// 允许外部（RobotEngine）在运行时重绑“世界坐标是否可走”的判定，
+        /// 以便将其它机器人占用格也视为动态障碍。
+        /// </summary>
+        public void SetIsWorldWalkableProvider(Func<double, double, bool> provider)
+        {
+            if (provider == null) throw new ArgumentNullException(nameof(provider));
+            _isWorldWalkable = provider;
         }
 
         /// <summary>
