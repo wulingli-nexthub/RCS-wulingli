@@ -173,6 +173,7 @@ namespace GridDemo.Robots
                 }
 
                 double delta = GetShortestDeltaToDirection(OrientationAngle, Direction);
+
                 if (Math.Abs(delta) < 1e-6)
                 {
                     return; // 已对齐，无需插入转向命令

@@ -71,6 +71,7 @@ namespace GridDemo
 
             numericAcc.KeyDown += Numeric_KeyDown_OnEnter;
             numericVinit.KeyDown += Numeric_KeyDown_OnEnter;
+            numericAddRobot.KeyDown += Numeric_KeyDown_OnEnter;
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
             cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
 
