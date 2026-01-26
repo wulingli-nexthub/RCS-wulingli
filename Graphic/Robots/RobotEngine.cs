@@ -631,7 +631,39 @@ namespace GridDemo.Robots
             }
         }
 
-        // -------------------------- 碰撞优化：新实现 -------------------------- //
+        // -------------------------- 交通规则 + 碰撞控制 -------------------------- //
+
+        /// <summary>
+        /// 当前机器人是否“在动”（只判断速度）
+        /// </summary>
+        private bool IsMoving_NoLock(RobotInstance r)
+        {
+            return r.Speed > 1e-3;
+        }
+
+        /// <summary>
+        /// 判断两个机器人是否同向/相向
+        /// </summary>
+        private bool IsSameDirection(EnumMoveDirection a, EnumMoveDirection b)
+        {
+            return a == b;
+        }
+
+        private bool IsOppositeDirection(EnumMoveDirection a, EnumMoveDirection b)
+        {
+            return (a == EnumMoveDirection.Left && b == EnumMoveDirection.Right) ||
+                   (a == EnumMoveDirection.Right && b == EnumMoveDirection.Left) ||
+                   (a == EnumMoveDirection.Up && b == EnumMoveDirection.Down) ||
+                   (a == EnumMoveDirection.Down && b == EnumMoveDirection.Up);
+        }
+
+        /// <summary>
+        /// 简单判断“是否在转弯”
+        /// </summary>
+        private bool IsTurning_NoLock(RobotInstance r)
+        {
+            return r.Manager.IsTurning;
+        }
 
         /// <summary>
         /// 碰撞处理：通过预测“下一格意图”进行让步（要求调用方已持有锁）
@@ -688,50 +720,112 @@ namespace GridDemo.Robots
                         continue; // 跳过，避免双方持续停车重规划造成抖动/饥饿
                     }
 
-                    RobotInstance yield; // 让步方（停止/重规划）
-                    RobotInstance go; // 通行方（继续走，但刷新命令）
+                    RobotInstance yield; // 让步方
+                    RobotInstance go;    // 通行方
 
-                    if (IsInYieldCooldown_NoLock(a.Id)) // 若 a 在冷却，则 a 优先通行
+                    // 冷却期：双方都在冷却就跳过，不再额外处理
+                    if (IsInYieldCooldown_NoLock(a.Id) && IsInYieldCooldown_NoLock(b.Id))
                     {
-                        yield = b; // b 让步
-                        go = a; // a 通行
-                    }
-                    else if (IsInYieldCooldown_NoLock(b.Id)) // 若 b 在冷却，则 b 优先通行
-                    {
-                        yield = a; // a 让步
-                        go = b; // b 通行
-                    }
-                    else // 都不在冷却时采用确定性规则
-                    {
-                        // 默认策略：Id 大者让步（确定性）
-                        if (a.Id > b.Id) // a 的 Id 更大
-                        {
-                            yield = a; // a 让步
-                            go = b; // b 通行
-                        }
-                        else // b 的 Id 更大（或相等理论上不可能）
-                        {
-                            yield = b; // b 让步
-                            go = a; // a 通行
-                        }
+                        continue;
                     }
 
-                    // 让步方立即刹停并重规划
-                    ApplyYield_NoLock(yield); // 执行让步：停车+清命令+对齐角度+重规划
-
-                    // ------------------ 关键修复 2：通行方也必须重规划，否则会持续抢同一格 ------------------
-                    if (go.AutoNavigator.IsEnabled)
+                    // 一方在冷却：优先让冷却中的那一方通行
+                    if (IsInYieldCooldown_NoLock(a.Id))
                     {
-                        go.Manager.ResetAutoCommands();
-                        go.AutoNavigator.RebuildPath();
+                        yield = b;
+                        go = a;
+                    }
+                    else if (IsInYieldCooldown_NoLock(b.Id))
+                    {
+                        yield = a;
+                        go = b;
+                    }
+                    else
+                    {
+                        // ---------- 交通规则开始 ----------
 
-                        // 若仍无路径（或重建失败导致路径为空），给一个新目标，避免双方僵持
-                        var p = go.AutoNavigator.GetPathWorldPointsSnapshot();
-                        if (p == null || p.Count == 0)
+                        bool aTurning = IsTurning_NoLock(a);
+                        bool bTurning = IsTurning_NoLock(b);
+                        bool aMoving = IsMoving_NoLock(a);
+                        bool bMoving = IsMoving_NoLock(b);
+
+                        // 1) 转弯让直行：只要一方在转弯、另一方是直行，就让转弯那一方停车
+                        if (aTurning && !bTurning && bMoving)
                         {
-                            go.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
-                            go.Manager.ResetAutoCommands();
+                            yield = a;
+                            go = b;
                         }
+                        else if (bTurning && !aTurning && aMoving)
+                        {
+                            yield = b;
+                            go = a;
+                        }
+                        else
+                        {
+                            // 2) 都是直行或都在转弯：再看方向关系 + Id
+
+                            EnumMoveDirection da = a.Manager.Direction;
+                            EnumMoveDirection db = b.Manager.Direction;
+
+                            if (IsOppositeDirection(da, db))
+                            {
+                                // 相向对冲：Id 大的那一方让路
+                                if (a.Id > b.Id)
+                                {
+                                    yield = a;
+                                    go = b;
+                                }
+                                else
+                                {
+                                    yield = b;
+                                    go = a;
+                                }
+                            }
+                            else if (IsSameDirection(da, db))
+                            {
+                                // 同方向（追尾/并排行驶）：
+                                // - 若其中一辆速度几乎为 0，则优先让“静止/慢车”让路
+                                // - 否则仍然按照 Id 大者让路（保证确定性）
+                                if (!aMoving && bMoving)
+                                {
+                                    yield = a;
+                                    go = b;
+                                }
+                                else if (!bMoving && aMoving)
+                                {
+                                    yield = b;
+                                    go = a;
+                                }
+                                else
+                                {
+                                    if (a.Id > b.Id)
+                                    {
+                                        yield = a;
+                                        go = b;
+                                    }
+                                    else
+                                    {
+                                        yield = b;
+                                        go = a;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // 3) 垂直交叉（十字路口）：简单版本——Id 大的让路
+                                if (a.Id > b.Id)
+                                {
+                                    yield = a;
+                                    go = b;
+                                }
+                                else
+                                {
+                                    yield = b;
+                                    go = a;
+                                }
+                            }
+                        }
+                        // ---------- 交通规则结束 ----------
                     }
                 }
             }
