@@ -187,7 +187,7 @@ namespace GridDemo
             //    cellSizeM: _engine.CellSizeM);
 
             // 4. 创建仿真循环
-            _simulation = new RobotSimulationLoop(_engine, skControl, _dt);
+            _simulation = new RobotSimulationLoop(_engine, _dt);
             _simulation.Start();
             Log("Simulation started. dt=" + _dt);
             // 4.1 UI 线程定时重绘

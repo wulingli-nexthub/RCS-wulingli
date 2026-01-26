@@ -1,22 +1,19 @@
 ﻿using System;
 using System.Threading;
-using System.Windows.Forms;
 
 namespace GridDemo.Robots
 {
     internal sealed class RobotSimulationLoop
     {
         private readonly RobotEngine _engine;
-        private readonly Control _host;
         private readonly double _dt;
 
         private Thread _thread;
         private bool _running;
 
-        public RobotSimulationLoop(RobotEngine engine, Control host, double dt)
+        public RobotSimulationLoop(RobotEngine engine, double dt)
         {
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));
-            _host = host ?? throw new ArgumentNullException(nameof(host));
             _dt = dt;
         }
 
