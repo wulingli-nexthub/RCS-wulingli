@@ -32,6 +32,9 @@ namespace GridDemo
         private RobotEngine _engine;
         private RobotSimulationLoop _simulation;
 
+        // UI 定时刷新（在 UI 线程执行）
+        private System.Windows.Forms.Timer _renderTimer;
+
         // 画图相关（基本保持原有）
         private WorldView.WorldTransform _worldTransform;
         private Draws.DrawGrid _drawGrid;
@@ -187,6 +190,19 @@ namespace GridDemo
             _simulation = new RobotSimulationLoop(_engine, skControl, _dt);
             _simulation.Start();
             Log("Simulation started. dt=" + _dt);
+            // 4.1 UI 线程定时重绘
+            int intervalMs = (int)Math.Max(1.0, Math.Round(_dt * 1000));
+            _renderTimer = new System.Windows.Forms.Timer();
+            _renderTimer.Interval = intervalMs;
+            _renderTimer.Tick += (s, ev) =>
+            {
+                if (!skControl.IsDisposed)
+                {
+                    skControl.Invalidate();
+                }
+            };
+            _renderTimer.Start();
+            Log("Render timer started. intervalMs=" + intervalMs);
 
             // 5. 默认模式与算法
             _centerGrid.Center();
@@ -218,6 +234,15 @@ namespace GridDemo
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
             Log("Form1_FormClosing: begin");
+
+            if (_renderTimer != null)
+            {
+                _renderTimer.Stop();
+                _renderTimer.Dispose();
+                _renderTimer = null;
+                Log("Form1_FormClosing: render timer stopped");
+            }
+
             _simulation?.Stop();
             Log("Form1_FormClosing: simulation stop requested");
         }
@@ -364,6 +389,9 @@ namespace GridDemo
             _mousePan.MouseDown(e);
         }
 
+        /// <summary>
+        /// 鼠标左键选中机器人。
+        /// </summary>
         private bool TrySelectRobotAtMouse(int mouseX, int mouseY)
         {
             if (_engine == null || _worldTransform == null)
@@ -592,7 +620,7 @@ namespace GridDemo
         {
             _isObstacleEditMode = !_isObstacleEditMode;
 
-            btnObstacle.Text = _isObstacleEditMode ? "设置障碍物：开" : "设置障碍物：关";
+            btnObstacle.Text = _isObstacleEditMode ? "开" : "关";
 
             Log("btnObstacle_Click: obstacleEdit=" + _isObstacleEditMode);
 
@@ -611,6 +639,9 @@ namespace GridDemo
             skControl.Invalidate();
         }
 
+        /// <summary>
+        /// 鼠标左键点击切换障碍物状态。
+        /// </summary>
         private void TryToggleObstacleAtMouse(MouseEventArgs e)
         {
             if (_engine == null || _worldTransform == null)
@@ -633,6 +664,9 @@ namespace GridDemo
             skControl.Invalidate();
         }
 
+        /// <summary>
+        /// 清空障碍物按钮：清空所有障碍物。
+        /// </summary>
         private void btnClearObstacle_Click(object sender, EventArgs e)
         {
             if (_engine == null)

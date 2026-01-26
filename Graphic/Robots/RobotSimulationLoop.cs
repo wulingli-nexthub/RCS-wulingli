@@ -51,25 +51,6 @@ namespace GridDemo.Robots
                 // 运动学更新在工作线程执行
                 _engine.Tick();
 
-                // 通知 UI 线程重绘
-                if (!_host.IsDisposed)
-                {
-                    try
-                    {
-                        _host.BeginInvoke(new Action(() =>
-                        {
-                            if (!_host.IsDisposed)
-                                _host.Invalidate();
-                        }));
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        // 窗口可能正在关闭，忽略
-                        _running = false;
-                        break;
-                    }
-                }
-
                 Thread.Sleep(sleepMs);
             }
         }

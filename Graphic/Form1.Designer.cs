@@ -37,10 +37,10 @@
             this.panelObstacles = new System.Windows.Forms.Panel();
             this.labelObstacles = new System.Windows.Forms.Label();
             this.panel1 = new System.Windows.Forms.Panel();
-            this.labelRobot = new System.Windows.Forms.Label();
-            this.labelAddRobot = new System.Windows.Forms.Label();
-            this.numericAddRobot = new System.Windows.Forms.NumericUpDown();
             this.btnResetRobot = new System.Windows.Forms.Button();
+            this.numericAddRobot = new System.Windows.Forms.NumericUpDown();
+            this.labelAddRobot = new System.Windows.Forms.Label();
+            this.labelRobot = new System.Windows.Forms.Label();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).BeginInit();
             this.panelObstacles.SuspendLayout();
@@ -202,27 +202,24 @@
             this.panel1.Size = new System.Drawing.Size(178, 210);
             this.panel1.TabIndex = 13;
             // 
-            // labelRobot
+            // btnResetRobot
             // 
-            this.labelRobot.AutoSize = true;
-            this.labelRobot.Location = new System.Drawing.Point(28, 11);
-            this.labelRobot.Name = "labelRobot";
-            this.labelRobot.Size = new System.Drawing.Size(98, 18);
-            this.labelRobot.TabIndex = 0;
-            this.labelRobot.Text = "机器人设置";
-            // 
-            // labelAddRobot
-            // 
-            this.labelAddRobot.AutoSize = true;
-            this.labelAddRobot.Location = new System.Drawing.Point(3, 119);
-            this.labelAddRobot.Name = "labelAddRobot";
-            this.labelAddRobot.Size = new System.Drawing.Size(98, 18);
-            this.labelAddRobot.TabIndex = 7;
-            this.labelAddRobot.Text = "机器人数量";
+            this.btnResetRobot.Location = new System.Drawing.Point(40, 157);
+            this.btnResetRobot.Name = "btnResetRobot";
+            this.btnResetRobot.Size = new System.Drawing.Size(86, 36);
+            this.btnResetRobot.TabIndex = 9;
+            this.btnResetRobot.Text = "重置";
+            this.btnResetRobot.UseVisualStyleBackColor = true;
+            this.btnResetRobot.Click += new System.EventHandler(this.btnResetRobot_Click);
             // 
             // numericAddRobot
             // 
             this.numericAddRobot.Location = new System.Drawing.Point(108, 114);
+            this.numericAddRobot.Maximum = new decimal(new int[] {
+            10,
+            0,
+            0,
+            0});
             this.numericAddRobot.Minimum = new decimal(new int[] {
             1,
             0,
@@ -238,15 +235,23 @@
             0});
             this.numericAddRobot.ValueChanged += new System.EventHandler(this.numericAddRobot_ValueChanged);
             // 
-            // btnResetRobot
+            // labelAddRobot
             // 
-            this.btnResetRobot.Location = new System.Drawing.Point(40, 157);
-            this.btnResetRobot.Name = "btnResetRobot";
-            this.btnResetRobot.Size = new System.Drawing.Size(86, 36);
-            this.btnResetRobot.TabIndex = 9;
-            this.btnResetRobot.Text = "重置";
-            this.btnResetRobot.UseVisualStyleBackColor = true;
-            this.btnResetRobot.Click += new System.EventHandler(this.btnResetRobot_Click);
+            this.labelAddRobot.AutoSize = true;
+            this.labelAddRobot.Location = new System.Drawing.Point(3, 119);
+            this.labelAddRobot.Name = "labelAddRobot";
+            this.labelAddRobot.Size = new System.Drawing.Size(98, 18);
+            this.labelAddRobot.TabIndex = 7;
+            this.labelAddRobot.Text = "机器人数量";
+            // 
+            // labelRobot
+            // 
+            this.labelRobot.AutoSize = true;
+            this.labelRobot.Location = new System.Drawing.Point(28, 11);
+            this.labelRobot.Name = "labelRobot";
+            this.labelRobot.Size = new System.Drawing.Size(98, 18);
+            this.labelRobot.TabIndex = 0;
+            this.labelRobot.Text = "机器人设置";
             // 
             // Form1
             // 
