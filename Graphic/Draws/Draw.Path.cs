@@ -16,17 +16,20 @@ namespace GridDemo.Draws
     internal sealed class DrawPath
     {
         private readonly WorldTransform _transform;
-        private readonly Func<List<(double X, double Y)>> _getPathPointsSnapshot;           // 获取路径点快照的委托
+        private readonly Func<List<(double X, double Y)>> _getPathPointsSnapshot;
+        private readonly Func<(double X, double Y)> _getRobotWorldPos;
 
         /// <summary>
         /// 创建路径绘制器实例。
         /// </summary>
         internal DrawPath(
             WorldTransform transform,
-            Func<List<(double X, double Y)>> getPathPointsSnapshot)
+            Func<List<(double X, double Y)>> getPathPointsSnapshot,
+            Func<(double X, double Y)> getRobotWorldPos)
         {
             _transform = transform;
             _getPathPointsSnapshot = getPathPointsSnapshot ?? throw new ArgumentNullException(nameof(getPathPointsSnapshot));
+            _getRobotWorldPos = getRobotWorldPos ?? throw new ArgumentNullException(nameof(getRobotWorldPos));
         }
 
         /// <summary>
@@ -42,7 +45,31 @@ namespace GridDemo.Draws
                 return;
             }
 
-            using (var linePaint = new SKPaint                   // 路径折线样式
+            // 关键：找到“当前位置最近的路径点索引”，认为该点之前已经走过，不再绘制
+            var robot = _getRobotWorldPos();
+
+            int startIndex = 0;
+            double bestD2 = double.MaxValue;
+
+            for (int i = 0; i < points.Count; i++)
+            {
+                double dx = points[i].X - robot.X;
+                double dy = points[i].Y - robot.Y;
+                double d2 = dx * dx + dy * dy;
+                if (d2 < bestD2)
+                {
+                    bestD2 = d2;
+                    startIndex = i;
+                }
+            }
+
+            // 裁剪后不足 2 个点就不画
+            if (startIndex >= points.Count - 1)
+            {
+                return;
+            }
+
+            using (var linePaint = new SKPaint              // 路径折线画笔
             {
                 Color = new SKColor(30, 144, 255, 200),
                 StrokeWidth = 3f,
@@ -51,46 +78,41 @@ namespace GridDemo.Draws
                 StrokeCap = SKStrokeCap.Round,
                 StrokeJoin = SKStrokeJoin.Round,
             })
-            using (var pointPaint = new SKPaint                  // 路径节点小圆点样式
+            using (var pointPaint = new SKPaint             // 路径节点画笔
             {
                 Color = new SKColor(30, 144, 255, 220),
                 IsAntialias = true,
                 Style = SKPaintStyle.Fill
             })
-            using (var startPaint = new SKPaint                   // 起点样式
-            {
-                Color = new SKColor(34, 139, 34, 220),
-                IsAntialias = true,
-                Style = SKPaintStyle.Fill
-            })
-            using (var goalPaint = new SKPaint                    // 终点样式
+            using (var goalPaint = new SKPaint              // 终点
             {
                 Color = new SKColor(220, 20, 60, 220),
                 IsAntialias = true,
                 Style = SKPaintStyle.Fill
             })
             {
-                var path = new SKPath();                     // 生成路径折线
+                var path = new SKPath();
 
-                var p0 = _transform.WorldToScreen(points[0].X, points[0].Y);           // 起点
-                path.MoveTo(p0.X, p0.Y);
+                // 不再用 points[startIndex] 作为起点，起点直接用机器人当前点
+                var robotScreen = _transform.WorldToScreen(robot.X, robot.Y);
+                path.MoveTo(robotScreen.X, robotScreen.Y);
 
-                for (int i = 1; i < points.Count; i++)                    // 其余路径点依次连线
+                for (int i = startIndex; i < points.Count; i++)
                 {
                     var pi = _transform.WorldToScreen(points[i].X, points[i].Y);
                     path.LineTo(pi.X, pi.Y);
                 }
 
-                canvas.DrawPath(path, linePaint);               // 绘制路径折线
+                canvas.DrawPath(path, linePaint);
 
-                const float r = 4f;                          // 路径节点小圆点半径
-                for (int i = 0; i < points.Count; i++)              // 绘制路径节点小圆点
+                const float r = 4f;
+                for (int i = startIndex; i < points.Count; i++)
                 {
                     var ps = _transform.WorldToScreen(points[i].X, points[i].Y);
                     canvas.DrawCircle(ps.X, ps.Y, r, pointPaint);
                 }
 
-                canvas.DrawCircle(p0.X, p0.Y, 6f, startPaint);                // 起点 / 终点
+                // 仅绘制终点红点
                 var pLast = _transform.WorldToScreen(points[points.Count - 1].X, points[points.Count - 1].Y);
                 canvas.DrawCircle(pLast.X, pLast.Y, 6f, goalPaint);
             }

@@ -130,7 +130,12 @@ namespace GridDemo
 
             _drawPath = new Draws.DrawPath(
                 _worldTransform,
-                getPathPointsSnapshot: () => _engine.GetPathWorldPointsSnapshot());
+                getPathPointsSnapshot: () => _engine.GetPathWorldPointsSnapshot(),
+                getRobotWorldPos: () =>
+                {
+                    var s = _engine.GetStateSnapshot();
+                    return (s.X, s.Y);
+                });
 
             _drawRobot = new Draws.DrawRobot(
                 _worldTransform,
@@ -145,6 +150,7 @@ namespace GridDemo
                     }
                     return list;
                 },
+                getGoalsSnapshot: () => _engine.GetRobotsGoalWorldSnapshot(),
                 getSelectedId: () => _engine.SelectedRobotId,
                 getScale: () => _scale);
 

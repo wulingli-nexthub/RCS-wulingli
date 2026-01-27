@@ -404,6 +404,31 @@ namespace GridDemo.Robots
         }
 
         /// <summary>
+        /// 获取所有机器人的目标点（世界坐标）快照（用于渲染）。
+        /// - key: robotId
+        /// - value: (X,Y) 世界坐标（格子中心）
+        /// - 没有目标的机器人不会出现在列表里
+        /// </summary>
+        public List<(int Id, double X, double Y)> GetRobotsGoalWorldSnapshot()
+        {
+            lock (_robotLock)
+            {
+                var list = new List<(int Id, double X, double Y)>(_robots.Count);
+
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    var g = _robots[i].AutoNavigator.GetGoalWorldSnapshot();
+                    if (g.HasValue)
+                    {
+                        list.Add((_robots[i].Id, g.Value.X, g.Value.Y));
+                    }
+                }
+
+                return list;
+            }
+        }
+
+        /// <summary>
         /// 设置“前向加速度”配置（同步到全部机器人）
         /// </summary>
         /// <param name="acc"></param>

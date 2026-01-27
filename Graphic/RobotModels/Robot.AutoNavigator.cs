@@ -147,6 +147,25 @@ namespace GridDemo.RobotModels
         }
 
         /// <summary>
+        /// 获取当前目标点（格子中心）的世界坐标快照：
+        /// - 没有目标时返回 null；
+        /// - 用于 UI 绘制（不要直接暴露 _goal）。
+        /// </summary>
+        public (double X, double Y)? GetGoalWorldSnapshot()
+        {
+            lock (_robotLock)
+            {
+                if (!_goal.HasValue)
+                {
+                    return null;
+                }
+
+                GridPos g = _goal.Value;
+                return (GridToCenterWorldX(g.X), GridToCenterWorldY(g.Y));
+            }
+        }
+
+        /// <summary>
         /// 清空导航目的地，防止模式切换后继续沿用旧目标。
         /// </summary>
         public void ClearGoal()

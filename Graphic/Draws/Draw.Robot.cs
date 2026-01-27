@@ -18,6 +18,7 @@ namespace GridDemo.Draws
         private readonly object _robotLock;
 
         private readonly Func<List<(int Id, double X, double Y, double Angle)>> _getRobotsSnapshot;
+        private readonly Func<List<(int Id, double X, double Y)>> _getGoalsSnapshot;
         private readonly Func<int> _getSelectedId;
         private readonly Func<double> _getScale;
 
@@ -25,12 +26,14 @@ namespace GridDemo.Draws
             WorldTransform transform,
             object robotLock,
             Func<List<(int Id, double X, double Y, double Angle)>> getRobotsSnapshot,
+            Func<List<(int Id, double X, double Y)>> getGoalsSnapshot,
             Func<int> getSelectedId,
             Func<double> getScale)
         {
             _transform = transform;
             _robotLock = robotLock;
             _getRobotsSnapshot = getRobotsSnapshot ?? throw new ArgumentNullException(nameof(getRobotsSnapshot));
+            _getGoalsSnapshot = getGoalsSnapshot ?? throw new ArgumentNullException(nameof(getGoalsSnapshot));
             _getSelectedId = getSelectedId ?? throw new ArgumentNullException(nameof(getSelectedId));
             _getScale = getScale ?? throw new ArgumentNullException(nameof(getScale));
         }
@@ -41,12 +44,14 @@ namespace GridDemo.Draws
         internal void Draw(SKCanvas canvas)
         {
             List<(int Id, double X, double Y, double Angle)> robots; // 机器人快照列表（每个元素包含 Id、坐标、朝向角）
+            List<(int Id, double X, double Y)> goals; // 目标点快照列表（每个元素包含 Id、坐标）
             int selectedId; // 当前选中的机器人 Id
 
             lock (_robotLock) // 对共享机器人状态加锁，防止绘制时被其他线程修改
             {
-                robots = _getRobotsSnapshot(); // 在锁内读取机器人状态快照
-                selectedId = _getSelectedId(); // 在锁内读取选中机器人 Id
+                robots = _getRobotsSnapshot();
+                goals = _getGoalsSnapshot();
+                selectedId = _getSelectedId();
             }
 
             if (robots == null || robots.Count == 0)
@@ -57,6 +62,45 @@ namespace GridDemo.Draws
             double currentScale = _getScale(); // 读取当前缩放比例（用于决定显示尺寸）
             float radiusPx = (float)(currentScale / 6.0); // 将缩放换算为机器人圆点半径（像素）
 
+            // 1) 先画目标点（避免盖住机器人本体）
+            if (goals != null && goals.Count > 0)
+            {
+                float goalRadiusPx = Math.Max(4.0f, radiusPx * 0.60f);
+
+                using (var goalFill = new SKPaint
+                {
+                    Color = new SKColor(0, 150, 255, 90), // 半透明蓝
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Fill
+                })
+                using (var goalStroke = new SKPaint
+                {
+                    Color = new SKColor(0, 150, 255, 220),
+                    StrokeWidth = 2.0f,
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Stroke
+                })
+                using (var goalTextPaint = new SKPaint { Color = SKColors.DarkBlue, IsAntialias = true })
+                using (var goalFont = new SKFont { Size = Math.Max(10.0f, goalRadiusPx * 1.0f) })
+                {
+                    for (int i = 0; i < goals.Count; i++)
+                    {
+                        var g = goals[i];
+                        var sp = _transform.WorldToScreen(g.X, g.Y);
+
+                        float gx = sp.X;
+                        float gy = sp.Y;
+
+                        canvas.DrawCircle(gx, gy, goalRadiusPx, goalFill);
+                        canvas.DrawCircle(gx, gy, goalRadiusPx, goalStroke);
+
+                        // 目标点上显示编号（1..N）
+                        canvas.DrawText((g.Id + 1).ToString(), gx + goalRadiusPx, gy - goalRadiusPx, SKTextAlign.Left, goalFont, goalTextPaint);
+                    }
+                }
+            }
+
+            // 2) 再画机器人
             for (int i = 0; i < robots.Count; i++)
             { // 遍历所有机器人逐个绘制
                 var r = robots[i]; // 取出第 i 个机器人快照
