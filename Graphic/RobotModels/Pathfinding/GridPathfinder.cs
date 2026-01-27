@@ -62,11 +62,17 @@ namespace GridDemo.RobotModels.Pathfinding
 
             // 参数校验，确保宽高和回调合法
             if (width <= 0)
+            {
                 throw new ArgumentOutOfRangeException(nameof(width));
+            }
             if (height <= 0)
+            {
                 throw new ArgumentOutOfRangeException(nameof(height));
+            }
             if (isWalkable == null)
+            {
                 throw new ArgumentNullException(nameof(isWalkable));
+            }
 
             // 起点/终点越界，直接返回空路径
             if (!InBounds(start, width, height) || !InBounds(goal, width, height))
@@ -92,9 +98,9 @@ namespace GridDemo.RobotModels.Pathfinding
             // - open：待扩展集合，按 f 最小优先出队
             //   Dijkstra: f = g
             //   A*:       f = g + h（h 为启发式）
-            var open = new MinQueue<GridPos>();
-            var cameFrom = new Dictionary<GridPos, GridPos>();
-            var gScore = new Dictionary<GridPos, int> { [start] = 0 };
+            var open = new MinQueue<GridPos>();   // 最小优先队列（开集），存储待扩展的节点以及对应优先级 f 值
+            var cameFrom = new Dictionary<GridPos, GridPos>();  // 路径回溯字典，记录每个节点的前驱节点
+            var gScore = new Dictionary<GridPos, int> { [start] = 0 };  // gScore 字典，记录起点到各节点的最短已知代价 g
 
             open.Push(start, 0);     // 起点入队，f=0
 
@@ -256,7 +262,9 @@ namespace GridDemo.RobotModels.Pathfinding
                     int l = i * 2 + 1;
                     int r = l + 1;
                     if (l >= n)
+                    {
                         break;
+                    }
 
                     // 找到左右子节点中 priority 较小的那个
                     int min = (r < n && _heap[r].priority < _heap[l].priority) ? r : l;
