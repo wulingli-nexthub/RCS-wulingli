@@ -102,6 +102,9 @@ namespace GridDemo
                 initialMaxSpeed: 1.5,
                 initialDirection: EnumMoveDirection.Right);
 
+            // 窗体加载后：不默认选中任何机器人
+            _engine.ClearSelectedRobot();
+
             _worldWidthM = _engine.WorldWidthM;
             _worldHeightM = _engine.WorldHeightM;
 
@@ -755,6 +758,8 @@ namespace GridDemo
             numericAddRobot.ValueChanged += numericAddRobot_ValueChanged;
 
             _engine.ResetToSingleRobotRandomRoam(initialMaxSpeed: (double)numericVinit.Value, initialDirection: EnumMoveDirection.Right);
+            // 重置机器人后：不默认选中任何机器人
+            _engine.ClearSelectedRobot();
 
             skControl.Invalidate();
         }

@@ -37,7 +37,7 @@ namespace GridDemo.Robots
         private readonly Random _rng = new Random(); // 随机数发生器（用于随机目标/随机初始位置）
 
         private readonly List<RobotInstance> _robots = new List<RobotInstance>(); // 机器人实例集合（0..N-1）
-        private int _selectedRobotId = 0; // 当前选中机器人 Id（用于 UI/手动控制）
+        private int _selectedRobotId = -1; // 当前选中机器人 Id（用于 UI/手动控制）
 
         // 单机器人重置后的“随机运动”
         private bool _singleRandomRoamEnabled; // 是否启用“单机器人随机巡航”模式
@@ -59,7 +59,6 @@ namespace GridDemo.Robots
             SetRobotCount(1, initialMaxSpeed, initialDirection); // 默认先创建 1 个机器人
 
             _processState = EnumRobotProcessState.AutoNavigating; // 默认进入自动巡航状态
-            GetSelectedRobot_NoLock().AutoNavigator.Enable(); // 启用选中机器人的自动导航
         }
 
         public double WorldWidthM => _worldWidthM; // 对外暴露世界宽度（米）
@@ -78,6 +77,31 @@ namespace GridDemo.Robots
                 {
                     return _selectedRobotId; // 返回选中机器人 Id
                 }
+            }
+        }
+
+        /// <summary>
+        /// 是否存在选中机器人
+        /// </summary>
+        public bool HasSelectedRobot
+        {
+            get
+            {
+                lock (_robotLock)
+                {
+                    return _selectedRobotId >= 0 && _selectedRobotId < _robots.Count;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 清空选中机器人（变为未选中）
+        /// </summary>
+        public void ClearSelectedRobot()
+        {
+            lock (_robotLock)
+            {
+                _selectedRobotId = -1;
             }
         }
 
@@ -114,7 +138,12 @@ namespace GridDemo.Robots
             {
                 lock (_robotLock) // 加锁读取状态
                 {
-                    return GetSelectedRobot_NoLock().AutoNavigator.IsEnabled; // 返回选中机器人的自动导航开关
+                    if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                    {
+                        return false;
+                    }
+
+                    return _robots[_selectedRobotId].AutoNavigator.IsEnabled;
                 }
             }
         }
@@ -346,7 +375,13 @@ namespace GridDemo.Robots
         {
             lock (_robotLock) // 加锁保证一致性
             {
-                return GetSelectedRobot_NoLock().GetSnapshot(); // 返回选中机器人的快照
+                // 未选中：返回默认值，避免 UI 崩溃
+                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                {
+                    return default(RobotStateSnapshot);
+                }
+
+                return _robots[_selectedRobotId].GetSnapshot();
             }
         }
 
@@ -358,7 +393,13 @@ namespace GridDemo.Robots
         {
             lock (_robotLock) // 加锁读取路径
             {
-                return GetSelectedRobot_NoLock().AutoNavigator.GetPathWorldPointsSnapshot(); // 从自动导航器获取路径点
+                // 未选中：不画路径（返回 null/空都行；DrawPath 一般对 null 更友好）
+                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                {
+                    return null;
+                }
+
+                return _robots[_selectedRobotId].AutoNavigator.GetPathWorldPointsSnapshot();
             }
         }
 
@@ -405,7 +446,13 @@ namespace GridDemo.Robots
             {
                 ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating); // 设置引擎状态为自动巡航
 
-                RobotInstance r = GetSelectedRobot_NoLock(); // 取选中机器人
+                // 未选中：只切引擎状态，不对某一台机器人做“对齐/清命令”
+                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                {
+                    return;
+                }
+
+                RobotInstance r = _robots[_selectedRobotId];
                 r.Manual.Disable();
                 r.Manager.SetMode(EnumRobotControlMode.Auto);
 
@@ -424,8 +471,14 @@ namespace GridDemo.Robots
             {
                 ChangeProcessState_NoLock(EnumRobotProcessState.ManualControl); // 设置引擎状态为手动控制
 
-                RobotInstance r = GetSelectedRobot_NoLock(); // 取选中机器人
-                r.Manual.Enable(); // 启用手动控制模块
+                // 未选中：不启用任何机器人的手动
+                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                {
+                    return;
+                }
+
+                RobotInstance r = _robots[_selectedRobotId];
+                r.Manual.Enable();
             }
         }
 
@@ -436,7 +489,12 @@ namespace GridDemo.Robots
         {
             lock (_robotLock) // 加锁操作导航器
             {
-                GetSelectedRobot_NoLock().AutoNavigator.RebuildPath(); // 对选中机器人重算路径
+                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                {
+                    return;
+                }
+
+                _robots[_selectedRobotId].AutoNavigator.RebuildPath();
             }
         }
 
@@ -447,7 +505,12 @@ namespace GridDemo.Robots
         {
             lock (_robotLock) // 加锁更新输入状态
             {
-                RobotInstance r = GetSelectedRobot_NoLock(); // 取选中机器人
+                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                {
+                    return;
+                }
+
+                RobotInstance r = _robots[_selectedRobotId];
                 r.Manual.InputForwardKey(down); // 写入手动输入：前进键状态
                 r.Manager.ResetManualCommands(); // 刷新手动命令队列
             }
@@ -460,7 +523,12 @@ namespace GridDemo.Robots
         {
             lock (_robotLock) // 加锁更新输入状态
             {
-                RobotInstance r = GetSelectedRobot_NoLock(); // 取选中机器人
+                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                {
+                    return;
+                }
+
+                RobotInstance r = _robots[_selectedRobotId];
                 r.Manual.InputTurnLeftKey(down); // 写入手动输入：左转键状态
                 r.Manager.ResetManualCommands(); // 刷新手动命令队列
             }
@@ -473,7 +541,12 @@ namespace GridDemo.Robots
         {
             lock (_robotLock) // 加锁更新输入状态
             {
-                RobotInstance r = GetSelectedRobot_NoLock(); // 取选中机器人
+                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                {
+                    return;
+                }
+
+                RobotInstance r = _robots[_selectedRobotId];
                 r.Manual.InputTurnRightKey(down); // 写入手动输入：右转键状态
                 r.Manager.ResetManualCommands(); // 刷新手动命令队列
             }
@@ -486,7 +559,12 @@ namespace GridDemo.Robots
         {
             lock (_robotLock) // 加锁设置目标
             {
-                RobotInstance r = GetSelectedRobot_NoLock(); // 取选中机器人
+                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                {
+                    return false;
+                }
+
+                RobotInstance r = _robots[_selectedRobotId]; // 取选中机器人
                 r.AutoNavigator.SetGoal(goal, rebuildIfEnabled: true); // 设置目标并在启用自动时重建路径
                 return true; // 当前实现总是成功
             }
