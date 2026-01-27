@@ -42,9 +42,8 @@ namespace GridDemo.Robots
         // 单机器人重置后的“随机运动”
         private bool _singleRandomRoamEnabled; // 是否启用“单机器人随机巡航”模式
 
-        // --- 碰撞让步冷却：避免每帧 Stop + Rebuild 导致抖动 ---
-        private const int YieldCooldownFrames = 12; // 冷却帧数：12 帧 * 20ms ≈ 240ms（防止频繁让步抖动）
-        private readonly Dictionary<int, int> _yieldCooldownTicks = new Dictionary<int, int>(); // robotId -> 冷却剩余帧数
+        // 交通规则 + 碰撞控制（拆分到独立类）
+        private readonly RobotTrafficController _traffic;
 
         public RobotEngine(int gridCount, double cellSizeM, double dt, double initialMaxSpeed, EnumMoveDirection initialDirection)
         {
@@ -76,20 +75,6 @@ namespace GridDemo.Robots
                 lock (_robotLock) // 加锁读取选中 Id
                 {
                     return _selectedRobotId; // 返回选中机器人 Id
-                }
-            }
-        }
-
-        /// <summary>
-        /// 是否存在选中机器人
-        /// </summary>
-        public bool HasSelectedRobot
-        {
-            get
-            {
-                lock (_robotLock)
-                {
-                    return _selectedRobotId >= 0 && _selectedRobotId < _robots.Count;
                 }
             }
         }
@@ -649,29 +634,24 @@ namespace GridDemo.Robots
             lock (_robotLock) // Tick 内部会读写大量共享状态，因此整段加锁
             {
                 // 0) 冷却计数递减
-                if (_yieldCooldownTicks.Count > 0) // 若存在冷却中的机器人
-                {
-                    var keys = new List<int>(_yieldCooldownTicks.Keys); // 拷贝 key 列表（避免遍历时修改字典）
-                    for (int i = 0; i < keys.Count; i++) // 遍历所有处于冷却的 robotId
-                    {
-                        int id = keys[i]; // 当前 robotId
-                        int t = _yieldCooldownTicks[id] - 1; // 冷却计数减 1
-                        if (t <= 0) // 冷却结束
-                        {
-                            _yieldCooldownTicks.Remove(id); // 从字典移除
-                        }
-                        else // 仍在冷却
-                        {
-                            _yieldCooldownTicks[id] = t; // 写回剩余冷却帧数
-                        }
-                    }
-                }
+                _traffic.TickCooldown_NoLock();
 
                 // 1) 动态障碍：把其它机器人占用的格子注入 WalkableProvider
                 RebindDynamicWalkable_NoLock(); // 更新每个机器人“可行走判断”（将其它机器人当作动态障碍）
 
-                // 2) 碰撞让步：以网格为单位检测“前后左右/同格”
-                HandleRobotCollisions_NoLock(); // 检测并处理机器人之间的潜在冲突（让步/刹停/重规划）
+                // 2) 碰撞让步：生成交通决策（让步方/通行方）
+                // 说明：这里只做“拆分框架”，不改变你现有运动控制逻辑。
+                // 你后续可以在这里把 yieldId 对应机器人执行 Stop + RebuildPath，并调用 EnterYieldCooldown_NoLock。
+                List<RobotTrafficController.YieldDecision> decisions = _traffic.BuildYieldDecisions_NoLock(_robots);
+                for (int i = 0; i < decisions.Count; i++)
+                {
+                    // 目前仅生成决策不执行动作：保持行为不破坏现有代码框架
+                    // 若要启用让步动作，可在此处实现：
+                    // - 找到 yield 机器人
+                    // - r.Move.StopImmediately_NoLock()
+                    // - r.AutoNavigator.RebuildPath()
+                    // - _traffic.EnterYieldCooldown_NoLock(r.Id)
+                }
 
                 // 3) 未选中机器人继续 Auto（不响应手动）
                 for (int i = 0; i < _robots.Count; i++) // 遍历所有机器人逐个 Tick
@@ -691,322 +671,29 @@ namespace GridDemo.Robots
 
                     if (r.AutoNavigator.IsEnabled) // 自动导航启用时
                     {
-                        // 没目标时给一个随机目标，确保“自动巡航”一定会走
-                        // （避免 EnableAuto() 里 ClearGoal 后一直不动）
-                        if (r.AutoNavigator.GetPathWorldPointsSnapshot() == null // 路径为空（未规划）
-                            || r.AutoNavigator.GetPathWorldPointsSnapshot().Count == 0) // 或路径点数量为 0
+                        if (r.AutoNavigator.GetPathWorldPointsSnapshot() == null
+                            || r.AutoNavigator.GetPathWorldPointsSnapshot().Count == 0)
                         {
-                            // 注意：这里不使用 used，目标允许和别的机器人当前位置冲突由动态障碍避让+重规划解决
-                            r.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true); // 设置随机目标并重建路径
-                            r.Manager.ResetAutoCommands(); // 目标变化后重置命令队列
+                            r.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
+                            r.Manager.ResetAutoCommands();
                         }
                     }
 
-                    // 调度命令 + 运动学
-                    r.Manager.Tick(_dt, () => r.Acc); // 让管理器按 dt 调度下一步命令（从委托获取当前加速度）
-                    r.Move.Update(); // 运动学更新：推进位置/速度/朝向等
+                    r.Manager.Tick(_dt, () => r.Acc);
+                    r.Move.Update();
                 }
 
                 // 4) 单机器人随机巡航：无路径/到达后重置随机目标
-                if (_singleRandomRoamEnabled && _robots.Count == 1) // 仅在单机器人随机巡航启用且确实只有 1 个机器人时执行
+                if (_singleRandomRoamEnabled && _robots.Count == 1)
                 {
-                    RobotInstance r0 = _robots[0]; // 取第一个机器人
-                    var p = r0.AutoNavigator.GetPathWorldPointsSnapshot(); // 获取路径点快照
-                    if (p == null || p.Count < 2) // 若路径不足（无路径/到达终点）
+                    RobotInstance r0 = _robots[0];
+                    var p = r0.AutoNavigator.GetPathWorldPointsSnapshot();
+                    if (p == null || p.Count < 2)
                     {
-                        r0.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(new HashSet<int>()), rebuildIfEnabled: true); // 重新设置随机目标并重建路径
+                        r0.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(new HashSet<int>()), rebuildIfEnabled: true);
                     }
                 }
             }
-        }
-
-        // -------------------------- 交通规则 + 碰撞控制 -------------------------- //
-
-        /// <summary>
-        /// 当前机器人是否“在动”（只判断速度）
-        /// </summary>
-        private bool IsMoving_NoLock(RobotInstance r)
-        {
-            return r.Speed > 1e-3;
-        }
-
-        /// <summary>
-        /// 判断两个机器人是否同向/相向
-        /// </summary>
-        private bool IsSameDirection(EnumMoveDirection a, EnumMoveDirection b)
-        {
-            return a == b;
-        }
-
-        private bool IsOppositeDirection(EnumMoveDirection a, EnumMoveDirection b)
-        {
-            return (a == EnumMoveDirection.Left && b == EnumMoveDirection.Right) ||
-                   (a == EnumMoveDirection.Right && b == EnumMoveDirection.Left) ||
-                   (a == EnumMoveDirection.Up && b == EnumMoveDirection.Down) ||
-                   (a == EnumMoveDirection.Down && b == EnumMoveDirection.Up);
-        }
-
-        /// <summary>
-        /// 简单判断“是否在转弯”
-        /// </summary>
-        private bool IsTurning_NoLock(RobotInstance r)
-        {
-            return r.Manager.IsTurning;
-        }
-
-        /// <summary>
-        /// 碰撞处理：通过预测“下一格意图”进行让步（要求调用方已持有锁）
-        /// </summary>
-        private void HandleRobotCollisions_NoLock()
-        {
-            if (_robots.Count <= 1) // 少于等于 1 个机器人不需要碰撞检测
-            {
-                return; // 直接返回
-            }
-
-            var cur = new GridPos[_robots.Count]; // 当前格数组：cur[i] = 机器人 i 的当前格
-            var next = new GridPos[_robots.Count]; // 预测格数组：next[i] = 机器人 i 的“下一步意图格”
-
-            for (int i = 0; i < _robots.Count; i++) // 计算每个机器人当前格与意图下一格
-            {
-                RobotInstance r = _robots[i]; // 当前机器人
-                cur[i] = r.GetGridPos_NoLock(); // 读取当前所在格
-                next[i] = GetIntendedNextCell_NoLock(r, cur[i]); // 基于速度/方向/是否转向预测下一格
-            }
-
-            for (int i = 0; i < _robots.Count; i++) // 双重循环比较任意两机器人是否存在冲突
-            {
-                for (int j = i + 1; j < _robots.Count; j++) // j 从 i+1 开始避免重复/自比
-                {
-                    // 三类冲突：
-                    bool iStationary = next[i].Equals(cur[i]);
-                    bool jStationary = next[j].Equals(cur[j]);
-                    if (iStationary && jStationary)
-                    {
-                        continue;
-                    }
-                    // 1) 同目标格：两者都想进同一格
-                    bool sameTarget = next[i].Equals(next[j]); // 预测下一格完全相同
-
-                    // 2) 交换格：对向互换
-                    bool swap = next[i].Equals(cur[j]) && next[j].Equals(cur[i]); // 互相进入对方当前格
-
-                    // 3) 穿入对方格：任一方下一步将进入对方当前格（防穿模核心）
-                    bool enterOther =
-                        next[i].Equals(cur[j]) || // i 进入 j 当前格
-                        next[j].Equals(cur[i]);   // j 进入 i 当前格
-
-                    if (!sameTarget && !swap && !enterOther) // 没有冲突则跳过
-                    {
-                        continue; // 继续下一对
-                    }
-
-                    RobotInstance a = _robots[i]; // 冲突对：机器人 a
-                    RobotInstance b = _robots[j]; // 冲突对：机器人 b
-
-                    if (IsInYieldCooldown_NoLock(a.Id) && IsInYieldCooldown_NoLock(b.Id)) // 若双方都在冷却期
-                    {
-                        continue; // 跳过，避免双方持续停车重规划造成抖动/饥饿
-                    }
-
-                    RobotInstance yield; // 让步方
-                    RobotInstance go;    // 通行方
-
-                    // 冷却期：双方都在冷却就跳过，不再额外处理
-                    if (IsInYieldCooldown_NoLock(a.Id) && IsInYieldCooldown_NoLock(b.Id))
-                    {
-                        continue;
-                    }
-
-                    // 一方在冷却：优先让冷却中的那一方通行
-                    if (IsInYieldCooldown_NoLock(a.Id))
-                    {
-                        yield = b;
-                        go = a;
-                    }
-                    else if (IsInYieldCooldown_NoLock(b.Id))
-                    {
-                        yield = a;
-                        go = b;
-                    }
-                    else
-                    {
-                        // ---------- 交通规则开始 ----------
-
-                        bool aTurning = IsTurning_NoLock(a);
-                        bool bTurning = IsTurning_NoLock(b);
-                        bool aMoving = IsMoving_NoLock(a);
-                        bool bMoving = IsMoving_NoLock(b);
-
-                        // 1) 转弯让直行：只要一方在转弯、另一方是直行，就让转弯那一方停车
-                        if (aTurning && !bTurning && bMoving)
-                        {
-                            yield = a;
-                            go = b;
-                        }
-                        else if (bTurning && !aTurning && aMoving)
-                        {
-                            yield = b;
-                            go = a;
-                        }
-                        else
-                        {
-                            // 2) 都是直行或都在转弯：再看方向关系 + Id
-
-                            EnumMoveDirection da = a.Manager.Direction;
-                            EnumMoveDirection db = b.Manager.Direction;
-
-                            if (IsOppositeDirection(da, db))
-                            {
-                                // 相向对冲：Id 大的那一方让路
-                                if (a.Id > b.Id)
-                                {
-                                    yield = a;
-                                    go = b;
-                                }
-                                else
-                                {
-                                    yield = b;
-                                    go = a;
-                                }
-                            }
-                            else if (IsSameDirection(da, db))
-                            {
-                                // 同方向（追尾/并排行驶）：
-                                // - 若其中一辆速度几乎为 0，则优先让“静止/慢车”让路
-                                // - 否则仍然按照 Id 大者让路（保证确定性）
-                                if (!aMoving && bMoving)
-                                {
-                                    yield = a;
-                                    go = b;
-                                }
-                                else if (!bMoving && aMoving)
-                                {
-                                    yield = b;
-                                    go = a;
-                                }
-                                else
-                                {
-                                    if (a.Id > b.Id)
-                                    {
-                                        yield = a;
-                                        go = b;
-                                    }
-                                    else
-                                    {
-                                        yield = b;
-                                        go = a;
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                // 3) 垂直交叉（十字路口）：简单版本——Id 大的让路
-                                if (a.Id > b.Id)
-                                {
-                                    yield = a;
-                                    go = b;
-                                }
-                                else
-                                {
-                                    yield = b;
-                                    go = a;
-                                }
-                            }
-                        }
-                        // ---------- 交通规则结束 ----------
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// 判断指定机器人是否处于“让步冷却期”
-        /// </summary>
-        private bool IsInYieldCooldown_NoLock(int robotId)
-        {
-            int t; // 冷却剩余帧数
-            return _yieldCooldownTicks.TryGetValue(robotId, out t) && t > 0; // 存在且大于 0 则表示在冷却
-        }
-
-        /// <summary>
-        /// 预测机器人“下一步意图进入的格子”（用于碰撞检测）
-        /// </summary>
-        private GridPos GetIntendedNextCell_NoLock(RobotInstance r, GridPos curCell)
-        {
-            // 默认意图为“不动”
-            GridPos target = curCell; // 默认返回当前格（表示不移动）
-
-            // 只对自动巡航做预测（手动连续角移动更复杂，先不在这里做阻拦）
-            if (!r.AutoNavigator.IsEnabled) // 自动未启用则不预测
-            {
-                return target; // 返回当前格
-            }
-
-            // 转向中不预测（避免误判）
-            //if (r.Manager.IsTurning) // 若正在转向
-            //{
-            //    return target; // 认为下一格不变
-            //}
-
-            // 关键：按“下一帧预测位置”推算下一格，避免速度较大时跨格穿模
-            // 预测距离：max(speed * dt, 一个很小的最小值)，保证低速也能预测到相邻格意图
-            double v = r.Speed; // 当前速度
-            double move = v * _dt; // 预测本帧位移
-            if (move < _cellSizeM * 0.15) // 经验值：低速时也至少预测 0.15 格
-            {
-                move = _cellSizeM * 0.15; // 提升最小预测位移，便于判定“意图进入相邻格”
-            }
-
-            int dx = 0; // 预测位移的格方向 X（-1/0/+1）
-            int dy = 0; // 预测位移的格方向 Y（-1/0/+1）
-
-            switch (r.Manager.Direction) // 根据离散方向决定 dx/dy
-            {
-                case EnumMoveDirection.Right: // 向右移动
-                    dx = +1; // X+
-                    break; // 结束分支
-                case EnumMoveDirection.Left: // 向左移动
-                    dx = -1; // X-
-                    break; // 结束分支
-                case EnumMoveDirection.Down: // 向下移动
-                    dy = +1; // Y+
-                    break; // 结束分支
-                case EnumMoveDirection.Up: // 向上移动
-                    dy = -1; // Y-
-                    break; // 结束分支
-            }
-
-            // 用当前格中心 + 预测位移，映射到将要进入的格子
-            double curCenterX = curCell.X * _cellSizeM + _cellSizeM / 2.0; // 当前格中心 X（世界坐标）
-            double curCenterY = curCell.Y * _cellSizeM + _cellSizeM / 2.0; // 当前格中心 Y（世界坐标）
-
-            double predX = curCenterX + dx * move; // 预测位置 X（世界坐标）
-            double predY = curCenterY + dy * move; // 预测位置 Y（世界坐标）
-
-            int gx = (int)Math.Floor(predX / _cellSizeM); // 将预测 X 转为格坐标 X（向下取整）
-            int gy = (int)Math.Floor(predY / _cellSizeM); // 将预测 Y 转为格坐标 Y（向下取整）
-
-            if (gx < 0)
-            {
-                gx = 0; // 左边界裁剪
-
-            }
-            if (gy < 0)
-            {
-                gy = 0; // 上边界裁剪
-            }
-            if (gx >= _gridCount)
-            {
-                gx = _gridCount - 1; // 右边界裁剪
-            }
-            if (gy >= _gridCount)
-            {
-                gy = _gridCount - 1; // 下边界裁剪
-            }
-
-            target = new GridPos(gx, gy); // 预测意图格
-            return target; // 返回预测格
         }
 
         /// <summary>

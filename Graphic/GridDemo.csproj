@@ -106,6 +106,7 @@
     <Compile Include="RobotRuns\RobotCommand.cs" />
     <Compile Include="Robots\RobotInstance.cs" />
     <Compile Include="Robots\RobotSimulationLoop.cs" />
+    <Compile Include="Robots\RobotTrafficController.cs" />
     <Compile Include="WorldView\CenterGrid\CenterGrid.cs" />
     <Compile Include="WorldView\WorldTransform.cs" />
     <EmbeddedResource Include="Form1.resx">
