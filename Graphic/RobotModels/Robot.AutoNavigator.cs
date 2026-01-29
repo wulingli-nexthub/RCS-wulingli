@@ -32,8 +32,7 @@ namespace GridDemo.RobotModels
         private EnumPathfindingAlgorithm _algorithm = EnumPathfindingAlgorithm.AStar;
         private GridPos? _goal;
         private Func<GridPos, bool> _isWalkableProvider = p => true;
-        // 新增：自动模式启动/重建路径后，先对齐到路径起点格中心再巡航
-        private readonly Queue<RobotCommand> _alignQueue = new Queue<RobotCommand>();
+
         public RobotAutoNavigator(
             object robotLock,
             Func<double> getRobotX,
@@ -52,6 +51,7 @@ namespace GridDemo.RobotModels
             _cellSizeM = cellSizeM;
             _robotManager = robotManager ?? throw new ArgumentNullException(nameof(robotManager));
         }
+
         public void SetIsWalkableProvider(Func<GridPos, bool> isWalkableProvider)
         {
             lock (_robotLock)
@@ -59,6 +59,7 @@ namespace GridDemo.RobotModels
                 _isWalkableProvider = isWalkableProvider ?? throw new ArgumentNullException(nameof(isWalkableProvider));
             }
         }
+
         public bool IsEnabled { get; private set; }
 
         /// <summary>
@@ -75,7 +76,6 @@ namespace GridDemo.RobotModels
 
                 _path.Clear();
                 _pathIndex = 0;
-                _alignQueue.Clear();
 
                 RebuildPath_NoLock();
             }
@@ -92,7 +92,6 @@ namespace GridDemo.RobotModels
 
                 _path.Clear();
                 _pathIndex = 0;
-                _alignQueue.Clear();
             }
         }
 
@@ -175,7 +174,6 @@ namespace GridDemo.RobotModels
                 _goal = null;
                 _path.Clear();
                 _pathIndex = 0;
-                _alignQueue.Clear();
             }
         }
 
@@ -196,17 +194,6 @@ namespace GridDemo.RobotModels
 
         /// <summary>
         /// 生成下一条要执行的指令（若暂时没有则返回 null）。
-        ///
-        /// 规则（输出层面）：
-        /// - 未启用/未设目标：返回 null；
-        /// - 无路径：尝试重建；仍失败则返回 null；
-        /// - 已到达（或越过）当前路径点：推进索引后再判断；
-        /// - 若期望方向与当前方向不同：输出 TurnTo(...)；
-        /// - 若方向已对齐：输出 MoveDistance(...)。
-        ///
-        /// MoveDistance 的合并策略：
-        /// - 为减少“走一格发一条指令”的指令抖动，将同方向的连续格子合并为一次位移；
-        /// - 合并时以格子中心间距（_cellSizeM）累加。
         /// </summary>
         public RobotCommand TryBuildNextCommand()
         {
@@ -220,12 +207,6 @@ namespace GridDemo.RobotModels
                 if (!_goal.HasValue)
                 {
                     return null;
-                }
-
-                // 优先执行“对齐到路径起点格中心”的矫正队列
-                if (_alignQueue.Count > 0)
-                {
-                    return _alignQueue.Dequeue();
                 }
 
                 if (_path.Count == 0)
@@ -288,22 +269,7 @@ namespace GridDemo.RobotModels
                     GridPos cur = _path[i];
                     GridPos next = _path[i + 1];
 
-                    // 判断 cur->next 的离散方向
-                    int dx = next.X - cur.X;
-                    int dy = next.Y - cur.Y;
-
-                    EnumMoveDirection stepDir;    // cur->next 的移动方向
-
-                    if (Math.Abs(dx) >= Math.Abs(dy))
-                    { // 水平优先，方向是左右，大于等于则向右运动
-                        stepDir = dx >= 0 ? EnumMoveDirection.Right : EnumMoveDirection.Left;
-                    }
-                    else
-                    { // 垂直方向，方向是上下，大于等于则向下运动
-                        stepDir = dy >= 0 ? EnumMoveDirection.Down : EnumMoveDirection.Up;
-                    }
-
-                    if (stepDir != desiredDir)
+                    if (GetStepDirection(cur, next) != desiredDir)
                     { // 方向不一致，停止合并（说明下一步应该是转向）
                         break;
                     }
@@ -322,15 +288,7 @@ namespace GridDemo.RobotModels
         }
 
         /// <summary>
-        /// 重建路径（外部调用）：
-        /// - 将世界尺寸换算为网格宽高；
-        /// - 将机器人当前位置映射为起点格子；
-        /// - 用寻路算法生成从 start 到 goal 的路径；
-        /// - 结果存入 _path，并初始化 _pathIndex。
-        ///
-        /// 注意：
-        /// - gridW/gridH 用 Round 以匹配“世界尺寸 = GridCount * cellSizeM”的场景；
-        /// - 若 path 第一格等于 start，则 _pathIndex 从 1 开始，避免把“当前位置”当成下一目标点导致零位移/指令抖动。
+        /// 重建路径（外部调用）
         /// </summary>
         private void RebuildPath_NoLock()
         {
@@ -346,7 +304,6 @@ namespace GridDemo.RobotModels
             {
                 _path.Clear();
                 _pathIndex = 0;
-                _alignQueue.Clear();
                 return;
             }
 
@@ -375,7 +332,7 @@ namespace GridDemo.RobotModels
                     algorithm: _algorithm);
             }
 
-            _path.Clear();        // 清空旧路径
+            _path.Clear();              // 清空旧路径
             _path.AddRange(path);       // 存入新路径
 
             _pathIndex = 0;
@@ -383,71 +340,19 @@ namespace GridDemo.RobotModels
             { // 若路径第一格等于起点，则跳过该点
                 _pathIndex = Math.Min(1, _path.Count);
             }
-
-            // 重建路径后，生成“矫正到 start 格中心”的指令序列
-            BuildAlignToGridCenterQueue_NoLock(start);
         }
 
-        // 对齐到指定格子的中心（最多两段：先 X 后 Y；每段会先 TurnTo 再 MoveDistance）
-        private void BuildAlignToGridCenterQueue_NoLock(GridPos startCell)
+        private static EnumMoveDirection GetStepDirection(GridPos cur, GridPos next)
         {
-            _alignQueue.Clear();
+            int dx = next.X - cur.X;
+            int dy = next.Y - cur.Y;
 
-            double x = _getRobotX();
-            double y = _getRobotY();
-
-            double cx = GridToCenterWorldX(startCell.X);
-            double cy = GridToCenterWorldY(startCell.Y);
-
-            double dx = cx - x;
-            double dy = cy - y;
-
-            bool needX = Math.Abs(dx) > ArriveEpsilonM;
-            bool needY = Math.Abs(dy) > ArriveEpsilonM;
-
-            if (!needX && !needY)
-            {
-                return;
+            if (Math.Abs(dx) >= Math.Abs(dy))
+            { // 水平优先
+                return dx >= 0 ? EnumMoveDirection.Right : EnumMoveDirection.Left;
             }
 
-            // 当前离散方向（注意：这里只用离散方向，不依赖 OrientationAngle）
-            EnumMoveDirection curDir = _robotManager.Direction;
-
-            // 先矫正 X
-            if (needX)
-            {
-                EnumMoveDirection dirX = dx >= 0 ? EnumMoveDirection.Right : EnumMoveDirection.Left;
-
-                EnqueueTurnSteps(curDir, dirX, _alignQueue);
-                _alignQueue.Enqueue(RobotCommand.MoveDistance(Math.Abs(dx)));
-
-                // 经过这一段后，逻辑上方向变成 dirX
-                curDir = dirX;
-            }
-
-            // 再矫正 Y
-            if (needY)
-            {
-                EnumMoveDirection dirY = dy >= 0 ? EnumMoveDirection.Down : EnumMoveDirection.Up;
-
-                EnqueueTurnSteps(curDir, dirY, _alignQueue);
-                _alignQueue.Enqueue(RobotCommand.MoveDistance(Math.Abs(dy)));
-
-                curDir = dirY;
-            }
-        }
-
-        private void EnqueueTurnSteps(EnumMoveDirection currentDir,
-                              EnumMoveDirection targetDir,
-                              Queue<RobotCommand> queue)
-        {
-            double? angle = TryGetTurnAngleRad(currentDir, targetDir);
-            if (!angle.HasValue)
-            {
-                return;
-            }
-
-            queue.Enqueue(RobotCommand.TurnAngle(angle.Value));
+            return dy >= 0 ? EnumMoveDirection.Down : EnumMoveDirection.Up;
         }
 
         /// <summary>
@@ -495,10 +400,10 @@ namespace GridDemo.RobotModels
                 if (arriveX && arriveY)
                 { // 到达当前点，推进索引
                     _pathIndex++;
-                    continue;   // 回到循环开头，继续判定下一个点是否也已到达，以支持一次推进多个点
+                    continue;
                 }
 
-                // 2) 跨越中心线判定（只看当前段的轴向），用于“越过索引点但还没进入 arrive 半径”的场景
+                // 2) 跨越中心线判定（只看当前段的轴向）
                 if (_pathIndex > 0)
                 {
                     GridPos prev = _path[_pathIndex - 1];
@@ -506,19 +411,16 @@ namespace GridDemo.RobotModels
                     int dxCell = p.X - prev.X;
                     int dyCell = p.Y - prev.Y;
 
-                    // prev/cur 的中心点：用于稳定判断“是否已经越过 cur”
                     double prevX = GridToCenterWorldX(prev.X);
                     double prevY = GridToCenterWorldY(prev.Y);
 
                     if (dxCell != 0)
-                    { // 水平段：判断 robot 是否已越过 tx（沿 prev->cur 的方向）
-                        double dir = Math.Sign(tx - prevX);          // +1=向右，-1=向左
+                    {
+                        double dir = Math.Sign(tx - prevX);
                         if (dir != 0)
                         {
-                            // 若 robot 在该方向上的投影距离 >= 目标点投影距离，则认为越过/到达
                             double robotProj = (robotX - prevX) * dir;
                             double targetProj = (tx - prevX) * dir;
-
                             if (robotProj >= targetProj)
                             {
                                 _pathIndex++;
@@ -527,13 +429,12 @@ namespace GridDemo.RobotModels
                         }
                     }
                     else if (dyCell != 0)
-                    { // 垂直段：判断 robot 是否已越过 ty（沿 prev->cur 的方向）
-                        double dir = Math.Sign(ty - prevY);          // +1=向下，-1=向上
+                    {
+                        double dir = Math.Sign(ty - prevY);
                         if (dir != 0)
                         {
                             double robotProj = (robotY - prevY) * dir;
                             double targetProj = (ty - prevY) * dir;
-
                             if (robotProj >= targetProj)
                             {
                                 _pathIndex++;
@@ -542,7 +443,7 @@ namespace GridDemo.RobotModels
                         }
                     }
                 }
-                // 既没到达，也没穿过当前点，则停止推进索引
+
                 break;
             }
         }
@@ -616,9 +517,7 @@ namespace GridDemo.RobotModels
         private double GridToCenterWorldY(int gy) => gy * _cellSizeM + _cellSizeM / 2.0;
 
         /// <summary>
-        /// 选择接近目标点的期望方向（只输出四向）：
-        /// - 比较 |dx| 与 |dy|，优先走“更远”的轴向，降低步数；
-        /// - 这是离散控制策略，不做斜向移动。
+        /// 选择接近目标点的期望方向（只输出四向）
         /// </summary>
         private static EnumMoveDirection ChooseDirectionToTarget(double x, double y, double tx, double ty)
         {
@@ -646,8 +545,6 @@ namespace GridDemo.RobotModels
 
         /// <summary>
         /// 获取“下一步”的网格意图（用于引擎层判断是否被抢占）。
-        /// - 返回 false：暂时没有可执行的下一步（无路径/到达/未启用/未设目标等）。
-        /// - 返回 true：给出 nextCell 与 desiredDir（从当前格 -> nextCell 的方向）。
         /// </summary>
         public bool TryGetNextStepSnapshot(out GridPos currentCell, out GridPos nextCell, out EnumMoveDirection desiredDir)
         {
@@ -658,12 +555,6 @@ namespace GridDemo.RobotModels
                 desiredDir = default(EnumMoveDirection);
 
                 if (!IsEnabled || !_goal.HasValue)
-                {
-                    return false;
-                }
-
-                // 对齐队列存在时：下一步可能是“转向/对齐移动”，此时不做网格抢占判断（让它先对齐）
-                if (_alignQueue.Count > 0)
                 {
                     return false;
                 }
@@ -688,7 +579,6 @@ namespace GridDemo.RobotModels
                     return false;
                 }
 
-                // 当前格：用当前位置映射（与 RebuildPath_NoLock 同口径）
                 double worldWidth = _getWorldWidthM();
                 double worldHeight = _getWorldHeightM();
                 int gridW = Math.Max(1, (int)Math.Round(worldWidth / _cellSizeM));
@@ -702,7 +592,6 @@ namespace GridDemo.RobotModels
 
                 if (dx == 0 && dy == 0)
                 {
-                    // 可能处于“当前格中心未到达”，但网格已一致，方向按当前位置到目标点中心决定
                     double tx = GridToCenterWorldX(nextCell.X);
                     double ty = GridToCenterWorldY(nextCell.Y);
                     desiredDir = ChooseDirectionToTarget(x, y, tx, ty);
@@ -724,7 +613,6 @@ namespace GridDemo.RobotModels
 
         /// <summary>
         /// 根据当前 WalkableProvider 计算“从当前格到目标格”的路径（格子序列）。
-        /// 说明：此方法不会写入内部 _path（避免与现有自动导航状态耦合），用于引擎层做调度/抢占。
         /// </summary>
         public List<GridPos> BuildPathSnapshotFromCurrentToGoal()
         {
