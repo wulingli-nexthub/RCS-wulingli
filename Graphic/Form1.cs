@@ -41,6 +41,7 @@ namespace GridDemo
         private Draws.DrawObstacles _drawObstacles;
         private Draws.DrawPath _drawPath;
         private Draws.DrawRobot _drawRobot;
+        private Draws.DrawClaimedCells _drawClaimedCells;
         private Events.MouseWheel _mouseWheel;
         private Events.MousePan _mousePan;
         private WorldView.CenterGrid.CenterGrid _centerGrid;
@@ -136,6 +137,12 @@ namespace GridDemo
                     var s = _engine.GetStateSnapshot();
                     return (s.X, s.Y);
                 });
+
+            _drawClaimedCells = new Draws.DrawClaimedCells(
+                _worldTransform,
+                getClaimedCellsSnapshot: () => _engine.GetClaimedCellsSnapshot(),
+                getCellSizeM: () => _engine.CellSizeM);
+
 
             _drawRobot = new Draws.DrawRobot(
                 _worldTransform,
@@ -467,6 +474,9 @@ namespace GridDemo
 
             _drawGrid.Draw(canvas);
             _drawObstacles.Draw(canvas);
+
+            // 先画抢占格子（在路径与机器人之下）
+            _drawClaimedCells.Draw(canvas);
 
             // 蛇形模式不画路径
             if (_currentAlgorithm != EnumPathfindingAlgorithm.Serpentine)

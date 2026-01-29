@@ -568,6 +568,22 @@ namespace GridDemo.RobotModels
         }
 
         /// <summary>
+        /// 获取当前路径格子序列快照（用于引擎抢占）。
+        /// </summary>
+        public List<GridPos> GetPathGridSnapshot()
+        {
+            lock (_robotLock)
+            {
+                var list = new List<GridPos>(_path.Count);
+                for (int i = 0; i < _path.Count; i++)
+                {
+                    list.Add(_path[i]);
+                }
+                return list;
+            }
+        }
+
+        /// <summary>
         /// 世界坐标 -> 网格坐标：
         /// - 使用 Floor 保证落入格子；
         /// - 并对边界进行夹紧，确保索引在 [0, gridW-1] / [0, gridH-1]。
@@ -615,6 +631,139 @@ namespace GridDemo.RobotModels
             }
 
             return dy >= 0 ? EnumMoveDirection.Down : EnumMoveDirection.Up;
+        }
+
+        /// <summary>
+        /// 获取当前目标格（摄取快照）。没有目标则返回 null。
+        /// </summary>
+        public GridPos? GetGoalGridSnapshot()
+        {
+            lock (_robotLock)
+            {
+                return _goal;
+            }
+        }
+
+        /// <summary>
+        /// 获取“下一步”的网格意图（用于引擎层判断是否被抢占）。
+        /// - 返回 false：暂时没有可执行的下一步（无路径/到达/未启用/未设目标等）。
+        /// - 返回 true：给出 nextCell 与 desiredDir（从当前格 -> nextCell 的方向）。
+        /// </summary>
+        public bool TryGetNextStepSnapshot(out GridPos currentCell, out GridPos nextCell, out EnumMoveDirection desiredDir)
+        {
+            lock (_robotLock)
+            {
+                currentCell = default(GridPos);
+                nextCell = default(GridPos);
+                desiredDir = default(EnumMoveDirection);
+
+                if (!IsEnabled || !_goal.HasValue)
+                {
+                    return false;
+                }
+
+                // 对齐队列存在时：下一步可能是“转向/对齐移动”，此时不做网格抢占判断（让它先对齐）
+                if (_alignQueue.Count > 0)
+                {
+                    return false;
+                }
+
+                if (_path.Count == 0)
+                {
+                    RebuildPath_NoLock();
+                }
+
+                if (_path.Count == 0)
+                {
+                    return false;
+                }
+
+                double x = _getRobotX();
+                double y = _getRobotY();
+
+                AdvanceWaypointIfArrived_NoLock(x, y);
+
+                if (_pathIndex >= _path.Count)
+                {
+                    return false;
+                }
+
+                // 当前格：用当前位置映射（与 RebuildPath_NoLock 同口径）
+                double worldWidth = _getWorldWidthM();
+                double worldHeight = _getWorldHeightM();
+                int gridW = Math.Max(1, (int)Math.Round(worldWidth / _cellSizeM));
+                int gridH = Math.Max(1, (int)Math.Round(worldHeight / _cellSizeM));
+                currentCell = WorldToGrid(x, y, gridW, gridH);
+
+                nextCell = _path[_pathIndex];
+
+                int dx = nextCell.X - currentCell.X;
+                int dy = nextCell.Y - currentCell.Y;
+
+                if (dx == 0 && dy == 0)
+                {
+                    // 可能处于“当前格中心未到达”，但网格已一致，方向按当前位置到目标点中心决定
+                    double tx = GridToCenterWorldX(nextCell.X);
+                    double ty = GridToCenterWorldY(nextCell.Y);
+                    desiredDir = ChooseDirectionToTarget(x, y, tx, ty);
+                    return true;
+                }
+
+                if (Math.Abs(dx) >= Math.Abs(dy))
+                {
+                    desiredDir = dx >= 0 ? EnumMoveDirection.Right : EnumMoveDirection.Left;
+                }
+                else
+                {
+                    desiredDir = dy >= 0 ? EnumMoveDirection.Down : EnumMoveDirection.Up;
+                }
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// 根据当前 WalkableProvider 计算“从当前格到目标格”的路径（格子序列）。
+        /// 说明：此方法不会写入内部 _path（避免与现有自动导航状态耦合），用于引擎层做调度/抢占。
+        /// </summary>
+        public List<GridPos> BuildPathSnapshotFromCurrentToGoal()
+        {
+            lock (_robotLock)
+            {
+                if (!IsEnabled || !_goal.HasValue)
+                {
+                    return null;
+                }
+
+                double worldWidth = _getWorldWidthM();
+                double worldHeight = _getWorldHeightM();
+
+                int gridW = Math.Max(1, (int)Math.Round(worldWidth / _cellSizeM));
+                int gridH = Math.Max(1, (int)Math.Round(worldHeight / _cellSizeM));
+
+                GridPos start = WorldToGrid(_getRobotX(), _getRobotY(), gridW, gridH);
+                GridPos goal = _goal.Value;
+
+                Func<GridPos, bool> isWalkable = _isWalkableProvider ?? (p => true);
+
+                if (_algorithm == EnumPathfindingAlgorithm.Serpentine)
+                {
+                    return SerpentinePathfinder.BuildPath(
+                        width: gridW,
+                        height: gridH,
+                        start: start,
+                        goal: goal,
+                        isWalkable: isWalkable);
+                }
+
+                return GridPathfinder.FindPath(
+                    width: gridW,
+                    height: gridH,
+                    start: start,
+                    goal: goal,
+                    isWalkable: isWalkable,
+                    algorithm: _algorithm);
+            }
         }
     }
 }

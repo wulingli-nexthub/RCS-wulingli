@@ -62,25 +62,12 @@ namespace GridDemo.Draws
             double currentScale = _getScale(); // 读取当前缩放比例（用于决定显示尺寸）
             float radiusPx = (float)(currentScale / 6.0); // 将缩放换算为机器人圆点半径（像素）
 
-            // 1) 先画目标点（避免盖住机器人本体）
+            // 1) 目标点：按机器人颜色画
             if (goals != null && goals.Count > 0)
             {
                 float goalRadiusPx = Math.Max(4.0f, radiusPx * 0.60f);
 
-                using (var goalFill = new SKPaint
-                {
-                    Color = new SKColor(0, 150, 255, 90), // 半透明蓝
-                    IsAntialias = true,
-                    Style = SKPaintStyle.Fill
-                })
-                using (var goalStroke = new SKPaint
-                {
-                    Color = new SKColor(0, 150, 255, 220),
-                    StrokeWidth = 2.0f,
-                    IsAntialias = true,
-                    Style = SKPaintStyle.Stroke
-                })
-                using (var goalTextPaint = new SKPaint { Color = SKColors.DarkBlue, IsAntialias = true })
+                using (var goalTextPaint = new SKPaint { Color = SKColors.Black, IsAntialias = true })
                 using (var goalFont = new SKFont { Size = Math.Max(10.0f, goalRadiusPx * 1.0f) })
                 {
                     for (int i = 0; i < goals.Count; i++)
@@ -88,75 +75,94 @@ namespace GridDemo.Draws
                         var g = goals[i];
                         var sp = _transform.WorldToScreen(g.X, g.Y);
 
-                        float gx = sp.X;
-                        float gy = sp.Y;
+                        SKColor c = RobotPalette.GetRobotColor(g.Id);
 
-                        canvas.DrawCircle(gx, gy, goalRadiusPx, goalFill);
-                        canvas.DrawCircle(gx, gy, goalRadiusPx, goalStroke);
+                        using (var goalFill = new SKPaint
+                        {
+                            Color = new SKColor(c.Red, c.Green, c.Blue, 70),
+                            IsAntialias = true,
+                            Style = SKPaintStyle.Fill
+                        })
+                        using (var goalStroke = new SKPaint
+                        {
+                            Color = new SKColor(c.Red, c.Green, c.Blue, 200),
+                            StrokeWidth = 2.0f,
+                            IsAntialias = true,
+                            Style = SKPaintStyle.Stroke
+                        })
+                        {
+                            float gx = sp.X;
+                            float gy = sp.Y;
 
-                        // 目标点上显示编号（1..N）
-                        canvas.DrawText((g.Id + 1).ToString(), gx + goalRadiusPx, gy - goalRadiusPx, SKTextAlign.Left, goalFont, goalTextPaint);
+                            canvas.DrawCircle(gx, gy, goalRadiusPx, goalFill);
+                            canvas.DrawCircle(gx, gy, goalRadiusPx, goalStroke);
+
+                            canvas.DrawText((g.Id + 1).ToString(), gx + goalRadiusPx, gy - goalRadiusPx, SKTextAlign.Left, goalFont, goalTextPaint);
+                        }
                     }
                 }
             }
 
-            // 2) 再画机器人
+            // 2) 机器人本体：按机器人颜色画
             for (int i = 0; i < robots.Count; i++)
-            { // 遍历所有机器人逐个绘制
-                var r = robots[i]; // 取出第 i 个机器人快照
-                var screenPos = _transform.WorldToScreen(r.X, r.Y); // 将世界坐标转换为屏幕坐标
+            {
+                var r = robots[i];
+                var screenPos = _transform.WorldToScreen(r.X, r.Y);
 
-                float cx = screenPos.X; // 圆心 X（屏幕坐标）
-                float cy = screenPos.Y; // 圆心 Y（屏幕坐标）
+                float cx = screenPos.X;
+                float cy = screenPos.Y;
 
-                bool isSelected = r.Id == selectedId; // 判断该机器人是否为当前选中机器人
+                bool isSelected = r.Id == selectedId;
+                SKColor baseColor = RobotPalette.GetRobotColor(r.Id);
 
-                using (var fill = new SKPaint // 创建“填充”画笔（用于画实心圆）
+                using (var fill = new SKPaint
                 {
-                    Color = isSelected ? SKColors.OrangeRed : SKColors.Red, // 选中时用更醒目的橙红，否则用红色
-                    IsAntialias = true, // 开启抗锯齿以减少边缘锯齿
-                    Style = SKPaintStyle.Fill // 填充样式
+                    Color = isSelected
+                        ? new SKColor(baseColor.Red, baseColor.Green, baseColor.Blue, 255)
+                        : new SKColor(baseColor.Red, baseColor.Green, baseColor.Blue, 220),
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Fill
                 })
-                using (var stroke = new SKPaint // 创建“描边”画笔（用于画圆形边框）
+                using (var stroke = new SKPaint
                 {
-                    Color = isSelected ? SKColors.Gold : SKColors.Black, // 选中时边框金色，否则黑色
-                    StrokeWidth = isSelected ? 3.0f : 1.5f, // 选中时线宽更粗
-                    IsAntialias = true, // 开启抗锯齿
-                    Style = SKPaintStyle.Stroke // 描边样式
+                    Color = isSelected ? SKColors.Black : new SKColor(30, 30, 30, 200),
+                    StrokeWidth = isSelected ? 3.0f : 1.5f,
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Stroke
                 })
                 {
-                    canvas.DrawCircle(cx, cy, radiusPx, fill); // 绘制机器人本体（填充圆）
-                    canvas.DrawCircle(cx, cy, radiusPx, stroke); // 绘制机器人外圈（描边圆）
+                    canvas.DrawCircle(cx, cy, radiusPx, fill);
+                    canvas.DrawCircle(cx, cy, radiusPx, stroke);
                 }
 
-                float arrowTotalLen = radiusPx * 1.8f; // 方向箭头线段总长度（相对半径进行缩放）
-                float arrowStartOffset = radiusPx * 0.3f; // 箭头起点离圆心的偏移（避免从圆心穿出）
-                float arrowLineWidth = Math.Max(1.0f, radiusPx * 0.12f); // 箭头线宽（最小 1px，随半径变化）
+                float arrowTotalLen = radiusPx * 1.8f;
+                float arrowStartOffset = radiusPx * 0.3f;
+                float arrowLineWidth = Math.Max(1.0f, radiusPx * 0.12f);
 
-                float dirX = (float)Math.Cos(r.Angle); // 朝向单位向量 X（Angle 为弧度）
-                float dirY = (float)Math.Sin(r.Angle); // 朝向单位向量 Y（Angle 为弧度）
+                float dirX = (float)Math.Cos(r.Angle);
+                float dirY = (float)Math.Sin(r.Angle);
 
-                float x1 = cx + dirX * arrowStartOffset; // 箭头线起点 X
-                float y1 = cy + dirY * arrowStartOffset; // 箭头线起点 Y
-                float x2 = cx + dirX * arrowTotalLen; // 箭头线终点 X
-                float y2 = cy + dirY * arrowTotalLen; // 箭头线终点 Y
+                float x1 = cx + dirX * arrowStartOffset;
+                float y1 = cy + dirY * arrowStartOffset;
+                float x2 = cx + dirX * arrowTotalLen;
+                float y2 = cy + dirY * arrowTotalLen;
 
-                using (var arrowPaint = new SKPaint // 创建方向箭头画笔
+                using (var arrowPaint = new SKPaint
                 {
-                    Color = SKColors.Black, // 箭头颜色为黑色
-                    StrokeWidth = arrowLineWidth, // 箭头线宽
-                    IsAntialias = true, // 开启抗锯齿
-                    Style = SKPaintStyle.Stroke, // 使用描边绘制线段
-                    StrokeCap = SKStrokeCap.Round // 线帽圆角，使线段端点更平滑
+                    Color = SKColors.Black,
+                    StrokeWidth = arrowLineWidth,
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Stroke,
+                    StrokeCap = SKStrokeCap.Round
                 })
                 {
-                    canvas.DrawLine(x1, y1, x2, y2, arrowPaint); // 绘制朝向线段（方向箭头主体）
+                    canvas.DrawLine(x1, y1, x2, y2, arrowPaint);
                 }
 
-                using (var textPaint = new SKPaint { Color = SKColors.Black, IsAntialias = true }) // 文本画笔（用于编号绘制）
-                using (var font = new SKFont { Size = Math.Max(10.0f, radiusPx * 0.9f) }) // 字体对象：字号随半径缩放，最小 10px
+                using (var textPaint = new SKPaint { Color = SKColors.Black, IsAntialias = true })
+                using (var font = new SKFont { Size = Math.Max(10.0f, radiusPx * 0.9f) })
                 {
-                    canvas.DrawText((r.Id + 1).ToString(), cx + radiusPx, cy - radiusPx, SKTextAlign.Left, font, textPaint); // 在机器人右上方绘制编号（显示为 1..N）
+                    canvas.DrawText((r.Id + 1).ToString(), cx + radiusPx, cy - radiusPx, SKTextAlign.Left, font, textPaint);
                 }
             }
         }

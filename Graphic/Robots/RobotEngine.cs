@@ -1,5 +1,6 @@
 ﻿using Graphic.Maps;
 using GridDemo.RobotModels.Pathfinding;
+using GridDemo.RobotRuns;
 using System;
 using System.Collections.Generic;
 
@@ -46,19 +47,23 @@ namespace GridDemo.Robots
         private const int YieldCooldownFrames = 12; // 冷却帧数：12 帧 * 20ms ≈ 240ms（防止频繁让步抖动）
         private readonly Dictionary<int, int> _yieldCooldownTicks = new Dictionary<int, int>(); // robotId -> 冷却剩余帧数
 
+        private readonly GridCellClaimBoard _claimBoard;
+
         public RobotEngine(int gridCount, double cellSizeM, double dt, double initialMaxSpeed, EnumMoveDirection initialDirection)
         {
-            _gridCount = gridCount; // 保存网格数量
-            _cellSizeM = cellSizeM; // 保存网格尺寸
-            _dt = dt; // 保存时间步长
-            _worldWidthM = gridCount * cellSizeM; // 计算世界宽度
-            _worldHeightM = gridCount * cellSizeM; // 计算世界高度
+            _gridCount = gridCount;
+            _cellSizeM = cellSizeM;
+            _dt = dt;
+            _worldWidthM = gridCount * cellSizeM;
+            _worldHeightM = gridCount * cellSizeM;
 
-            _obstacleMap = new ObstacleMap(gridCount, gridCount); // 创建障碍物地图（gridCount x gridCount）
+            _obstacleMap = new ObstacleMap(gridCount, gridCount);
 
-            SetRobotCount(1, initialMaxSpeed, initialDirection); // 默认先创建 1 个机器人
+            _claimBoard = new GridCellClaimBoard(_gridCount, _obstacleMap);
 
-            _processState = EnumRobotProcessState.AutoNavigating; // 默认进入自动巡航状态
+            SetRobotCount(1, initialMaxSpeed, initialDirection);
+
+            _processState = EnumRobotProcessState.AutoNavigating;
         }
 
         public double WorldWidthM => _worldWidthM; // 对外暴露世界宽度（米）
@@ -404,6 +409,18 @@ namespace GridDemo.Robots
         }
 
         /// <summary>
+        /// 获取抢占格子快照（robotId -> claimed grid cells）。
+        /// 用于渲染层显示每台机器人的抢占路径。
+        /// </summary>
+        public Dictionary<int, List<GridPos>> GetClaimedCellsSnapshot()
+        {
+            lock (_robotLock)
+            {
+                return _claimBoard.GetClaimedCellsSnapshot();
+            }
+        }
+
+        /// <summary>
         /// 获取所有机器人的目标点（世界坐标）快照（用于渲染）。
         /// - key: robotId
         /// - value: (X,Y) 世界坐标（格子中心）
@@ -638,86 +655,172 @@ namespace GridDemo.Robots
         /// </summary>
         public void Tick()
         {
-            switch (_processState) // 根据引擎状态决定是否更新
+            switch (_processState)
             {
-                case EnumRobotProcessState.ObstacleEditing: // 障碍编辑：不更新
-                case EnumRobotProcessState.Idle: // 空闲：不更新
-                case EnumRobotProcessState.Error: // 错误：不更新
-                    return; // 直接返回
+                case EnumRobotProcessState.ObstacleEditing:
+                case EnumRobotProcessState.Idle:
+                case EnumRobotProcessState.Error:
+                    return;
             }
 
-            lock (_robotLock) // Tick 内部会读写大量共享状态，因此整段加锁
+            lock (_robotLock)
             {
-                // 0) 冷却计数递减
-                if (_yieldCooldownTicks.Count > 0) // 若存在冷却中的机器人
+                // 0) 冷却计数递减（保留）
+                if (_yieldCooldownTicks.Count > 0)
                 {
-                    var keys = new List<int>(_yieldCooldownTicks.Keys); // 拷贝 key 列表（避免遍历时修改字典）
-                    for (int i = 0; i < keys.Count; i++) // 遍历所有处于冷却的 robotId
+                    var keys = new List<int>(_yieldCooldownTicks.Keys);
+                    for (int i = 0; i < keys.Count; i++)
                     {
-                        int id = keys[i]; // 当前 robotId
-                        int t = _yieldCooldownTicks[id] - 1; // 冷却计数减 1
-                        if (t <= 0) // 冷却结束
+                        int id = keys[i];
+                        int t = _yieldCooldownTicks[id] - 1;
+                        if (t <= 0)
                         {
-                            _yieldCooldownTicks.Remove(id); // 从字典移除
+                            _yieldCooldownTicks.Remove(id);
                         }
-                        else // 仍在冷却
+                        else
                         {
-                            _yieldCooldownTicks[id] = t; // 写回剩余冷却帧数
+                            _yieldCooldownTicks[id] = t;
                         }
                     }
                 }
 
-                // 1) 动态障碍：把其它机器人占用的格子注入 WalkableProvider
-                RebindDynamicWalkable_NoLock(); // 更新每个机器人“可行走判断”（将其它机器人当作动态障碍）
+                // 1) 动态障碍（保留）
+                RebindDynamicWalkable_NoLock();
 
-                // 2) 碰撞让步：以网格为单位检测“前后左右/同格”
-                HandleRobotCollisions_NoLock(); // 检测并处理机器人之间的潜在冲突（让步/刹停/重规划）
+                // 2) 先确保路径是“当前固定结果”，再按距离优先抢占整段路径
+                ApplyPathClaiming_NoLock();
 
-                // 3) 未选中机器人继续 Auto（不响应手动）
-                for (int i = 0; i < _robots.Count; i++) // 遍历所有机器人逐个 Tick
+                // 3) 交通规则（你原逻辑暂未真正执行 stop/yield，这里不动）
+                HandleRobotCollisions_NoLock();
+
+                // 4) 每帧：允许则下发下一条自动指令；若下一格被抢占 -> 原地等待
+                for (int i = 0; i < _robots.Count; i++)
                 {
-                    RobotInstance r = _robots[i]; // 当前机器人
-                    bool isSelected = r.Id == _selectedRobotId; // 判断是否为选中机器人
+                    RobotInstance r = _robots[i];
+                    bool isSelected = r.Id == _selectedRobotId;
 
-                    if (!isSelected) // 未选中机器人
+                    if (!isSelected)
                     {
-                        // 强制未选中机器人保持自动巡航
-                        r.Manual.Disable(); // 禁止手动输入影响未选中机器人
-                        if (!r.AutoNavigator.IsEnabled) // 若自动未开启
+                        r.Manual.Disable();
+                        if (!r.AutoNavigator.IsEnabled)
                         {
-                            r.AutoNavigator.Enable(); // 强制开启自动导航
+                            r.AutoNavigator.Enable();
                         }
                     }
 
-                    if (r.AutoNavigator.IsEnabled) // 自动导航启用时
+                    if (r.AutoNavigator.IsEnabled)
                     {
-                        // 没目标时给一个随机目标，确保“自动巡航”一定会走
-                        // （避免 EnableAuto() 里 ClearGoal 后一直不动）
-                        if (r.AutoNavigator.GetPathWorldPointsSnapshot() == null // 路径为空（未规划）
-                            || r.AutoNavigator.GetPathWorldPointsSnapshot().Count == 0) // 或路径点数量为 0
+                        if (r.AutoNavigator.GetPathWorldPointsSnapshot() == null
+                            || r.AutoNavigator.GetPathWorldPointsSnapshot().Count == 0)
                         {
-                            // 注意：这里不使用 used，目标允许和别的机器人当前位置冲突由动态障碍避让+重规划解决
-                            r.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true); // 设置随机目标并重建路径
-                            r.Manager.ResetAutoCommands(); // 目标变化后重置命令队列
+                            r.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
+                            r.Manager.ResetAutoCommands();
                         }
                     }
 
-                    // 调度命令 + 运动学
-                    r.Manager.Tick(_dt, () => r.Acc); // 让管理器按 dt 调度下一步命令（从委托获取当前加速度）
-                    r.Move.Update(); // 运动学更新：推进位置/速度/朝向等
+                    // Auto 的 Manager.Tick 现在不拉 provider（保留调用避免影响手动/其它状态）
+                    r.Manager.Tick(_dt, () => r.Acc);
+
+                    if (r.AutoNavigator.IsEnabled)
+                    {
+                        if (TryDispatchAutoCommandWithClaim_NoLock(r))
+                        {
+                            // 已下发
+                        }
+                        else
+                        {
+                            // 被抢占阻塞：原地等待（保证彻底停）
+                            r.Move.StopImmediately_NoLock();
+                        }
+                    }
+
+                    r.Move.Update();
                 }
 
-                // 4) 单机器人随机巡航：无路径/到达后重置随机目标
-                if (_singleRandomRoamEnabled && _robots.Count == 1) // 仅在单机器人随机巡航启用且确实只有 1 个机器人时执行
+                if (_singleRandomRoamEnabled && _robots.Count == 1)
                 {
-                    RobotInstance r0 = _robots[0]; // 取第一个机器人
-                    var p = r0.AutoNavigator.GetPathWorldPointsSnapshot(); // 获取路径点快照
-                    if (p == null || p.Count < 2) // 若路径不足（无路径/到达终点）
+                    RobotInstance r0 = _robots[0];
+                    var p = r0.AutoNavigator.GetPathWorldPointsSnapshot();
+                    if (p == null || p.Count < 2)
                     {
-                        r0.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(new HashSet<int>()), rebuildIfEnabled: true); // 重新设置随机目标并重建路径
+                        r0.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(new HashSet<int>()), rebuildIfEnabled: true);
                     }
                 }
             }
+        }
+
+        private void ApplyPathClaiming_NoLock()
+        {
+            _claimBoard.Reset();
+
+            var items = new List<(RobotInstance R, int Dist)>(_robots.Count);
+
+            for (int i = 0; i < _robots.Count; i++)
+            {
+                RobotInstance r = _robots[i];
+
+                GridPos? goal = r.AutoNavigator.GetGoalGridSnapshot();
+                if (!goal.HasValue)
+                {
+                    continue;
+                }
+
+                GridPos cur = r.GetGridPos_NoLock();
+                int dist = Math.Abs(cur.X - goal.Value.X) + Math.Abs(cur.Y - goal.Value.Y);
+
+                items.Add((r, dist));
+            }
+
+            items.Sort((a, b) =>
+            {
+                int c = a.Dist.CompareTo(b.Dist);
+                if (c != 0) return c;
+                return a.R.Id.CompareTo(b.R.Id);
+            });
+
+            // 注意：不要每帧 RebuildPath，否则会不断重建 _alignQueue 导致抖动
+            for (int i = 0; i < items.Count; i++)
+            {
+                RobotInstance r = items[i].R;
+
+                List<GridPos> path = r.AutoNavigator.GetPathGridSnapshot();
+
+                // 仅当路径为空时才尝试重建一次（兼容刚切目标/刚启用的场景）
+                if ((path == null || path.Count == 0) && r.AutoNavigator.IsEnabled)
+                {
+                    r.AutoNavigator.RebuildPath();
+                    path = r.AutoNavigator.GetPathGridSnapshot();
+                }
+
+                _claimBoard.ClaimPath(r.Id, path);
+            }
+        }
+
+        private bool TryDispatchAutoCommandWithClaim_NoLock(RobotInstance r)
+        {
+            GridPos cur;
+            GridPos next;
+            EnumMoveDirection desiredDir;
+
+            // 先看下一格意图（用于等待判定）
+            if (r.AutoNavigator.TryGetNextStepSnapshot(out cur, out next, out desiredDir))
+            {
+                // 下一格被其它机器人抢占：等待
+                if (_claimBoard.IsClaimedByOther(r.Id, next))
+                {
+                    return false;
+                }
+            }
+
+            // 允许走：直接从 AutoNavigator 生成“下一条命令”并直接下发（不走队列/provider）
+            RobotCommand cmd = r.AutoNavigator.TryBuildNextCommand();
+            if (cmd == null)
+            {
+                return false;
+            }
+
+            r.Manager.DispatchDirect_NoLock(cmd, () => r.Acc);
+            return true;
         }
 
         // -------------------------- 交通规则 + 碰撞控制 -------------------------- //

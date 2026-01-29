@@ -241,12 +241,36 @@ namespace GridDemo.Robots
         }
 
         /// <summary>
-        /// 由仿真线程每帧调用：生成/下发/监测指令（调度核心）。
-        /// 调度流程：
-        /// 1) 自动模式：当“无当前指令且队列为空”时，从 provider 拉取一条新指令；
-        /// 2) 若当前无指令且队列非空：出队一条并下发给 Move/Turn；
-        /// 3) 轮询检测当前指令是否完成：完成后清理，下一帧进入下一条。
+        /// 直接下发一条指令（调用方已持有 _robotLock）。
+        /// - 会清空队列与当前指令并立即执行；
+        /// - cmd 为 null 则忽略。
         /// </summary>
+        public void DispatchDirect_NoLock(RobotCommand cmd, Func<double> getForwardAcc)
+        {
+            if (cmd == null)
+            {
+                return;
+            }
+            if (getForwardAcc == null)
+            {
+                throw new ArgumentNullException(nameof(getForwardAcc));
+            }
+
+            _commandQueue.Clear();
+            _hasCurrentCommand = false;
+            _currentCommand = null;
+
+            if (cmd.Type == EnumRobotCommandType.MoveDistance)
+            {
+                _move.StartMoveDistance_NoLock(cmd.DistanceM.Value, getForwardAcc());
+            }
+            else if (cmd.Type == EnumRobotCommandType.Turn)
+            {
+                double delta = cmd.TurnAngleRad ?? 0.0;
+                _turn.StartTurnByDelta(delta);
+            }
+        }
+
         public void Tick(double dt, Func<double> getForwardAcc)
         {
             if (dt <= 0)
@@ -267,7 +291,6 @@ namespace GridDemo.Robots
                         return;
                     }
 
-                    // 手动模式：每帧拉取 1 条命令并覆盖下发（不走队列/完成检测）
                     RobotCommand cmd = _manualCommandProvider();
                     if (cmd == null)
                     {
@@ -291,65 +314,7 @@ namespace GridDemo.Robots
                     return;
                 }
 
-                // Auto 模式维持原逻辑
-                if (_mode == EnumRobotControlMode.Auto)
-                {
-                    if (_autoCommandProvider != null)
-                    {
-                        if (!_hasCurrentCommand && _commandQueue.Count == 0)
-                        {
-                            RobotCommand cmd = _autoCommandProvider();
-                            if (cmd != null)
-                            {
-                                _commandQueue.Enqueue(cmd);
-                            }
-                        }
-                    }
-
-                    if (!_hasCurrentCommand)
-                    {
-                        if (_commandQueue.Count == 0)
-                        {
-                            return;
-                        }
-
-                        _currentCommand = _commandQueue.Dequeue();
-                        _hasCurrentCommand = true;
-
-                        if (_currentCommand.Type == EnumRobotCommandType.MoveDistance)
-                        {
-                            _move.StartMoveDistance_NoLock(_currentCommand.DistanceM.Value, getForwardAcc());
-                        }
-                        else if (_currentCommand.Type == EnumRobotCommandType.Turn)
-                        {
-                            double delta = _currentCommand.TurnAngleRad ?? 0.0;
-                            _turn.StartTurnByDelta(delta);
-                        }
-                    }
-
-                    if (_hasCurrentCommand)
-                    {
-                        bool done = false;
-
-                        if (_currentCommand.Type == EnumRobotCommandType.MoveDistance)
-                        {
-                            done = _move.IsMoveDistanceDone_NoLock();
-                        }
-                        else if (_currentCommand.Type == EnumRobotCommandType.Turn)
-                        {
-                            done = !IsTurning;
-                        }
-
-                        if (done)
-                        {
-                            _hasCurrentCommand = false;
-                            _currentCommand = null;
-                        }
-                    }
-
-                    return;
-                }
-
+                // Auto：不再走 provider + 队列（由 RobotEngine 直接 DispatchDirect_NoLock）
                 _commandQueue.Clear();
                 _hasCurrentCommand = false;
                 _currentCommand = null;
