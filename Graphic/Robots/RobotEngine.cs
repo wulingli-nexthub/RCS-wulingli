@@ -40,14 +40,16 @@ namespace GridDemo.Robots
         private readonly List<RobotInstance> _robots = new List<RobotInstance>(); // 机器人实例集合（0..N-1）
         private int _selectedRobotId = -1; // 当前选中机器人 Id（用于 UI/手动控制）
 
-        // 单机器人重置后的“随机运动”
-        private bool _singleRandomRoamEnabled; // 是否启用“单机器人随机巡航”模式
-
         // --- 碰撞让步冷却：避免每帧 Stop + Rebuild 导致抖动 ---
         private const int YieldCooldownFrames = 12; // 冷却帧数：12 帧 * 20ms ≈ 240ms（防止频繁让步抖动）
         private readonly Dictionary<int, int> _yieldCooldownTicks = new Dictionary<int, int>(); // robotId -> 冷却剩余帧数
 
         private readonly GridCellClaimBoard _claimBoard;
+
+        private bool _isRunning; // false: 不推进行为/不下发指令；true: 正常运行
+        // 新增：单机器人暂停集合（robotId -> paused）
+        private readonly HashSet<int> _pausedRobotIds = new HashSet<int>();
+
 
         public RobotEngine(int gridCount, double cellSizeM, double dt, double initialMaxSpeed, EnumMoveDirection initialDirection)
         {
@@ -63,7 +65,9 @@ namespace GridDemo.Robots
 
             SetRobotCount(1, initialMaxSpeed, initialDirection);
 
-            _processState = EnumRobotProcessState.AutoNavigating;
+            // 改动：构造后默认不运行，等待“启动”按钮
+            _processState = EnumRobotProcessState.Idle;
+            _isRunning = false;
         }
 
         public double WorldWidthM => _worldWidthM; // 对外暴露世界宽度（米）
@@ -86,7 +90,7 @@ namespace GridDemo.Robots
         }
 
         /// <summary>
-        /// 是否存在选中机器人
+        /// 当前是否存在选中机器人
         /// </summary>
         public bool HasSelectedRobot
         {
@@ -95,6 +99,126 @@ namespace GridDemo.Robots
                 lock (_robotLock)
                 {
                     return _selectedRobotId >= 0 && _selectedRobotId < _robots.Count;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 启动选中机器人：
+        /// - 不重建路径、不随机目标；
+        /// - 仅保证自动启用，使其能继续沿原路径输出指令。
+        /// </summary>
+        public void StartSelected()
+        {
+            lock (_robotLock)
+            {
+                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                {
+                    return;
+                }
+
+                // Tick 必须要跑（否则无法驱动 Move.Update/指令下发）
+                _isRunning = true;
+
+                // 引擎继续推进（保持为 Auto，避免 Idle 直接 return）
+                ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating);
+
+                RobotInstance r = _robots[_selectedRobotId];
+
+                // 关键：恢复选中机器人运行
+                _pausedRobotIds.Remove(r.Id);
+
+                // 只确保启用自动，不做 Enable()（Enable 会清 path 并 Rebuild）
+                if (!r.AutoNavigator.IsEnabled)
+                {
+                    r.AutoNavigator.Enable();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 暂停选中机器人：
+        /// - 仅硬停该机器人；
+        /// - 不清目标、不清路径，后续可继续原路径；
+        /// - 不影响其它机器人。
+        /// </summary>
+        public void PauseSelected()
+        {
+            lock (_robotLock)
+            {
+                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
+                {
+                    return;
+                }
+
+                RobotInstance r = _robots[_selectedRobotId];
+
+                // 关键：标记该机器人暂停（后续 Tick 不再给它派发指令）
+                _pausedRobotIds.Add(r.Id);
+
+                r.Speed = 0.0;
+                r.Manager.Acc = 0.0;
+                r.Move.StopImmediately_NoLock();
+            }
+        }
+
+        /// <summary>
+        /// 全局启动：允许运动与调度开始推进。
+        /// 注意：不重置命令/不重建路径/不重新随机目标。
+        /// </summary>
+        public void StartAll()
+        {
+            lock (_robotLock)
+            {
+                _isRunning = true;
+                ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating);
+
+                // 全局启动：清掉所有单机暂停标记
+                _pausedRobotIds.Clear();
+
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    if (!_robots[i].AutoNavigator.IsEnabled)
+                    {
+                        _robots[i].AutoNavigator.Enable();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 全局暂停：停止推进，并硬停所有机器人。
+        /// 注意：不清目标、不清路径，启动后继续原路径。
+        /// </summary>
+        public void PauseAll()
+        {
+            lock (_robotLock)
+            {
+                _isRunning = false;
+                ChangeProcessState_NoLock(EnumRobotProcessState.Idle);
+
+                // 全局暂停：清掉所有单机标记
+                _pausedRobotIds.Clear();
+
+                for (int i = 0; i < _robots.Count; i++)
+                {
+                    _robots[i].Speed = 0.0;
+                    _robots[i].Manager.Acc = 0.0;
+                    _robots[i].Move.StopImmediately_NoLock();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 是否处于运行状态（供 UI 显示/切换）
+        /// </summary>
+        public bool IsRunning
+        {
+            get
+            {
+                lock (_robotLock)
+                {
+                    return _isRunning;
                 }
             }
         }
@@ -225,7 +349,7 @@ namespace GridDemo.Robots
 
             lock (_robotLock) // 加锁：调整机器人集合是写操作
             {
-                _singleRandomRoamEnabled = false; // 调整数量意味着退出“单机器人随机巡航”
+                //_singleRandomRoamEnabled = false; // 调整数量意味着退出“单机器人随机巡航”
 
                 // 1) 多 -> 少：只删尾部（保持前面机器人位置不变）
                 while (_robots.Count > count) // 若当前数量大于目标数量
@@ -327,13 +451,13 @@ namespace GridDemo.Robots
             lock (_robotLock) // 加锁：将重置机器人数量/状态
             {
                 SetRobotCount(1, initialMaxSpeed, initialDirection); // 调整为单机器人
-                _singleRandomRoamEnabled = true; // 启用单机器人随机巡航标记
+                //_singleRandomRoamEnabled = true; // 启用单机器人随机巡航标记
 
                 // 给一个随机目标，启动随机巡航
                 RobotInstance r0 = _robots[0]; // 取唯一机器人
                 r0.AutoNavigator.ClearGoal(); // 清理旧目标
                 r0.Manager.ResetAutoCommands(); // 清空命令
-                r0.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(new HashSet<int>()), rebuildIfEnabled: true); // 设置随机目标并重建路径
+                //r0.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(new HashSet<int>()), rebuildIfEnabled: true); // 设置随机目标并重建路径
             }
         }
 
@@ -656,6 +780,12 @@ namespace GridDemo.Robots
         /// </summary>
         public void Tick()
         {
+            // 新增：未启动时，不推进仿真
+            if (!_isRunning)
+            {
+                return;
+            }
+
             switch (_processState)
             {
                 case EnumRobotProcessState.ObstacleEditing:
@@ -697,6 +827,17 @@ namespace GridDemo.Robots
                     RobotInstance r = _robots[i];
                     bool isSelected = r.Id == _selectedRobotId;
 
+                    // 新增：若该机器人被单独暂停，则本帧不派发任何自动指令，并强制停住
+                    bool isPausedBySingle = _pausedRobotIds.Contains(r.Id);
+                    if (isPausedBySingle)
+                    {
+                        r.Speed = 0.0;
+                        r.Manager.Acc = 0.0;
+                        r.Move.StopImmediately_NoLock();
+                        r.Move.Update();
+                        continue;
+                    }
+
                     if (!isSelected)
                     {
                         r.Manual.Disable();
@@ -706,10 +847,12 @@ namespace GridDemo.Robots
                         }
                     }
 
-                    if (r.AutoNavigator.IsEnabled)
+                    // 仅未选中机器人：路径为空时才自动随机补目标（随机巡航）
+                    // 选中机器人：不自动塞随机目标，保持“等待用户设置目标/手动控制”
+                    if (!isSelected && r.AutoNavigator.IsEnabled)
                     {
-                        if (r.AutoNavigator.GetPathWorldPointsSnapshot() == null
-                            || r.AutoNavigator.GetPathWorldPointsSnapshot().Count == 0)
+                        List<(double X, double Y)> path = r.AutoNavigator.GetPathWorldPointsSnapshot();
+                        if (path == null || path.Count == 0)
                         {
                             r.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
                             r.Manager.ResetAutoCommands();
@@ -733,16 +876,6 @@ namespace GridDemo.Robots
                     }
 
                     r.Move.Update();
-                }
-
-                if (_singleRandomRoamEnabled && _robots.Count == 1)
-                {
-                    RobotInstance r0 = _robots[0];
-                    var p = r0.AutoNavigator.GetPathWorldPointsSnapshot();
-                    if (p == null || p.Count < 2)
-                    {
-                        r0.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(new HashSet<int>()), rebuildIfEnabled: true);
-                    }
                 }
             }
         }

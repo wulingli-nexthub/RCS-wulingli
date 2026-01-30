@@ -81,6 +81,8 @@ namespace GridDemo
 
             numericAddRobot.ValueChanged += numericAddRobot_ValueChanged;
             btnResetRobot.Click += btnResetRobot_Click;
+            btnStart.Click += btnStart_Click;
+            btnStop.Click += btnStop_Click;
         }
 
         /// <summary>
@@ -219,6 +221,10 @@ namespace GridDemo
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
             _engine.EnableAuto();
             Log("Default control mode: Auto");
+
+            // 新增：默认暂停，必须点击“启动”才开始运动
+            _engine.PauseAll();
+            Log("Form1_Load: paused by default, wait for Start");
 
             cmbPathAlgorithm.SelectedIndexChanged -= cmbPathAlgorithm_SelectedIndexChanged;
             cmbPathAlgorithm.SelectedIndex = 1; // A*
@@ -770,6 +776,48 @@ namespace GridDemo
             _engine.ResetToSingleRobotRandomRoam(initialMaxSpeed: (double)numericVinit.Value, initialDirection: EnumMoveDirection.Right);
             // 重置机器人后：不默认选中任何机器人
             _engine.ClearSelectedRobot();
+
+            skControl.Invalidate();
+        }
+
+        private void btnStart_Click(object sender, EventArgs e)
+        {
+            if (_engine == null)
+            {
+                return;
+            }
+
+            if (_engine.HasSelectedRobot)
+            {
+                _engine.StartSelected();
+                Log("btnStart_Click: StartSelected");
+            }
+            else
+            {
+                _engine.StartAll();
+                Log("btnStart_Click: StartAll");
+            }
+
+            skControl.Invalidate();
+        }
+
+        private void btnStop_Click(object sender, EventArgs e)
+        {
+            if (_engine == null)
+            {
+                return;
+            }
+
+            if (_engine.HasSelectedRobot)
+            {
+                _engine.PauseSelected();
+                Log("btnStop_Click: PauseSelected");
+            }
+            else
+            {
+                _engine.PauseAll();
+                Log("btnStop_Click: PauseAll");
+            }
 
             skControl.Invalidate();
         }

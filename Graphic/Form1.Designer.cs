@@ -143,6 +143,7 @@
             this.btnStop.TabIndex = 9;
             this.btnStop.Text = "暂停";
             this.btnStop.UseVisualStyleBackColor = true;
+            this.btnStop.Click += new System.EventHandler(this.btnStop_Click);
             // 
             // btnStart
             // 
@@ -152,6 +153,7 @@
             this.btnStart.TabIndex = 8;
             this.btnStart.Text = "启动";
             this.btnStart.UseVisualStyleBackColor = true;
+            this.btnStart.Click += new System.EventHandler(this.btnStart_Click);
             // 
             // btnResetRobot
             // 
@@ -270,6 +272,7 @@
             // 
             // panelRightTop
             // 
+            this.panelRightTop.BackColor = System.Drawing.Color.White;
             this.panelRightTop.Controls.Add(this.panelObstacles);
             this.panelRightTop.Controls.Add(this.btnReset);
             this.panelRightTop.Dock = System.Windows.Forms.DockStyle.Top;
@@ -281,6 +284,7 @@
             // 
             // panelObstacles
             // 
+            this.panelObstacles.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.panelObstacles.Controls.Add(this.labelObstacles);
             this.panelObstacles.Controls.Add(this.btnClearObstacle);
             this.panelObstacles.Controls.Add(this.btnObstacle);
