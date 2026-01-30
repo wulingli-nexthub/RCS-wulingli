@@ -3,6 +3,7 @@ using GridDemo.RobotModels;
 using GridDemo.RobotModels.Pathfinding;
 using GridDemo.RobotRuns;
 using System;
+using System.Collections.Generic;
 
 namespace GridDemo.Robots
 {
@@ -32,7 +33,8 @@ namespace GridDemo.Robots
             double initialMaxSpeed,
             EnumMoveDirection initialDirection,
             double initialX,
-            double initialY)
+            double initialY,
+            Func<Dictionary<int, int>> getGoalOwnerMap)
         {
             Id = id;
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
@@ -44,6 +46,8 @@ namespace GridDemo.Robots
             Y = initialY;
             Speed = 0.0;
             Acc = 0.0;
+
+            if (getGoalOwnerMap == null) throw new ArgumentNullException(nameof(getGoalOwnerMap));
 
             Manager = new RobotManager(
                 acc: Acc,
@@ -84,7 +88,10 @@ namespace GridDemo.Robots
                 getWorldWidthM: () => worldWidthM,
                 getWorldHeightM: () => worldHeightM,
                 cellSizeM: cellSizeM,
-                robotManager: Manager);
+                robotManager: Manager,
+                robotId: id,
+                gridCount: gridCount,
+                getGoalOwnerMap: getGoalOwnerMap);
 
             Manual = new RobotManual(
                 robotLock: _robotLock,

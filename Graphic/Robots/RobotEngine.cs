@@ -256,7 +256,7 @@ namespace GridDemo.Robots
                         double y = cell.Y * _cellSizeM + _cellSizeM / 2.0; // 将格子中心转换为世界坐标 Y
 
                         var r = new RobotInstance( // 创建机器人实例
-                            id: id, // 设置机器人 Id
+                            id: id,
                             robotLock: _robotLock, // 注入同一把锁，供 RobotInstance 内部共享
                             obstacleMap: _obstacleMap, // 注入障碍物地图
                             gridCount: _gridCount, // 注入网格数量
@@ -267,7 +267,8 @@ namespace GridDemo.Robots
                             initialMaxSpeed: initialMaxSpeed, // 初始最大速度
                             initialDirection: initialDirection, // 初始方向
                             initialX: x, // 初始位置 X（世界坐标）
-                            initialY: y); // 初始位置 Y（世界坐标）
+                            initialY: y, // 初始位置 Y（世界坐标）
+                            getGoalOwnerMap: () => BuildGoalOwnerMap_NoLock()); // 新增：获取“终点拥有者”映射
 
                         // 新机器人：启用自动并给一个随机目标，否则不会动
                         r.AutoNavigator.Enable(); // 启用自动导航
@@ -893,10 +894,31 @@ namespace GridDemo.Robots
                 occupied.Add(key); // 加入占用集合
             }
 
+            // 收集：goalKey -> ownerRobotId（注意：允许自己走进自己的 goal）
+            var goalOwnerByKey = new Dictionary<int, int>();
+            for (int i = 0; i < _robots.Count; i++)
+            {
+                var g = _robots[i].AutoNavigator.GetGoalGridSnapshot();
+                if (g.HasValue)
+                {
+                    GridPos gp = g.Value;
+                    if (gp.X >= 0 && gp.Y >= 0 && gp.X < _gridCount && gp.Y < _gridCount)
+                    {
+                        int k = gp.Y * _gridCount + gp.X;
+                        // 同一格多个目标时，保留第一个即可（都视为“有人占用的终点”）
+                        if (!goalOwnerByKey.ContainsKey(k))
+                        {
+                            goalOwnerByKey.Add(k, _robots[i].Id);
+                        }
+                    }
+                }
+            }
+
             for (int i = 0; i < _robots.Count; i++) // 为每个机器人设置 WalkableProvider（闭包捕获 myKey/occupied）
             {
                 RobotInstance me = _robots[i]; // 当前机器人（要设置 provider 的对象）
                 int myKey = cellKeys[i]; // 当前机器人自己的占用格 key
+                int myId = me.Id;
 
                 me.AutoNavigator.SetIsWalkableProvider(p => // 设置“某格是否可走”的回调
                 {
@@ -913,10 +935,16 @@ namespace GridDemo.Robots
                         return true; // 允许（否则寻路会认为起点不可走）
                     }
 
+                    // 仅将“其它机器人”的终点视为障碍；自己的终点必须可走，否则永远到不了终点
+                    int ownerId;
+                    if (goalOwnerByKey.TryGetValue(key, out ownerId) && ownerId != myId)
+                    {
+                        return false;
+                    }
+
                     return !occupied.Contains(key); // 其它机器人占用格不可走，否则可走
                 });
 
-                // 需要在 RobotMove 中提供 SetIsWorldWalkableProvider(wx, wy) 之类的接口
                 me.Move.SetIsWorldWalkableProvider((wx, wy) =>
                 {
                     int gx = (int)Math.Floor(wx / _cellSizeM);
@@ -933,10 +961,45 @@ namespace GridDemo.Robots
                     if (key == myKey)  // 自己当前位置始终可走
                         return true;
 
+                    // 仅禁止进入“其它机器人”的终点格；允许进入自己的终点格
+                    int ownerId;
+                    if (goalOwnerByKey.TryGetValue(key, out ownerId) && ownerId != myId)
+                        return false;
+
                     return !occupied.Contains(key);  // 其它机器人所在格视为不可走
                 });
             }
         }
+
+        /// <summary>
+        /// 获取当前各机器人目标格的拥有者映射：cellKey -> ownerRobotId。
+        /// 要求调用方已持有 _robotLock。
+        /// </summary>
+        internal Dictionary<int, int> BuildGoalOwnerMap_NoLock()
+        {
+            var goalOwnerByKey = new Dictionary<int, int>();
+
+            for (int i = 0; i < _robots.Count; i++)
+            {
+                var g = _robots[i].AutoNavigator.GetGoalGridSnapshot();
+                if (g.HasValue)
+                {
+                    GridPos gp = g.Value;
+                    if (gp.X >= 0 && gp.Y >= 0 && gp.X < _gridCount && gp.Y < _gridCount)
+                    {
+                        int k = gp.Y * _gridCount + gp.X;
+                        // 同一格多个目标时，保留第一个即可（都视为“有人占用的终点”）
+                        if (!goalOwnerByKey.ContainsKey(k))
+                        {
+                            goalOwnerByKey.Add(k, _robots[i].Id);
+                        }
+                    }
+                }
+            }
+
+            return goalOwnerByKey;
+        }
+
     }
 
     /// <summary>

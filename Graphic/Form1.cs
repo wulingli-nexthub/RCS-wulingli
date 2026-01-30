@@ -195,13 +195,6 @@ namespace GridDemo
                 updateWorldTransform: (s, ox, oy) => _worldTransform.Update(s, ox, oy)
             );
 
-            //_destinationPicker = new Events.DestinationPicker(
-            //    transform: _worldTransform,
-            //    navigator: _engine.AutoNavigator,           // 直接传引擎内部的导航器
-            //    getWorldWidthM: () => _worldWidthM,
-            //    getWorldHeightM: () => _worldHeightM,
-            //    cellSizeM: _engine.CellSizeM);
-
             // 4. 创建仿真循环
             _simulation = new RobotSimulationLoop(_engine, _dt);
             _simulation.Start();
@@ -221,9 +214,6 @@ namespace GridDemo
             Log("Render timer started. intervalMs=" + intervalMs);
 
             // 5. 默认模式与算法
-            _centerGrid.Center();
-            Log("CenterGrid.Center applied.");
-
             cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;
             cmbChooseModel.SelectedIndex = 1;  // Auto
             cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
@@ -239,7 +229,11 @@ namespace GridDemo
             Log("Default algorithm: " + _currentAlgorithm);
 
             ActiveControl = null;
-            BeginInvoke(new Action(() => Focus()));
+            BeginInvoke(new Action(() =>
+            {
+                _centerGrid.Center();
+                skControl.Invalidate();
+            }));
 
             Log("Form1_Load: end");
         }

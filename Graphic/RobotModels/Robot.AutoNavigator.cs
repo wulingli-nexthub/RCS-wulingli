@@ -33,6 +33,11 @@ namespace GridDemo.RobotModels
         private GridPos? _goal;
         private Func<GridPos, bool> _isWalkableProvider = p => true;
 
+        private readonly int _robotId;                         // 当前机器人 Id
+        private readonly int _gridW;                           // 网格宽（等于 gridCount）
+        private readonly int _gridH;                           // 网格高（等于 gridCount）
+        private readonly Func<Dictionary<int, int>> _getGoalOwnerMap; // cellKey -> ownerRobotId
+
         public RobotAutoNavigator(
             object robotLock,
             Func<double> getRobotX,
@@ -41,7 +46,10 @@ namespace GridDemo.RobotModels
             Func<double> getWorldWidthM,
             Func<double> getWorldHeightM,
             double cellSizeM,
-            RobotManager robotManager)
+            RobotManager robotManager,
+            int robotId,
+            int gridCount,
+            Func<Dictionary<int, int>> getGoalOwnerMap)
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
             _getRobotX = getRobotX ?? throw new ArgumentNullException(nameof(getRobotX));
@@ -50,6 +58,11 @@ namespace GridDemo.RobotModels
             _getWorldHeightM = getWorldHeightM ?? throw new ArgumentNullException(nameof(getWorldHeightM));
             _cellSizeM = cellSizeM;
             _robotManager = robotManager ?? throw new ArgumentNullException(nameof(robotManager));
+
+            _robotId = robotId;
+            _gridW = gridCount;
+            _gridH = gridCount;
+            _getGoalOwnerMap = getGoalOwnerMap ?? throw new ArgumentNullException(nameof(getGoalOwnerMap));
         }
 
         public void SetIsWalkableProvider(Func<GridPos, bool> isWalkableProvider)
@@ -309,7 +322,39 @@ namespace GridDemo.RobotModels
 
             GridPos goal = _goal.Value;
 
-            Func<GridPos, bool> isWalkable = _isWalkableProvider ?? (p => true);      // 可行走判定（是否有障碍物）
+            // 基础可行走判定（静态障碍 + 动态占用等）
+            Func<GridPos, bool> baseWalkable = _isWalkableProvider ?? (p => true);
+
+            // 获取当前所有机器人的目标格 -> 拥有者 映射
+            Dictionary<int, int> goalOwnerMap = null;
+            try
+            {
+                goalOwnerMap = _getGoalOwnerMap?.Invoke();
+            }
+            catch
+            {
+                // 容错：任何异常视为“没有额外目标限制”
+                goalOwnerMap = null;
+            }
+
+            // 叠加一层规则：其它机器人的终点视为不可走；自己的终点允许经过/到达
+            Func<GridPos, bool> isWalkable = p =>
+            {
+                if (!baseWalkable(p))
+                    return false;
+
+                if (goalOwnerMap != null && goalOwnerMap.Count > 0)
+                {
+                    int key = p.Y * _gridW + p.X;
+                    int ownerId;
+                    if (goalOwnerMap.TryGetValue(key, out ownerId) && ownerId != _robotId)
+                    {
+                        return false;   // 这是“其它机器人”的终点，禁止经过
+                    }
+                }
+
+                return true;
+            };
 
             List<GridPos> path;
             if (_algorithm == EnumPathfindingAlgorithm.Serpentine)
