@@ -787,16 +787,8 @@ namespace GridDemo
                 return;
             }
 
-            if (_engine.HasSelectedRobot)
-            {
-                _engine.StartSelected();
-                Log("btnStart_Click: StartSelected");
-            }
-            else
-            {
-                _engine.StartAll();
-                Log("btnStart_Click: StartAll");
-            }
+            _engine.StartAll();
+            Log("btnStart_Click: StartAll");
 
             skControl.Invalidate();
         }
@@ -808,16 +800,8 @@ namespace GridDemo
                 return;
             }
 
-            if (_engine.HasSelectedRobot)
-            {
-                _engine.PauseSelected();
-                Log("btnStop_Click: PauseSelected");
-            }
-            else
-            {
-                _engine.PauseAll();
-                Log("btnStop_Click: PauseAll");
-            }
+            _engine.PauseAll();
+            Log("btnStop_Click: PauseAll");
 
             skControl.Invalidate();
         }

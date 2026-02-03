@@ -28,7 +28,7 @@ namespace GridDemo.Robots
             _claimedCellsByRobotId.Clear();
         }
 
-        public void ClaimPath(int robotId, List<GridPos> path)
+        public void ClaimPathPrefix(int robotId, List<GridPos> path)
         {
             if (path == null || path.Count == 0)
             {
@@ -61,6 +61,11 @@ namespace GridDemo.Robots
                 int owner;
                 if (_claimedBy.TryGetValue(key, out owner))
                 {
+                    if (owner != robotId)
+                    {   // 被更高优先级/先到者占用：只能抢占前缀，立即停止
+                        break;
+                    }
+
                     continue;
                 }
 
@@ -80,6 +85,34 @@ namespace GridDemo.Robots
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// “边走边释放”：当机器人确认自己已经完全进入到 nextCell 后，
+        /// 释放之前占用的 currentCell（要求调用方保证 currentCell 是或者曾经是 robotId 占用的格子）。
+        /// </summary>
+        public void ReleaseCell(int robotId, GridPos cell)
+        {
+            int key = cell.Y * _gridCount + cell.X;
+
+            int owner;
+            if (_claimedBy.TryGetValue(key, out owner) && owner == robotId)
+            {
+                _claimedBy.Remove(key);
+            }
+
+            List<GridPos> list;
+            if (_claimedCellsByRobotId.TryGetValue(robotId, out list))
+            {
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    if (list[i].Equals(cell))
+                    {
+                        list.RemoveAt(i);
+                        break;
+                    }
+                }
+            }
         }
 
         /// <summary>

@@ -49,6 +49,8 @@ namespace GridDemo.Robots
         private bool _isRunning; // false: 不推进行为/不下发指令；true: 正常运行
         // 新增：单机器人暂停集合（robotId -> paused）
         private readonly HashSet<int> _pausedRobotIds = new HashSet<int>();
+        // 新增：用于“边走边释放”的辅助状态（robotId -> lastGridCell）
+        private readonly Dictionary<int, GridPos> _lastGridCellByRobotId = new Dictionary<int, GridPos>();
 
 
         public RobotEngine(int gridCount, double cellSizeM, double dt, double initialMaxSpeed, EnumMoveDirection initialDirection)
@@ -476,6 +478,13 @@ namespace GridDemo.Robots
                 }
 
                 _selectedRobotId = id; // 更新选中机器人 Id
+                // ⑥：选中单个机器人 -> 该机器人暂停，直到给目标点或手动输入
+                RobotInstance r = _robots[id];
+                _pausedRobotIds.Add(r.Id);
+                r.Speed = 0.0;
+                r.Manager.Acc = 0.0;
+                r.Move.StopImmediately_NoLock();
+
                 return true; // 选中成功
             }
         }
@@ -645,7 +654,21 @@ namespace GridDemo.Robots
                 }
 
                 RobotInstance r = _robots[_selectedRobotId];
+                // 关键：进入手动前，必须关掉自动导航，否则 Tick() 仍会优先走 Auto 分支下发路径指令
+                if (r.AutoNavigator.IsEnabled)
+                {
+                    r.AutoNavigator.Disable();
+                }
+
+                // 清理自动残留（速度/加速度/MoveDistance 执行状态），避免看起来“还在沿路径走”
+                r.Speed = 0.0;
+                r.Manager.Acc = 0.0;
+                r.Move.StopImmediately_NoLock();
+                r.Manager.ResetAutoCommands();
+
                 r.Manual.Enable();
+                // ⑥：进入手动后，允许该机器人运动
+                _pausedRobotIds.Remove(r.Id);
             }
         }
 
@@ -670,7 +693,7 @@ namespace GridDemo.Robots
         /// </summary>
         public void ManualForwardKey(bool down)
         {
-            lock (_robotLock) // 加锁更新输入状态
+            lock (_robotLock)
             {
                 if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
                 {
@@ -678,8 +701,15 @@ namespace GridDemo.Robots
                 }
 
                 RobotInstance r = _robots[_selectedRobotId];
-                r.Manual.InputForwardKey(down); // 写入手动输入：前进键状态
-                r.Manager.ResetManualCommands(); // 刷新手动命令队列
+
+                // 关键：只在“手动启用”时接收 W/A/D，避免自动模式下误触发（也避免继续沿自动路径）
+                if (!r.Manual.IsEnabled)
+                {
+                    return;
+                }
+
+                r.Manual.InputForwardKey(down);
+                _pausedRobotIds.Remove(r.Id);
             }
         }
 
@@ -688,7 +718,7 @@ namespace GridDemo.Robots
         /// </summary>
         public void ManualTurnLeftKey(bool down)
         {
-            lock (_robotLock) // 加锁更新输入状态
+            lock (_robotLock)
             {
                 if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
                 {
@@ -696,8 +726,14 @@ namespace GridDemo.Robots
                 }
 
                 RobotInstance r = _robots[_selectedRobotId];
-                r.Manual.InputTurnLeftKey(down); // 写入手动输入：左转键状态
-                r.Manager.ResetManualCommands(); // 刷新手动命令队列
+
+                if (!r.Manual.IsEnabled)
+                {
+                    return;
+                }
+
+                r.Manual.InputTurnLeftKey(down);
+                _pausedRobotIds.Remove(r.Id);
             }
         }
 
@@ -706,7 +742,7 @@ namespace GridDemo.Robots
         /// </summary>
         public void ManualTurnRightKey(bool down)
         {
-            lock (_robotLock) // 加锁更新输入状态
+            lock (_robotLock)
             {
                 if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
                 {
@@ -714,8 +750,14 @@ namespace GridDemo.Robots
                 }
 
                 RobotInstance r = _robots[_selectedRobotId];
-                r.Manual.InputTurnRightKey(down); // 写入手动输入：右转键状态
-                r.Manager.ResetManualCommands(); // 刷新手动命令队列
+
+                if (!r.Manual.IsEnabled)
+                {
+                    return;
+                }
+
+                r.Manual.InputTurnRightKey(down);
+                _pausedRobotIds.Remove(r.Id);
             }
         }
 
@@ -733,6 +775,9 @@ namespace GridDemo.Robots
 
                 RobotInstance r = _robots[_selectedRobotId]; // 取选中机器人
                 r.AutoNavigator.SetGoal(goal, rebuildIfEnabled: true); // 设置目标并在启用自动时重建路径
+                // ⑥：给选中机器人目标点后，解除暂停，让其自动巡航
+                _pausedRobotIds.Remove(r.Id);
+
                 return true; // 当前实现总是成功
             }
         }
@@ -906,6 +951,7 @@ namespace GridDemo.Robots
                 items.Add((r, dist));
             }
 
+            // ③：曼哈顿距离近 -> 优先级高
             items.Sort((a, b) =>
             {
                 int c = a.Dist.CompareTo(b.Dist);
@@ -913,21 +959,20 @@ namespace GridDemo.Robots
                 return a.R.Id.CompareTo(b.R.Id);
             });
 
-            // 注意：不要每帧 RebuildPath，否则会不断重建 _alignQueue 导致抖动
+            // ④：高优先级先抢整段；低优先级只能抢到被占用前的前缀（由 ClaimPathPrefix 负责截断）
             for (int i = 0; i < items.Count; i++)
             {
                 RobotInstance r = items[i].R;
 
                 List<GridPos> path = r.AutoNavigator.GetPathGridSnapshot();
 
-                // 仅当路径为空时才尝试重建一次（兼容刚切目标/刚启用的场景）
                 if ((path == null || path.Count == 0) && r.AutoNavigator.IsEnabled)
                 {
                     r.AutoNavigator.RebuildPath();
                     path = r.AutoNavigator.GetPathGridSnapshot();
                 }
 
-                _claimBoard.ClaimPath(r.Id, path);
+                _claimBoard.ClaimPathPrefix(r.Id, path);
             }
         }
 
@@ -953,6 +998,25 @@ namespace GridDemo.Robots
 
             r.Manager.DispatchDirect_NoLock(cmd);
             return true;
+        }
+
+        private void ReleaseClaimByMovement_NoLock(RobotInstance r)
+        {
+            GridPos current = r.GetGridPos_NoLock();
+
+            GridPos last;
+            if (!_lastGridCellByRobotId.TryGetValue(r.Id, out last))
+            {
+                _lastGridCellByRobotId[r.Id] = current;
+                return;
+            }
+
+            if (!current.Equals(last))
+            {
+                // ⑤：完全走出 last 格子后再释放 last
+                _claimBoard.ReleaseCell(r.Id, last);
+                _lastGridCellByRobotId[r.Id] = current;
+            }
         }
 
         /// <summary>
