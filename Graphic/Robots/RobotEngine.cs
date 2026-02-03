@@ -860,19 +860,23 @@ namespace GridDemo.Robots
                     }
 
                     // Auto 的 Manager.Tick 现在不拉 provider（保留调用避免影响手动/其它状态）
-                    r.Manager.Tick(_dt, () => r.Acc);
+                    r.Manager.Tick(_dt);
 
+                    // 自动：直接生成指令并下发给 manager
                     if (r.AutoNavigator.IsEnabled)
                     {
                         if (TryDispatchAutoCommandWithClaim_NoLock(r))
                         {
-                            // 已下发
                         }
                         else
                         {
-                            // 被抢占阻塞：原地等待（保证彻底停）
                             r.Move.StopImmediately_NoLock();
                         }
+                    }
+                    else if (r.Manual.IsEnabled && r.Id == _selectedRobotId)
+                    {
+                        RobotCommand cmd = r.Manual.TryBuildNextCommand();
+                        r.Manager.DispatchDirect_NoLock(cmd);
                     }
 
                     r.Move.Update();
@@ -933,24 +937,21 @@ namespace GridDemo.Robots
             GridPos next;
             EnumMoveDirection desiredDir;
 
-            // 先看下一格意图（用于等待判定）
             if (r.AutoNavigator.TryGetNextStepSnapshot(out cur, out next, out desiredDir))
             {
-                // 下一格被其它机器人抢占：等待
                 if (_claimBoard.IsClaimedByOther(r.Id, next))
                 {
                     return false;
                 }
             }
 
-            // 允许走：直接从 AutoNavigator 生成“下一条命令”并直接下发（不走队列/provider）
             RobotCommand cmd = r.AutoNavigator.TryBuildNextCommand();
             if (cmd == null)
             {
                 return false;
             }
 
-            r.Manager.DispatchDirect_NoLock(cmd, () => r.Acc);
+            r.Manager.DispatchDirect_NoLock(cmd);
             return true;
         }
 

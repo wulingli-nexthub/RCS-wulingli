@@ -34,26 +34,12 @@ namespace GridDemo.Robots
     {
         private object _robotLock;
 
-        /// <summary>
-        /// 待执行指令队列（先进先出）。
-        /// 说明：Robot 始终按顺序取出并串行执行，避免“边转边走”或多条移动叠加导致的不确定行为。
-        /// </summary>
-        private readonly Queue<RobotCommand> _commandQueue = new Queue<RobotCommand>();
-
         private EnumRobotControlMode _mode = EnumRobotControlMode.Auto;
 
         private Func<double> _getForwardAcc;
-        private Func<RobotCommand> _manualCommandProvider;
         // 依赖（执行落地由 Move/Turn 提供，但由 Robot 统一调度）
         private RobotMove _move;
         private RobotTurn _turn;
-
-        // 自动模式下的指令提供器：当自动模式且队列为空且没有当前指令时，Robot 才会尝试拉取下一条指令，避免提前“灌满队列”。
-        private Func<RobotCommand> _autoCommandProvider;
-
-        // 当前执行中的指令
-        private RobotCommand _currentCommand;
-        private bool _hasCurrentCommand;
 
         public double Acc { get; set; }
         public double MaxSpeed { get; set; }
@@ -82,26 +68,13 @@ namespace GridDemo.Robots
             object robotLock,
             RobotMove move,
             RobotTurn turn,
-            Func<RobotCommand> autoCommandProvider,
-            Func<double> getForwardAcc     // 新增参数
+            Func<double> getForwardAcc
         )
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
             _move = move ?? throw new ArgumentNullException(nameof(move));
             _turn = turn ?? throw new ArgumentNullException(nameof(turn));
-            _autoCommandProvider = autoCommandProvider;
             _getForwardAcc = getForwardAcc ?? throw new ArgumentNullException(nameof(getForwardAcc));
-        }
-
-        /// <summary>
-        /// 绑定手动模式指令提供器（由 RobotManual 提供）。
-        /// </summary>
-        public void BindManualCommandProvider(Func<RobotCommand> manualCommandProvider)
-        {
-            lock (_robotLock)
-            {
-                _manualCommandProvider = manualCommandProvider;
-            }
         }
 
         /// <summary>
@@ -122,11 +95,6 @@ namespace GridDemo.Robots
                 }
 
                 _mode = mode;
-
-                // 切模式时清空队列并停止当前动作，避免“旧指令残留”
-                _commandQueue.Clear();
-                _hasCurrentCommand = false;
-                _currentCommand = null;
 
                 Acc = 0.0;
                 _move.StopImmediately_NoLock();
@@ -150,16 +118,24 @@ namespace GridDemo.Robots
                     return;
                 }
 
-                _commandQueue.Clear();
-                _hasCurrentCommand = false;
-                _currentCommand = null;
-
                 // 停车
                 Acc = 0.0;
                 _move.StopImmediately_NoLock();
             }
         }
-
+        /// <summary>
+        /// 手动模式下外部触发“输入变更”后调用（仅保留接口，兼容调用点）。
+        /// </summary>
+        public void ResetManualCommands()
+        {
+            lock (_robotLock)
+            {
+                if (_mode != EnumRobotControlMode.Manual)
+                {
+                    return;
+                }
+            }
+        }
         /// <summary>
         /// 在自动模式下，让当前箭头朝向通过转向动画对齐到当前离散方向的标准角度。
         /// </summary>
@@ -178,17 +154,34 @@ namespace GridDemo.Robots
                 {
                     return; // 已对齐，无需插入转向命令
                 }
-
-                // 清空现有指令，避免和其它自动命令纠缠
-                _commandQueue.Clear();
-                _hasCurrentCommand = false;
-                _currentCommand = null;
-
-                var cmd = RobotCommand.TurnAngle(delta);
-                _commandQueue.Enqueue(cmd);
+                DispatchDirect_NoLock(RobotCommand.TurnAngle(delta));
             }
         }
+        /// <summary>
+        /// 直接下发一条指令（调用方已持有 _robotLock）。
+        /// - cmd 为 null 则忽略。
+        /// </summary>
+        public void DispatchDirect_NoLock(RobotCommand cmd)
+        {
+            if (cmd == null)
+            {
+                return;
+            }
+            if (_getForwardAcc == null)
+            {
+                throw new InvalidOperationException("RobotManager 尚未绑定运行时：缺少 getForwardAcc。");
+            }
 
+            if (cmd.Type == EnumRobotCommandType.MoveDistance)
+            {
+                _move.StartMoveDistance_NoLock(cmd.DistanceM.Value, _getForwardAcc());
+            }
+            else if (cmd.Type == EnumRobotCommandType.Turn)
+            {
+                double delta = cmd.TurnAngleRad ?? 0.0;
+                _turn.StartTurnByDelta(delta);
+            }
+        }
         /// <summary>
         /// 计算从当前连续角度旋转到目标离散方向标准角度的最短角度差（弧度，[-π, π]）。
         /// 正数表示顺时针（右转），负数表示逆时针（左转）。
@@ -220,104 +213,11 @@ namespace GridDemo.Robots
             return delta;
         }
 
-        /// <summary>
-        /// 手动模式下，外部触发“输入变更”后需要立刻刷新队列：
-        /// - 清空队列与当前指令，避免旧输入残留；
-        /// - 下一个 Tick 会从 ManualProvider 拉取最新命令。
-        /// </summary>
-        public void ResetManualCommands()
-        {
-            lock (_robotLock)
-            {
-                if (_mode != EnumRobotControlMode.Manual)
-                {
-                    return;
-                }
-
-                _commandQueue.Clear();
-                _hasCurrentCommand = false;
-                _currentCommand = null;
-            }
-        }
-
-        /// <summary>
-        /// 直接下发一条指令（调用方已持有 _robotLock）。
-        /// - 会清空队列与当前指令并立即执行；
-        /// - cmd 为 null 则忽略。
-        /// </summary>
-        public void DispatchDirect_NoLock(RobotCommand cmd, Func<double> getForwardAcc)
-        {
-            if (cmd == null)
-            {
-                return;
-            }
-            if (getForwardAcc == null)
-            {
-                throw new ArgumentNullException(nameof(getForwardAcc));
-            }
-
-            _commandQueue.Clear();
-            _hasCurrentCommand = false;
-            _currentCommand = null;
-
-            if (cmd.Type == EnumRobotCommandType.MoveDistance)
-            {
-                _move.StartMoveDistance_NoLock(cmd.DistanceM.Value, getForwardAcc());
-            }
-            else if (cmd.Type == EnumRobotCommandType.Turn)
-            {
-                double delta = cmd.TurnAngleRad ?? 0.0;
-                _turn.StartTurnByDelta(delta);
-            }
-        }
-
-        public void Tick(double dt, Func<double> getForwardAcc)
+        public void Tick(double dt)
         {
             if (dt <= 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(dt));
-            }
-            if (getForwardAcc == null)
-            {
-                throw new ArgumentNullException(nameof(getForwardAcc));
-            }
-
-            lock (_robotLock)
-            {
-                if (_mode == EnumRobotControlMode.Manual)
-                {
-                    if (_manualCommandProvider == null)
-                    {
-                        return;
-                    }
-
-                    RobotCommand cmd = _manualCommandProvider();
-                    if (cmd == null)
-                    {
-                        return;
-                    }
-
-                    _commandQueue.Clear();
-                    _hasCurrentCommand = false;
-                    _currentCommand = null;
-
-                    if (cmd.Type == EnumRobotCommandType.MoveDistance)
-                    {
-                        _move.StartMoveDistance_NoLock(cmd.DistanceM.Value, getForwardAcc());
-                    }
-                    else if (cmd.Type == EnumRobotCommandType.Turn)
-                    {
-                        double delta = cmd.TurnAngleRad ?? 0.0;
-                        _turn.StartTurnByDelta(delta);
-                    }
-
-                    return;
-                }
-
-                // Auto：不再走 provider + 队列（由 RobotEngine 直接 DispatchDirect_NoLock）
-                _commandQueue.Clear();
-                _hasCurrentCommand = false;
-                _currentCommand = null;
             }
         }
 

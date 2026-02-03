@@ -101,10 +101,7 @@ namespace GridDemo.Robots
                 robotLock: _robotLock,
                 move: Move,
                 turn: Move.TurnController,
-                autoCommandProvider: () => AutoNavigator.TryBuildNextCommand(),
                 getForwardAcc: () => Acc);
-
-            Manager.BindManualCommandProvider(() => Manual.TryBuildNextCommand());
         }
 
         // ---------------------------对外暴露的属性和方法--------------------------- //
