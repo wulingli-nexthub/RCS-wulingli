@@ -338,7 +338,13 @@ namespace GridDemo.Robots
 
             if (_robotAutoNavigator.IsEnabled)
             {
-                _robotAutoNavigator.RebuildPath();
+                lock (_robotLock)
+                {
+                    // 重规划后，强制把连续角度对齐到离散方向，避免“方向/角度不同步”导致箭头歪
+                    _robotAutoNavigator.RebuildPath();
+                    _robotManager.AlignOrientationToDirectionWithTurn();
+                    _robotManager.ResetAutoCommands();
+                }
             }
         }
 
@@ -357,7 +363,13 @@ namespace GridDemo.Robots
 
             if (_robotAutoNavigator.IsEnabled)
             {
-                _robotAutoNavigator.RebuildPath();
+                lock (_robotLock)
+                {
+                    // 同 ToggleObstacle：重规划后对齐角度，保证自动导航转向逻辑与渲染一致
+                    _robotAutoNavigator.RebuildPath();
+                    _robotManager.AlignOrientationToDirectionWithTurn();
+                    _robotManager.ResetAutoCommands();
+                }
             }
         }
 

@@ -216,7 +216,7 @@
             this.Controls.Add(this.btnReset);
             this.Controls.Add(this.skControl);
             this.Name = "Form1";
-            this.Text = " RCS Ver 2.3.8 吴灵丽（三期 28号）";
+            this.Text = " RCS Ver 3.3.0 吴灵丽（三期 28号）";
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
             this.panelObstacles.ResumeLayout(false);

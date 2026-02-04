@@ -31,6 +31,8 @@ namespace GridDemo
         // 业务引擎与仿真循环
         private RobotEngine _engine;
         private RobotSimulationLoop _simulation;
+        // UI 定时刷新（在 UI 线程执行）
+        private System.Windows.Forms.Timer _renderTimer;
 
         // 画图相关（基本保持原有）
         private WorldView.WorldTransform _worldTransform;
@@ -176,6 +178,19 @@ namespace GridDemo
             _simulation = new RobotSimulationLoop(_engine, skControl, _dt);
             _simulation.Start();
             Log("Simulation started. dt=" + _dt);
+            // 4.1 UI 线程定时重绘
+            int intervalMs = (int)Math.Max(1.0, Math.Round(_dt * 1000));
+            _renderTimer = new System.Windows.Forms.Timer();
+            _renderTimer.Interval = intervalMs;
+            _renderTimer.Tick += (s, ev) =>
+            {
+                if (!skControl.IsDisposed)
+                {
+                    skControl.Invalidate();
+                }
+            };
+            _renderTimer.Start();
+            Log("Render timer started. intervalMs=" + intervalMs);
 
             // 5. 默认模式与算法
             _centerGrid.Center();
@@ -509,7 +524,7 @@ namespace GridDemo
         {
             _isObstacleEditMode = !_isObstacleEditMode;
 
-            btnObstacle.Text = _isObstacleEditMode ? "设置障碍物：开" : "设置障碍物：关";
+            btnObstacle.Text = _isObstacleEditMode ? "开" : "关";
 
             Log("btnObstacle_Click: obstacleEdit=" + _isObstacleEditMode);
 
