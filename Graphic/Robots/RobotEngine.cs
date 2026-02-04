@@ -820,12 +820,8 @@ namespace GridDemo.Robots
             }
         }
 
-        /// <summary>
-        /// 引擎主循环：每帧更新（调度导航、处理碰撞、推进运动学）
-        /// </summary>
         public void Tick()
         {
-            // 新增：未启动时，不推进仿真
             if (!_isRunning)
             {
                 return;
@@ -841,7 +837,6 @@ namespace GridDemo.Robots
 
             lock (_robotLock)
             {
-                // 0) 冷却计数递减（保留）
                 if (_yieldCooldownTicks.Count > 0)
                 {
                     var keys = new List<int>(_yieldCooldownTicks.Keys);
@@ -860,19 +855,16 @@ namespace GridDemo.Robots
                     }
                 }
 
-                // 1) 动态障碍（保留）
                 RebindDynamicWalkable_NoLock();
 
-                // 2) 先确保路径是“当前固定结果”，再按距离优先抢占整段路径
+                // 先抢占，再由抢占结果驱动出指令
                 ApplyPathClaiming_NoLock();
 
-                // 4) 每帧：允许则下发下一条自动指令；若下一格被抢占 -> 原地等待
                 for (int i = 0; i < _robots.Count; i++)
                 {
                     RobotInstance r = _robots[i];
                     bool isSelected = r.Id == _selectedRobotId;
 
-                    // 新增：若该机器人被单独暂停，则本帧不派发任何自动指令，并强制停住
                     bool isPausedBySingle = _pausedRobotIds.Contains(r.Id);
                     if (isPausedBySingle)
                     {
@@ -892,8 +884,6 @@ namespace GridDemo.Robots
                         }
                     }
 
-                    // 仅未选中机器人：路径为空时才自动随机补目标（随机巡航）
-                    // 选中机器人：不自动塞随机目标，保持“等待用户设置目标/手动控制”
                     if (!isSelected && r.AutoNavigator.IsEnabled)
                     {
                         List<(double X, double Y)> path = r.AutoNavigator.GetPathWorldPointsSnapshot();
@@ -904,14 +894,15 @@ namespace GridDemo.Robots
                         }
                     }
 
-                    // Auto 的 Manager.Tick 现在不拉 provider（保留调用避免影响手动/其它状态）
                     r.Manager.Tick(_dt);
 
-                    // 自动：直接生成指令并下发给 manager
                     if (r.AutoNavigator.IsEnabled)
                     {
-                        if (TryDispatchAutoCommandWithClaim_NoLock(r))
+                        // 改动：只允许沿“已抢占的路径前缀”出指令
+                        RobotCommand cmd = r.AutoNavigator.TryBuildNextCommandFromClaimedPath();
+                        if (cmd != null)
                         {
+                            r.Manager.DispatchDirect_NoLock(cmd);
                         }
                         else
                         {
@@ -925,6 +916,9 @@ namespace GridDemo.Robots
                     }
 
                     r.Move.Update();
+
+                    // 新增：边走边释放（让后车更容易抢到后续格子）
+                    ReleaseClaimByMovement_NoLock(r);
                 }
             }
         }
@@ -942,6 +936,8 @@ namespace GridDemo.Robots
                 GridPos? goal = r.AutoNavigator.GetGoalGridSnapshot();
                 if (!goal.HasValue)
                 {
+                    // 无目标：清空该机器人的抢占前缀，避免误走旧数据
+                    r.AutoNavigator.SetClaimedPathPrefix(null);
                     continue;
                 }
 
@@ -951,7 +947,6 @@ namespace GridDemo.Robots
                 items.Add((r, dist));
             }
 
-            // ③：曼哈顿距离近 -> 优先级高
             items.Sort((a, b) =>
             {
                 int c = a.Dist.CompareTo(b.Dist);
@@ -959,7 +954,6 @@ namespace GridDemo.Robots
                 return a.R.Id.CompareTo(b.R.Id);
             });
 
-            // ④：高优先级先抢整段；低优先级只能抢到被占用前的前缀（由 ClaimPathPrefix 负责截断）
             for (int i = 0; i < items.Count; i++)
             {
                 RobotInstance r = items[i].R;
@@ -974,30 +968,23 @@ namespace GridDemo.Robots
 
                 _claimBoard.ClaimPathPrefix(r.Id, path);
             }
-        }
 
-        private bool TryDispatchAutoCommandWithClaim_NoLock(RobotInstance r)
-        {
-            GridPos cur;
-            GridPos next;
-            EnumMoveDirection desiredDir;
-
-            if (r.AutoNavigator.TryGetNextStepSnapshot(out cur, out next, out desiredDir))
+            // 抢占完成：把“每台机器人的抢占结果”回灌给 AutoNavigator，让其据此生成指令
+            Dictionary<int, List<GridPos>> claimed = _claimBoard.GetClaimedCellsSnapshot();
+            for (int i = 0; i < _robots.Count; i++)
             {
-                if (_claimBoard.IsClaimedByOther(r.Id, next))
+                RobotInstance r = _robots[i];
+
+                List<GridPos> prefix;
+                if (claimed != null && claimed.TryGetValue(r.Id, out prefix))
                 {
-                    return false;
+                    r.AutoNavigator.SetClaimedPathPrefix(prefix);
+                }
+                else
+                {
+                    r.AutoNavigator.SetClaimedPathPrefix(null);
                 }
             }
-
-            RobotCommand cmd = r.AutoNavigator.TryBuildNextCommand();
-            if (cmd == null)
-            {
-                return false;
-            }
-
-            r.Manager.DispatchDirect_NoLock(cmd);
-            return true;
         }
 
         private void ReleaseClaimByMovement_NoLock(RobotInstance r)
