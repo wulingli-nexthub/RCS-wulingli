@@ -623,5 +623,25 @@ namespace GridDemo
                 File.AppendAllText(_logFilePath, line + Environment.NewLine, Encoding.UTF8);
             }
         }
+
+        private void btnResetRobot_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void btnStart_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void btnStop_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void numericAddRobot_ValueChanged(object sender, EventArgs e)
+        {
+
+        }
     }
 }
