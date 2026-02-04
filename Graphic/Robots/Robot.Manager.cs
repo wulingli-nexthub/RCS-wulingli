@@ -1,6 +1,5 @@
 ﻿using GridDemo.RobotRuns;
 using System;
-using System.Collections.Generic;
 
 namespace GridDemo.Robots
 {
@@ -20,48 +19,37 @@ namespace GridDemo.Robots
 
     /// <summary>
     /// 机器人基础运动模型 + 指令调度（调度层/状态中心）：
-    /// - UI（Form）只写入“模式切换”和“按键输入”；
-    /// - 本类把输入或自动导航结果翻译成标准化的 <see cref="RobotCommand"/> 并下发给执行器；
-    /// - 执行器（<see cref="RobotMove"/> / <see cref="RobotTurn"/>）只负责“怎么做”（积分/动画），不负责选择下一条指令；
-    /// - 本类在每帧 <see cref="Tick"/> 中轮询当前执行状态，完成后切换下一条指令。
+    /// - 取消“指令队列”，改为每次直接下发指令给执行器；
+    /// - Manual：每帧覆盖下发（按住即时响应）；
+    /// - Auto：检测到当前指令完成后才下发下一条。
     ///
-    /// 设计要点：
-    /// - 指令队列（<see cref="_commandQueue"/>）负责“将来要做什么”；
-    /// - <see cref="_currentCommand"/> 负责“正在做什么”；
-    /// - 本类保证 Move/Turn 串行执行，避免“边转边走”或多命令叠加的不可控行为。
+    /// 停车规则：
+    /// - 不通过 null 指令停车；
+    /// - 停车必须下发 MoveDistance(0)（RobotMove 内部会自然刹停）。
     /// </summary>
     internal class RobotManager
     {
         private object _robotLock;
 
-        /// <summary>
-        /// 待执行指令队列（先进先出）。
-        /// 说明：Robot 始终按顺序取出并串行执行，避免“边转边走”或多条移动叠加导致的不确定行为。
-        /// </summary>
-        private readonly Queue<RobotCommand> _commandQueue = new Queue<RobotCommand>();
-
         private EnumRobotControlMode _mode = EnumRobotControlMode.Auto;
 
         private Func<double> _getForwardAcc;
         private Func<RobotCommand> _manualCommandProvider;
-        // 依赖（执行落地由 Move/Turn 提供，但由 Robot 统一调度）
         private RobotMove _move;
         private RobotTurn _turn;
 
-        // 自动模式下的指令提供器：当自动模式且队列为空且没有当前指令时，Robot 才会尝试拉取下一条指令，避免提前“灌满队列”。
         private Func<RobotCommand> _autoCommandProvider;
 
-        // 当前执行中的指令
+        // 当前执行中的指令（用于 Auto 模式完成检测）
         private RobotCommand _currentCommand;
-        private bool _hasCurrentCommand;
 
         public double Acc { get; set; }
         public double MaxSpeed { get; set; }
         public EnumMoveDirection Direction { get; set; }
-        public double OrientationAngle { get; set; }        // 当前朝向角度（弧度，0 向右，顺时针为正）
-        public double TargetOrientationAngle { get; set; }          // 目标朝向角度（弧度），用于转向动画插值
-        public bool IsTurning { get; set; }           // 由 RobotTurn 控制，指示当前是否正在转向
-        public double TurnAngularSpeed { get; set; } = Math.PI;         // 转向速度（弧度/秒），默认 180°/s
+        public double OrientationAngle { get; set; }
+        public double TargetOrientationAngle { get; set; }
+        public bool IsTurning { get; set; }
+        public double TurnAngularSpeed { get; set; } = Math.PI;
 
         public RobotManager(double acc, double maxSpeed, EnumMoveDirection direction)
         {
@@ -69,21 +57,16 @@ namespace GridDemo.Robots
             MaxSpeed = maxSpeed;
             Direction = direction;
 
-            // 初始化角度，使离散方向与连续角度保持一致
             OrientationAngle = DirectionToAngle(direction);
             TargetOrientationAngle = OrientationAngle;
         }
 
-        /// <summary>
-        /// 绑定运动执行器（在 Form 初始化阶段调用一次）。
-        /// 说明：RobotManager 只负责调度；Move/Turn 才是“实际执行器”。
-        /// </summary>
         public void BindRuntime(
             object robotLock,
             RobotMove move,
             RobotTurn turn,
             Func<RobotCommand> autoCommandProvider,
-            Func<double> getForwardAcc     // 新增参数
+            Func<double> getForwardAcc
         )
         {
             _robotLock = robotLock ?? throw new ArgumentNullException(nameof(robotLock));
@@ -93,9 +76,6 @@ namespace GridDemo.Robots
             _getForwardAcc = getForwardAcc ?? throw new ArgumentNullException(nameof(getForwardAcc));
         }
 
-        /// <summary>
-        /// 绑定手动模式指令提供器（由 RobotManual 提供）。
-        /// </summary>
         public void BindManualCommandProvider(Func<RobotCommand> manualCommandProvider)
         {
             lock (_robotLock)
@@ -104,14 +84,6 @@ namespace GridDemo.Robots
             }
         }
 
-        /// <summary>
-        /// 切换控制模式（Auto/Manual）。
-        /// 切换时会：
-        /// - 清空指令队列；
-        /// - 终止当前指令；
-        /// - 刹停（速度/加速度归零）；
-        /// - 同步角度/转向状态，避免状态“半转着”跨模式遗留。
-        /// </summary>
         public void SetMode(EnumRobotControlMode mode)
         {
             lock (_robotLock)
@@ -122,25 +94,15 @@ namespace GridDemo.Robots
                 }
 
                 _mode = mode;
-
-                // 切模式时清空队列并停止当前动作，避免“旧指令残留”
-                _commandQueue.Clear();
-                _hasCurrentCommand = false;
                 _currentCommand = null;
 
-                Acc = 0.0;
-                _move.StopImmediately_NoLock();
+                // 切模式：不直接 StopImmediately；按约束③用 0 距离指令刹停
+                _move.StartMoveDistance_NoLock(0.0, 0.0);
 
                 _turn.ResetTargetAngle();
             }
         }
 
-        /// <summary>
-        /// 自动模式下外部需要强制刷新导航时调用：
-        /// - 清空队列与当前指令；
-        /// - 立即停车；
-        /// 下一个 Tick 会重新向 AutoCommandProvider 拉取新指令。
-        /// </summary>
         public void ResetAutoCommands()
         {
             lock (_robotLock)
@@ -150,19 +112,13 @@ namespace GridDemo.Robots
                     return;
                 }
 
-                _commandQueue.Clear();
-                _hasCurrentCommand = false;
                 _currentCommand = null;
 
-                // 停车
-                Acc = 0.0;
-                _move.StopImmediately_NoLock();
+                // 刷新自动：同样用 0 距离指令刹停
+                _move.StartMoveDistance_NoLock(0.0, 0.0);
             }
         }
 
-        /// <summary>
-        /// 在自动模式下，让当前箭头朝向通过转向动画对齐到当前离散方向的标准角度。
-        /// </summary>
         public void AlignOrientationToDirectionWithTurn()
         {
             lock (_robotLock)
@@ -175,23 +131,17 @@ namespace GridDemo.Robots
                 double delta = GetShortestDeltaToDirection(OrientationAngle, Direction);
                 if (Math.Abs(delta) < 1e-6)
                 {
-                    return; // 已对齐，无需插入转向命令
+                    return;
                 }
 
-                // 清空现有指令，避免和其它自动命令纠缠
-                _commandQueue.Clear();
-                _hasCurrentCommand = false;
-                _currentCommand = null;
+                // 对齐前先停车（约束③）
+                _move.StartMoveDistance_NoLock(0.0, 0.0);
 
-                var cmd = RobotCommand.TurnAngle(delta);
-                _commandQueue.Enqueue(cmd);
+                _currentCommand = RobotCommand.TurnAngle(delta);
+                _turn.StartTurnByDelta(delta);
             }
         }
 
-        /// <summary>
-        /// 计算从当前连续角度旋转到目标离散方向标准角度的最短角度差（弧度，[-π, π]）。
-        /// 正数表示顺时针（右转），负数表示逆时针（左转）。
-        /// </summary>
         private static double GetShortestDeltaToDirection(double currentAngle, EnumMoveDirection targetDir)
         {
             double targetAngle = DirectionToAngle(targetDir);
@@ -201,11 +151,13 @@ namespace GridDemo.Robots
             {
                 currentAngle += 2 * Math.PI;
             }
+
             targetAngle = targetAngle % (2 * Math.PI);
             if (targetAngle < 0)
             {
                 targetAngle += 2 * Math.PI;
             }
+
             double delta = targetAngle - currentAngle;
             if (delta > Math.PI)
             {
@@ -219,11 +171,6 @@ namespace GridDemo.Robots
             return delta;
         }
 
-        /// <summary>
-        /// 手动模式下，外部触发“输入变更”后需要立刻刷新队列：
-        /// - 清空队列与当前指令，避免旧输入残留；
-        /// - 下一个 Tick 会从 ManualProvider 拉取最新命令。
-        /// </summary>
         public void ResetManualCommands()
         {
             lock (_robotLock)
@@ -233,18 +180,20 @@ namespace GridDemo.Robots
                     return;
                 }
 
-                _commandQueue.Clear();
-                _hasCurrentCommand = false;
                 _currentCommand = null;
+
+                // 手动输入变化：按约束③用 0 距离指令刹停
+                _move.StartMoveDistance_NoLock(0.0, 0.0);
+                _turn.ResetTargetAngle();
             }
         }
 
         /// <summary>
-        /// 由仿真线程每帧调用：生成/下发/监测指令（调度核心）。
-        /// 调度流程：
-        /// 1) 自动模式：当“无当前指令且队列为空”时，从 provider 拉取一条新指令；
-        /// 2) 若当前无指令且队列非空：出队一条并下发给 Move/Turn；
-        /// 3) 轮询检测当前指令是否完成：完成后清理，下一帧进入下一条。
+        /// 调度核心：
+        /// - Manual：每帧覆盖下发（允许抢占）。
+        /// - Auto：若当前指令完成，则拉取并下发下一条。
+        ///
+        /// 停车：不使用 null 停车；停车必须由 Provider 返回 MoveDistance(0)。
         /// </summary>
         public void Tick(double dt, Func<double> getForwardAcc)
         {
@@ -266,16 +215,14 @@ namespace GridDemo.Robots
                         return;
                     }
 
-                    // 手动模式：每帧拉取 1 条命令并覆盖下发（不走队列/完成检测）
                     RobotCommand cmd = _manualCommandProvider();
                     if (cmd == null)
                     {
+                        // 不把 null 当停车；保持静默
                         return;
                     }
 
-                    _commandQueue.Clear();
-                    _hasCurrentCommand = false;
-                    _currentCommand = null;
+                    _currentCommand = cmd;
 
                     if (cmd.Type == EnumRobotCommandType.MoveDistance)
                     {
@@ -290,43 +237,10 @@ namespace GridDemo.Robots
                     return;
                 }
 
-                // Auto 模式维持原逻辑
                 if (_mode == EnumRobotControlMode.Auto)
                 {
-                    if (_autoCommandProvider != null)
-                    {
-                        if (!_hasCurrentCommand && _commandQueue.Count == 0)
-                        {
-                            RobotCommand cmd = _autoCommandProvider();
-                            if (cmd != null)
-                            {
-                                _commandQueue.Enqueue(cmd);
-                            }
-                        }
-                    }
-
-                    if (!_hasCurrentCommand)
-                    {
-                        if (_commandQueue.Count == 0)
-                        {
-                            return;
-                        }
-
-                        _currentCommand = _commandQueue.Dequeue();
-                        _hasCurrentCommand = true;
-
-                        if (_currentCommand.Type == EnumRobotCommandType.MoveDistance)
-                        {
-                            _move.StartMoveDistance_NoLock(_currentCommand.DistanceM.Value, getForwardAcc());
-                        }
-                        else if (_currentCommand.Type == EnumRobotCommandType.Turn)
-                        {
-                            double delta = _currentCommand.TurnAngleRad ?? 0.0;
-                            _turn.StartTurnByDelta(delta);
-                        }
-                    }
-
-                    if (_hasCurrentCommand)
+                    // 1) 若有当前指令：先检测完成
+                    if (_currentCommand != null)
                     {
                         bool done = false;
 
@@ -341,24 +255,48 @@ namespace GridDemo.Robots
 
                         if (done)
                         {
-                            _hasCurrentCommand = false;
                             _currentCommand = null;
+                        }
+                    }
+
+                    // 2) 当前无指令：下发下一条
+                    if (_currentCommand == null)
+                    {
+                        if (_autoCommandProvider == null)
+                        {
+                            return;
+                        }
+
+                        RobotCommand cmd = _autoCommandProvider();
+                        if (cmd == null)
+                        {
+                            // 不把 null 当停车；保持静默
+                            return;
+                        }
+
+                        _currentCommand = cmd;
+
+                        if (cmd.Type == EnumRobotCommandType.MoveDistance)
+                        {
+                            _move.StartMoveDistance_NoLock(cmd.DistanceM.Value, getForwardAcc());
+                        }
+                        else if (cmd.Type == EnumRobotCommandType.Turn)
+                        {
+                            double delta = cmd.TurnAngleRad ?? 0.0;
+                            _turn.StartTurnByDelta(delta);
                         }
                     }
 
                     return;
                 }
 
-                _commandQueue.Clear();
-                _hasCurrentCommand = false;
+                // 未知模式：用 0 距离指令刹停（约束③）
                 _currentCommand = null;
+                _move.StartMoveDistance_NoLock(0, 0);
+                _turn.ResetTargetAngle();
             }
         }
 
-        /// <summary>
-        /// 将离散方向映射为绘制/动画使用的角度（弧度）：
-        /// 0=Right，π/2=Down，π=Left，3π/2=Up。
-        /// </summary>
         public static double DirectionToAngle(EnumMoveDirection dir)
         {
             switch (dir)
