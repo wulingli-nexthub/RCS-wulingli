@@ -133,6 +133,8 @@ namespace GridDemo.Robots
                 ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating);
 
                 _pausedRobotIds.Clear();
+                // 关键修复：启动前先重绑 walkable，保证 Enable()->RebuildPath 使用正确的障碍判定
+                RebindDynamicWalkable_NoLock();
 
                 for (int i = 0; i < _robots.Count; i++)
                 {
@@ -366,6 +368,9 @@ namespace GridDemo.Robots
                     if (!_robots[i].AutoNavigator.IsEnabled)
                     {
                         _robots[i].AutoNavigator.Enable();
+                        _robots[i].AutoNavigator.ClearGoal();
+                        _robots[i].Manager.ResetAutoCommands();
+                        _robots[i].AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
                     }
                 }
             }
@@ -751,6 +756,8 @@ namespace GridDemo.Robots
                 else
                 {
                     ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating);
+                    // 关键修复：先重绑 walkable（包含静态障碍），再 Enable() 触发 RebuildPath
+                    RebindDynamicWalkable_NoLock();
 
                     for (int i = 0; i < _robots.Count; i++)
                     {
@@ -1127,10 +1134,10 @@ namespace GridDemo.Robots
                     if (key == myKey)
                         return true;
 
-                    int ownerId;
-                    if (goalOwnerByKey.TryGetValue(key, out ownerId) && ownerId != myId)
-                        return false;
-
+                    // 修复点：
+                    // Move/碰撞层不再把“其它机器人目标格”当成不可通行。
+                    // 否则会出现：引擎已抢占该格（claim 成功），但 Move 判定不可走 -> Stop 卡死 -> 长期占锁。
+                    // 目标格互斥应由“寻路层 + claimBoard”保证，而不是由 Move 层硬阻挡。
                     return !occupied.Contains(key);
                 });
             }
