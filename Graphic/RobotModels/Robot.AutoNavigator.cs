@@ -264,74 +264,19 @@ namespace GridDemo.RobotModels
                 double x = _getRobotX();
                 double y = _getRobotY();
 
-                // 先推进已到达/越过的路径点
                 AdvanceWaypointIfArrived_Claimed_NoLock(x, y);
 
-                // ========== 新增：如果已经走完 claimed 前缀，尝试对齐到当前格中心 ==========
                 if (_pathIndex >= _claimedPathPrefix.Count)
                 {
-                    // 前缀最后一个格子
-                    GridPos lastCell = _claimedPathPrefix[_claimedPathPrefix.Count - 1];
-                    double cx = GridToCenterWorldX(lastCell.X);
-                    double cy = GridToCenterWorldY(lastCell.Y);
-
-                    double dx = cx - x;
-                    double dy = cy - y;
-
-                    bool needX = Math.Abs(dx) > ArriveEpsilonM;
-                    bool needY = Math.Abs(dy) > ArriveEpsilonM;
-
-                    if (!needX && !needY)
-                    {
-                        // 已经基本在该格中心，不再发指令
-                        return null;
-                    }
-
-                    // 决定先对齐哪个轴：优先对“偏差更大的轴”
-                    bool alignXFirst = Math.Abs(dx) >= Math.Abs(dy);
-
-                    if (alignXFirst && needX)
-                    {
-                        EnumMoveDirection dirX = dx >= 0 ? EnumMoveDirection.Right : EnumMoveDirection.Left;
-                        if (!_robotManager.IsTurning && _robotManager.Direction != dirX)
-                        {
-                            double? ang = TryGetTurnAngleRad(_robotManager.Direction, dirX);
-                            if (ang.HasValue)
-                            {
-                                return RobotCommand.TurnAngle(ang.Value);
-                            }
-                        }
-
-                        return RobotCommand.MoveDistance(Math.Abs(dx));
-                    }
-                    else if (needY)
-                    {
-                        EnumMoveDirection dirY = dy >= 0 ? EnumMoveDirection.Down : EnumMoveDirection.Up;
-                        if (!_robotManager.IsTurning && _robotManager.Direction != dirY)
-                        {
-                            double? ang = TryGetTurnAngleRad(_robotManager.Direction, dirY);
-                            if (ang.HasValue)
-                            {
-                                return RobotCommand.TurnAngle(ang.Value);
-                            }
-                        }
-
-                        return RobotCommand.MoveDistance(Math.Abs(dy));
-                    }
-
-                    // 理论上不应走到这里
                     return null;
                 }
-                // ========== 新增逻辑结束，后面保持原来的“沿 claimed 前缀继续出指令” ==========
 
-                // 还有未走完的前缀格子：按原有逻辑处理
                 GridPos first = _claimedPathPrefix[_pathIndex];
                 double firstX = GridToCenterWorldX(first.X);
                 double firstY = GridToCenterWorldY(first.Y);
 
                 EnumMoveDirection desiredDir = ChooseDirectionToTarget(x, y, firstX, firstY);
 
-                // 先尝试“中心线对齐”修正
                 double? centerMove = TryBuildCenteringMoveDistance(x, y, firstX, firstY, desiredDir);
                 if (centerMove.HasValue)
                 {
@@ -348,7 +293,6 @@ namespace GridDemo.RobotModels
                     return RobotCommand.MoveDistance(centerMove.Value);
                 }
 
-                // 如原：方向未对齐则转向
                 if (!_robotManager.IsTurning && desiredDir != _robotManager.Direction)
                 {
                     double? turnAngle = TryGetTurnAngleRad(_robotManager.Direction, desiredDir);
@@ -360,7 +304,6 @@ namespace GridDemo.RobotModels
                     return null;
                 }
 
-                // 如原：将同方向的连续格子合并一次前进
                 double total = 0.0;
 
                 if (desiredDir == EnumMoveDirection.Right || desiredDir == EnumMoveDirection.Left)

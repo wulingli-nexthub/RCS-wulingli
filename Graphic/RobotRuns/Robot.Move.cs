@@ -74,6 +74,15 @@ namespace GridDemo.RobotRuns
         }
 
         /// <summary>
+        /// 当前是否正在执行 MoveDistance（不加锁版本）。
+        /// 说明：用于引擎层判断“是否允许硬停”，避免打断尚未执行完的位移指令。
+        /// </summary>
+        public bool IsMoveDistanceActive_NoLock()
+        {
+            return _moveDistanceActive;
+        }
+
+        /// <summary>
         /// 允许外部（RobotEngine）在运行时重绑“世界坐标是否可走”的判定，
         /// 以便将其它机器人占用格也视为动态障碍。
         /// </summary>

@@ -943,7 +943,14 @@ namespace GridDemo.Robots
                         }
                         else
                         {
-                            r.Move.StopImmediately_NoLock();
+                            // 关键修复：
+                            // 不能在“没有新指令”时直接 StopImmediately，
+                            // 否则会打断上一条 MoveDistance 的收尾，导致停在网格线而不是格子中心。
+                            // 只有当机器人确实空闲（既不在转向，也不在执行 MoveDistance）时才允许硬停。
+                            if (!r.Manager.IsTurning && !r.Move.IsMoveDistanceActive_NoLock())
+                            {
+                                r.Move.StopImmediately_NoLock();
+                            }
                         }
                     }
                     // 手动模式：仅对选中机器人派发手动命令
