@@ -62,6 +62,20 @@ namespace GridDemo.Robots
         private const int YieldCooldownFrames = 12; // 12 帧 * 20ms ≈ 240ms
         private readonly Dictionary<int, int> _yieldCooldownTicks = new Dictionary<int, int>(); // robotId -> 冷却剩余帧数
 
+        // --- 互卡检测：等待确认后再触发重规划/让步 ---
+        // 说明：当前“两个机器人相遇就重规划”太激进，会造成抖动和频繁改道。
+        // 改为：记录“阻塞关系(blocked->blocker)”的持续帧数，超过阈值才认为互卡成立。
+        private const int DeadlockConfirmFrames = 100; // 约 2 秒（dt=0.02 -> 100帧）
+        private const int DeadlockClearFrames = 12;    // 关系消失后保留一小段时间，避免瞬时抖动
+        private readonly Dictionary<int, DeadlockInfo> _deadlockByBlockedId = new Dictionary<int, DeadlockInfo>(); // blockedId -> info
+
+        private struct DeadlockInfo
+        {
+            public int BlockerId;           // 当前认为是谁挡住了我
+            public int ConfirmFrames;       // 持续阻塞累计帧数
+            public int LostFrames;          // 连续“未观测到阻塞”帧数（用于消抖清理）
+        }
+
         // 格子锁抢占板：负责对路径格子进行抢占/释放，避免多机器人同格冲突
         private readonly GridCellClaimBoard _claimBoard;
 
@@ -853,6 +867,28 @@ namespace GridDemo.Robots
                     }
                 }
 
+                // 互卡关系“淡出计数”：未被观测到的关系逐步清理
+                if (_deadlockByBlockedId.Count > 0)
+                {
+                    var deadlockKeys = new List<int>(_deadlockByBlockedId.Keys);
+                    for (int i = 0; i < deadlockKeys.Count; i++)
+                    {
+                        int blockedId = deadlockKeys[i];
+                        DeadlockInfo info = _deadlockByBlockedId[blockedId];
+
+                        // 每帧默认认为“本帧未观测到”，ApplyPathClaiming_NoLock() 若观测到会把 LostFrames 置 0
+                        info.LostFrames++;
+
+                        if (info.LostFrames >= DeadlockClearFrames)
+                        {
+                            _deadlockByBlockedId.Remove(blockedId);
+                        }
+                        else
+                        {
+                            _deadlockByBlockedId[blockedId] = info;
+                        }
+                    }
+                }
                 // 1) 动态可通行性重绑（把其它机器人占用格当动态障碍）
                 RebindDynamicWalkable_NoLock();
 
@@ -1027,42 +1063,79 @@ namespace GridDemo.Robots
                 List<GridPos> claimedPrefix = _claimBoard.ClaimPathToGoalOrPrefix(r.Id, path, startIndex);
                 r.AutoNavigator.SetClaimedPathPrefix(claimedPrefix);
 
-                // ------------------ 关键修复：互卡检测 -> 触发让步 + 促使对方重规划 ------------------
-                // 判定：我有目标、有路径，但 claim 前缀为空（或只有当前格），说明下一步就被挡住。
-                // 若我的“下一步格”被某机器人当前占用，则视为产生阻塞关系：blocker 占着我的下一步。
-                if (r.AutoNavigator.IsEnabled)
+                // ------------------ 互卡优化：先累计，再触发 ------------------
+                if (!r.AutoNavigator.IsEnabled)
                 {
-                    int claimedCount = (claimedPrefix == null) ? 0 : claimedPrefix.Count;
-
-                    bool stuckAtStart = claimedCount <= 1;
-
-                    if (stuckAtStart)
-                    {
-                        int nextIndex = startIndex + 1;
-                        if (nextIndex >= 0 && nextIndex < path.Count)
-                        {
-                            GridPos nextCell = path[nextIndex];
-                            int nextKey = nextCell.Y * _gridCount + nextCell.X;
-
-                            int blockerId;
-                            if (occupiedByKey.TryGetValue(nextKey, out blockerId) && blockerId != r.Id)
-                            {
-                                // blocker 进入让步冷却：释放其多余 claim，让出通道
-                                if (!_yieldCooldownTicks.ContainsKey(blockerId))
-                                {
-                                    _yieldCooldownTicks.Add(blockerId, YieldCooldownFrames);
-                                }
-                                else
-                                {
-                                    _yieldCooldownTicks[blockerId] = YieldCooldownFrames;
-                                }
-
-                                // 被阻塞者尝试重规划（绕行），降低两车持续对冲
-                                r.AutoNavigator.RebuildPath();
-                            }
-                        }
-                    }
+                    continue;
                 }
+
+                int claimedCount = (claimedPrefix == null) ? 0 : claimedPrefix.Count;
+
+                // “几乎动不了”：只有当前位置(<=1)说明下一步就被挡住（注意：路径包含起点时 <=1 很常见）
+                bool stuckAtStart = claimedCount <= 1;
+
+                if (!stuckAtStart)
+                {
+                    // 本帧未观测到阻塞：若之前有记录，允许淡出逻辑在 Tick() 里清理
+                    continue;
+                }
+
+                int nextIndex = startIndex + 1;
+                if (nextIndex < 0 || nextIndex >= path.Count)
+                {
+                    continue;
+                }
+
+                GridPos nextCell = path[nextIndex];
+                int nextKey = nextCell.Y * _gridCount + nextCell.X;
+
+                int blockerId;
+                if (!occupiedByKey.TryGetValue(nextKey, out blockerId) || blockerId == r.Id)
+                {
+                    continue;
+                }
+
+                // 记录/更新阻塞关系：blocked=r.Id, blocker=blockerId
+                DeadlockInfo info;
+                if (!_deadlockByBlockedId.TryGetValue(r.Id, out info) || info.BlockerId != blockerId)
+                {
+                    info = new DeadlockInfo
+                    {
+                        BlockerId = blockerId,
+                        ConfirmFrames = 1,
+                        LostFrames = 0
+                    };
+                }
+                else
+                {
+                    info.ConfirmFrames++;
+                    info.LostFrames = 0;
+                }
+
+                _deadlockByBlockedId[r.Id] = info;
+
+                // 未达到确认阈值：只是相遇/短暂停顿 -> 先等待
+                if (info.ConfirmFrames < DeadlockConfirmFrames)
+                {
+                    continue;
+                }
+
+                // 达到确认阈值：认为互卡成立 -> 触发让步 + 重规划
+                if (!_yieldCooldownTicks.ContainsKey(blockerId))
+                {
+                    _yieldCooldownTicks.Add(blockerId, YieldCooldownFrames);
+                }
+                else
+                {
+                    _yieldCooldownTicks[blockerId] = YieldCooldownFrames;
+                }
+
+                r.AutoNavigator.RebuildPath();
+
+                // 触发后重置计数，避免每帧重复触发
+                info.ConfirmFrames = 0;
+                info.LostFrames = 0;
+                _deadlockByBlockedId[r.Id] = info;
             }
         }
 
