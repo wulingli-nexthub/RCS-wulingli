@@ -120,77 +120,6 @@ namespace GridDemo.Robots
         }
 
         /// <summary>
-        /// 是否存在有效选中机器人。
-        /// </summary>
-        public bool HasSelectedRobot
-        {
-            get
-            {
-                lock (_robotLock)
-                {
-                    return _selectedRobotId >= 0 && _selectedRobotId < _robots.Count;
-                }
-            }
-        }
-
-        /// <summary>
-        /// 启动选中机器人：
-        /// - 不重建路径、不改目标；
-        /// - 仅从“单机暂停”中恢复，并保证自动导航启用。
-        /// </summary>
-        public void StartSelected()
-        {
-            lock (_robotLock)
-            {
-                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                {
-                    return;
-                }
-
-                // Tick 必须推进
-                _isRunning = true;
-
-                // 引擎进入自动调度状态（避免 Idle 直接 return）
-                ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating);
-
-                RobotInstance r = _robots[_selectedRobotId];
-
-                // 恢复该机器人（只影响这一台）
-                _pausedRobotIds.Remove(r.Id);
-
-                // 只确保“可出自动指令”，不调用 Enable() 以避免清掉路径
-                if (!r.AutoNavigator.IsEnabled)
-                {
-                    r.AutoNavigator.Enable();
-                }
-            }
-        }
-
-        /// <summary>
-        /// 暂停选中机器人：
-        /// - 仅暂停该机器人（其它机器人继续运行）；
-        /// - 硬停速度/加速度，并停止运动学执行器。
-        /// </summary>
-        public void PauseSelected()
-        {
-            lock (_robotLock)
-            {
-                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                {
-                    return;
-                }
-
-                RobotInstance r = _robots[_selectedRobotId];
-
-                _pausedRobotIds.Add(r.Id);
-
-                r.Speed = 0.0;
-                r.Manager.Acc = 0.0;
-                r.Move.StopImmediately_NoLock();
-            }
-        }
-
-        /// <summary>
         /// 全局启动：
         /// - 恢复 Tick 推进；
         /// - 清空所有单机暂停；
@@ -234,20 +163,6 @@ namespace GridDemo.Robots
                     _robots[i].Speed = 0.0;
                     _robots[i].Manager.Acc = 0.0;
                     _robots[i].Move.StopImmediately_NoLock();
-                }
-            }
-        }
-
-        /// <summary>
-        /// 当前是否处于运行状态（供 UI 显示）。
-        /// </summary>
-        public bool IsRunning
-        {
-            get
-            {
-                lock (_robotLock)
-                {
-                    return _isRunning;
                 }
             }
         }

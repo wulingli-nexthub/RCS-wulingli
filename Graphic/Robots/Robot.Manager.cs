@@ -123,19 +123,7 @@ namespace GridDemo.Robots
                 _move.StopImmediately_NoLock();
             }
         }
-        /// <summary>
-        /// 手动模式下外部触发“输入变更”后调用（仅保留接口，兼容调用点）。
-        /// </summary>
-        public void ResetManualCommands()
-        {
-            lock (_robotLock)
-            {
-                if (_mode != EnumRobotControlMode.Manual)
-                {
-                    return;
-                }
-            }
-        }
+        
         /// <summary>
         /// 在自动模式下，让当前箭头朝向通过转向动画对齐到当前离散方向的标准角度。
         /// </summary>
@@ -157,6 +145,7 @@ namespace GridDemo.Robots
                 DispatchDirect_NoLock(RobotCommand.TurnAngle(delta));
             }
         }
+
         /// <summary>
         /// 直接下发一条指令（调用方已持有 _robotLock）。
         /// - cmd 为 null 则忽略。

@@ -43,16 +43,6 @@ namespace GridDemo.Robots
         }
 
         /// <summary>
-        /// 清空全部抢占（用于重置仿真/清理）。
-        /// 注意：整段锁定模式下不应在每帧调用，否则会破坏“互斥占用”的意义。
-        /// </summary>
-        public void ResetAll()
-        {
-            _claimedBy.Clear();
-            _claimedCellsByRobotId.Clear();
-        }
-
-        /// <summary>
         /// 释放某个机器人当前占用的全部格子锁。
         /// 常见触发场景：
         /// - 机器人切换目标（旧路径锁不能残留）
@@ -169,24 +159,6 @@ namespace GridDemo.Robots
             // 没抢到任何格子：确保移除 robotId 的记录，并返回 null（上层应等待/停车）
             _claimedCellsByRobotId.Remove(robotId);
             return null;
-        }
-
-        /// <summary>
-        /// 判断某格是否被“其它机器人”占用：
-        /// - 若该格已被抢占且 owner != robotId，则返回 true；
-        /// - 否则返回 false。
-        /// </summary>
-        public bool IsClaimedByOther(int robotId, GridPos p)
-        {
-            int key = p.Y * _gridCount + p.X;
-
-            int owner;
-            if (_claimedBy.TryGetValue(key, out owner))
-            {
-                return owner != robotId;
-            }
-
-            return false;
         }
 
         /// <summary>
