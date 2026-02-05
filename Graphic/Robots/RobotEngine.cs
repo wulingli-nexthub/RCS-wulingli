@@ -889,6 +889,7 @@ namespace GridDemo.Robots
                         }
                     }
                 }
+
                 // 1) 动态可通行性重绑（把其它机器人占用格当动态障碍）
                 RebindDynamicWalkable_NoLock();
 
@@ -1120,7 +1121,10 @@ namespace GridDemo.Robots
                     continue;
                 }
 
-                // 达到确认阈值：认为互卡成立 -> 触发让步 + 重规划
+                // 达到确认阈值：认为互卡成立 -> 破局：
+                // 1) blocker 冷却（避免立刻又抢占回来）
+                // 2) 强制释放 blocker 的全部 claim（清通道，避免残留锁造成永久等待）
+                // 3) blocker 与 blocked 都重规划（两边都脱离“旧路径依赖”）
                 if (!_yieldCooldownTicks.ContainsKey(blockerId))
                 {
                     _yieldCooldownTicks.Add(blockerId, YieldCooldownFrames);
@@ -1130,6 +1134,15 @@ namespace GridDemo.Robots
                     _yieldCooldownTicks[blockerId] = YieldCooldownFrames;
                 }
 
+                _claimBoard.ReleaseAllByRobot(blockerId);
+
+                RobotInstance blocker = TryGetRobotById_NoLock(blockerId);
+                if (blocker != null)
+                {
+                    blocker.AutoNavigator.SetClaimedPathPrefix(null);
+                    blocker.AutoNavigator.RebuildPath();
+                }
+
                 r.AutoNavigator.RebuildPath();
 
                 // 触发后重置计数，避免每帧重复触发
@@ -1137,6 +1150,33 @@ namespace GridDemo.Robots
                 info.LostFrames = 0;
                 _deadlockByBlockedId[r.Id] = info;
             }
+        }
+
+        /// <summary>
+        /// 按 Id 查找机器人（要求调用方已持有锁）。
+        /// 当前项目 Id 通常与索引一致，但此方法用于容错与未来扩展。
+        /// </summary>
+        private RobotInstance TryGetRobotById_NoLock(int robotId)
+        {
+            if (robotId < 0)
+            {
+                return null;
+            }
+
+            if (robotId < _robots.Count && _robots[robotId].Id == robotId)
+            {
+                return _robots[robotId];
+            }
+
+            for (int i = 0; i < _robots.Count; i++)
+            {
+                if (_robots[i].Id == robotId)
+                {
+                    return _robots[i];
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
