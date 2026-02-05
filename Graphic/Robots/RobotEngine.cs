@@ -465,8 +465,7 @@ namespace GridDemo.Robots
         /// <summary>
         /// 选中某台机器人：
         /// - 更新 _selectedRobotId；
-        /// - 将其加入“单机暂停集合”；
-        /// - 强制停车（等待用户设置目标或进入手动）。
+        /// - 不再强制停车/不加入单机暂停（选中时保持继续运动）。
         /// </summary>
         public bool SelectRobot(int id)
         {
@@ -479,12 +478,9 @@ namespace GridDemo.Robots
 
                 _selectedRobotId = id;
 
-                RobotInstance r = _robots[id];
-                _pausedRobotIds.Add(r.Id);
-
-                r.Speed = 0.0;
-                r.Manager.Acc = 0.0;
-                r.Move.StopImmediately_NoLock();
+                // 选中时不再暂停该机器人，也不再强制停车
+                // 这样 UI 选中仅用于“查看/操作对象”，不会打断其当前自动运动。
+                _pausedRobotIds.Remove(id);
 
                 return true;
             }
