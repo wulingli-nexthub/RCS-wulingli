@@ -302,7 +302,19 @@ namespace GridDemo.Robots
                 // 1) 删除多余机器人（从尾部删，保持前面不动）
                 while (_robots.Count > count)
                 {
-                    _robots.RemoveAt(_robots.Count - 1);
+                    int removeIndex = _robots.Count - 1;
+                    int removeRobotId = _robots[removeIndex].Id;
+
+                    // 关键修复：删除机器人前，必须释放其所有格子锁/路径前缀等残留
+                    _claimBoard.ReleaseAllByRobot(removeRobotId);
+                    _lastGridCellByRobotId.Remove(removeRobotId);
+                    _pausedRobotIds.Remove(removeRobotId);
+                    _yieldCooldownTicks.Remove(removeRobotId);
+
+                    // 同时清理导航器侧的 claimed 前缀（避免 UI/逻辑读到旧值）
+                    _robots[removeIndex].AutoNavigator.SetClaimedPathPrefix(null);
+
+                    _robots.RemoveAt(removeIndex);
                 }
 
                 // 修正选中项，避免越界
@@ -400,11 +412,39 @@ namespace GridDemo.Robots
         {
             lock (_robotLock)
             {
+                // 1) 重置后必须停在 Idle，等待 UI 点击“启动”
+                _isRunning = false;
+                ChangeProcessState_NoLock(EnumRobotProcessState.Idle);
+
+                // 2) 重置为单机器人（保留位置/实例创建逻辑）
                 SetRobotCount(1, initialMaxSpeed, initialDirection);
 
+                // 3) 清理引擎侧“路径/抢占/释放/让步冷却”等残留
+                _yieldCooldownTicks.Clear();
+                _pausedRobotIds.Clear();
+                _lastGridCellByRobotId.Clear();
+                _claimBoard.ReleaseAllByRobot(0);
+
+                // 4) 清理机器人侧“目标/路径/命令”，并硬停
                 RobotInstance r0 = _robots[0];
-                r0.AutoNavigator.ClearGoal();
+
+                r0.Speed = 0.0;
+                r0.Manager.Acc = 0.0;
+                r0.Move.StopImmediately_NoLock();
                 r0.Manager.ResetAutoCommands();
+
+                // 关键：清目标 + 清路径前缀，避免 UI 仍绘制上一次路径
+                r0.AutoNavigator.SetClaimedPathPrefix(null);
+                r0.AutoNavigator.ClearGoal();
+
+                // 5) 重绑 walkable，确保后续 StartAll Enable/RebuildPath 能用最新判定
+                RebindDynamicWalkable_NoLock();
+
+                // 6) 维持“自动已启用但无目标”的等待态（不生成运动指令）
+                if (!r0.AutoNavigator.IsEnabled)
+                {
+                    r0.AutoNavigator.Enable();
+                }
             }
         }
 
@@ -905,7 +945,6 @@ namespace GridDemo.Robots
                 GridPos? goal = r.AutoNavigator.GetGoalGridSnapshot();
                 if (!goal.HasValue)
                 {
-                    // 无目标：释放全部锁，清空 claimed 前缀，避免残留占用影响其它机器人
                     _claimBoard.ReleaseAllByRobot(r.Id);
                     r.AutoNavigator.SetClaimedPathPrefix(null);
                     continue;
@@ -924,10 +963,36 @@ namespace GridDemo.Robots
                 return a.R.Id.CompareTo(b.R.Id);
             });
 
+            // 预先建立“当前占用格 -> robotId”映射，用于死锁/阻塞检测
+            var occupiedByKey = new Dictionary<int, int>(_robots.Count);
+            for (int i = 0; i < _robots.Count; i++)
+            {
+                GridPos c = _robots[i].GetGridPos_NoLock();
+                int key = c.Y * _gridCount + c.X;
+                if (!occupiedByKey.ContainsKey(key))
+                {
+                    occupiedByKey.Add(key, _robots[i].Id);
+                }
+            }
+
             // 逐台抢占并回灌 claimed 前缀
             for (int i = 0; i < items.Count; i++)
             {
                 RobotInstance r = items[i].R;
+
+                // 让步冷却期间：该机器人不再扩张 claim（只保留当前位置），避免“占着通道不放”
+                int cooldown;
+                if (_yieldCooldownTicks.TryGetValue(r.Id, out cooldown) && cooldown > 0)
+                {
+                    // 只保留当前格（如果当前格可 claim，则让 claimBoard 保持一致；否则至少不再占用其它格）
+                    _claimBoard.ReleaseAllByRobot(r.Id);
+
+                    GridPos curCell = r.GetGridPos_NoLock();
+                    var keep = new List<GridPos>(1) { curCell };
+                    List<GridPos> claimedKeep = _claimBoard.ClaimPathToGoalOrPrefix(r.Id, keep, 0);
+                    r.AutoNavigator.SetClaimedPathPrefix(claimedKeep);
+                    continue;
+                }
 
                 // 引擎抢占基于“完整路径快照”
                 List<GridPos> path = r.AutoNavigator.GetPathGridSnapshot();
@@ -946,22 +1011,58 @@ namespace GridDemo.Robots
                     continue;
                 }
 
-                // 从当前所在格开始抢占（若 path 中包含当前格，则 startIndex 指向该格）
-                GridPos curCell = r.GetGridPos_NoLock();
+                // 从当前所在格开始抢占
+                GridPos curCell2 = r.GetGridPos_NoLock();
                 int startIndex = 0;
 
                 for (int j = 0; j < path.Count; j++)
                 {
-                    if (path[j].Equals(curCell))
+                    if (path[j].Equals(curCell2))
                     {
                         startIndex = j;
                         break;
                     }
                 }
 
-                // 抢占到“终点”或“可抢占的最长前缀”，并回灌
                 List<GridPos> claimedPrefix = _claimBoard.ClaimPathToGoalOrPrefix(r.Id, path, startIndex);
                 r.AutoNavigator.SetClaimedPathPrefix(claimedPrefix);
+
+                // ------------------ 关键修复：互卡检测 -> 触发让步 + 促使对方重规划 ------------------
+                // 判定：我有目标、有路径，但 claim 前缀为空（或只有当前格），说明下一步就被挡住。
+                // 若我的“下一步格”被某机器人当前占用，则视为产生阻塞关系：blocker 占着我的下一步。
+                if (r.AutoNavigator.IsEnabled)
+                {
+                    int claimedCount = (claimedPrefix == null) ? 0 : claimedPrefix.Count;
+
+                    bool stuckAtStart = claimedCount <= 1;
+
+                    if (stuckAtStart)
+                    {
+                        int nextIndex = startIndex + 1;
+                        if (nextIndex >= 0 && nextIndex < path.Count)
+                        {
+                            GridPos nextCell = path[nextIndex];
+                            int nextKey = nextCell.Y * _gridCount + nextCell.X;
+
+                            int blockerId;
+                            if (occupiedByKey.TryGetValue(nextKey, out blockerId) && blockerId != r.Id)
+                            {
+                                // blocker 进入让步冷却：释放其多余 claim，让出通道
+                                if (!_yieldCooldownTicks.ContainsKey(blockerId))
+                                {
+                                    _yieldCooldownTicks.Add(blockerId, YieldCooldownFrames);
+                                }
+                                else
+                                {
+                                    _yieldCooldownTicks[blockerId] = YieldCooldownFrames;
+                                }
+
+                                // 被阻塞者尝试重规划（绕行），降低两车持续对冲
+                                r.AutoNavigator.RebuildPath();
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -1063,8 +1164,10 @@ namespace GridDemo.Robots
                 occupied.Add(key);
             }
 
-            // 统计所有机器人目标格的“拥有者”
-            var goalOwnerByKey = new Dictionary<int, int>();
+            // 统计所有机器人目标格的“拥有者集合”
+            // 关键修复：不能用 cellKey -> 单个 ownerId
+            // 因为当多个机器人目标格重合时，后加入的机器人会被忽略，导致其它机器人仍能把该终点当作可走。
+            var goalOwnersByKey = new Dictionary<int, HashSet<int>>();
             for (int i = 0; i < _robots.Count; i++)
             {
                 var g = _robots[i].AutoNavigator.GetGoalGridSnapshot();
@@ -1074,10 +1177,15 @@ namespace GridDemo.Robots
                     if (gp.X >= 0 && gp.Y >= 0 && gp.X < _gridCount && gp.Y < _gridCount)
                     {
                         int k = gp.Y * _gridCount + gp.X;
-                        if (!goalOwnerByKey.ContainsKey(k))
+
+                        HashSet<int> owners;
+                        if (!goalOwnersByKey.TryGetValue(k, out owners))
                         {
-                            goalOwnerByKey.Add(k, _robots[i].Id);
+                            owners = new HashSet<int>();
+                            goalOwnersByKey.Add(k, owners);
                         }
+
+                        owners.Add(_robots[i].Id);
                     }
                 }
             }
@@ -1107,8 +1215,8 @@ namespace GridDemo.Robots
                     }
 
                     // 禁止进入其它机器人终点格（自己的终点格必须可走）
-                    int ownerId;
-                    if (goalOwnerByKey.TryGetValue(key, out ownerId) && ownerId != myId)
+                    HashSet<int> owners;
+                    if (goalOwnersByKey.TryGetValue(key, out owners) && owners.Count > 0 && !owners.Contains(myId))
                     {
                         return false;
                     }
@@ -1134,10 +1242,7 @@ namespace GridDemo.Robots
                     if (key == myKey)
                         return true;
 
-                    // 修复点：
-                    // Move/碰撞层不再把“其它机器人目标格”当成不可通行。
-                    // 否则会出现：引擎已抢占该格（claim 成功），但 Move 判定不可走 -> Stop 卡死 -> 长期占锁。
-                    // 目标格互斥应由“寻路层 + claimBoard”保证，而不是由 Move 层硬阻挡。
+                    // Move/碰撞层不把“其它机器人目标格”当成不可通行（保持你原来的修复）
                     return !occupied.Contains(key);
                 });
             }

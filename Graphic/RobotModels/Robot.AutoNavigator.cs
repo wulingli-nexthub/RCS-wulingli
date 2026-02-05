@@ -374,14 +374,11 @@ namespace GridDemo.RobotModels
         /// 在已持锁的情况下重建路径：
         /// - 采用与引擎一致的 gridW/gridH，保证障碍物/动态障碍/claimBoard 坐标系一致
         /// - 将机器人世界坐标映射成起点格子
-        /// - 结合 baseWalkable + goalOwnerMap 生成最终 isWalkable
+        /// - 结合 baseWalkable + “其它机器人终点不可走”规则生成最终 isWalkable
         /// - 调用具体寻路算法得到路径
         /// </summary>
         private void RebuildPath_NoLock()
         {
-            // 关键修复：
-            // 禁止用 worldWidth/worldHeight 反推网格尺寸（可能因 Round/Floor/边界导致与障碍图尺寸不一致）
-            // 必须使用构造时传入的 gridCount（与 ObstacleMap / ClaimBoard / 引擎绑定一致）。
             int gridW = _gridW;
             int gridH = _gridH;
 
@@ -409,6 +406,11 @@ namespace GridDemo.RobotModels
                 goalOwnerMap = null;
             }
 
+            // 关键修复：
+            // 路径生成阶段必须绕开“其它机器人终点格”，否则会出现：
+            // - 路径穿过别人终点格；
+            // - 引擎 claimBoard/终点互斥导致在该格处截断，形成“永远抢占不到足够前缀”的卡死/抖动。
+            // 同时：自己的终点格必须允许通行，否则永远无解。
             Func<GridPos, bool> isWalkable = p =>
             {
                 if (!baseWalkable(p))
@@ -416,6 +418,13 @@ namespace GridDemo.RobotModels
                     return false;
                 }
 
+                // 自己的终点格允许（无论 goalOwnerMap/baseWalkable 如何组合）
+                if (p.Equals(goal))
+                {
+                    return true;
+                }
+
+                // 兜底：若 baseWalkable 未包含“其它机器人终点不可走”，则在此补齐。
                 if (goalOwnerMap != null && goalOwnerMap.Count > 0)
                 {
                     int key = p.Y * gridW + p.X;
