@@ -1011,6 +1011,8 @@ namespace GridDemo.Robots
                     occupiedByKey.Add(key, _robots[i].Id);
                 }
             }
+            // 关键修复：把所有机器人“当前占用格”设置为保留格，禁止他人抢占起点格导致锁死
+            _claimBoard.SetReservedCells(occupiedByKey);
 
             // 逐台抢占并回灌 claimed 前缀
             for (int i = 0; i < items.Count; i++)

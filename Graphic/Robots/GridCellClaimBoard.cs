@@ -35,11 +35,24 @@ namespace GridDemo.Robots
 
         // robotId -> claimed cells：该机器人当前持有（锁住）的格子序列（按路径从近到远记录）
         private readonly Dictionary<int, List<GridPos>> _claimedCellsByRobotId = new Dictionary<int, List<GridPos>>();
+        
+        // 当前帧的“保留格”（通常是每个机器人当前占用格）：cellKey -> ownerRobotId
+        // 规则：其它机器人禁止抢占该格；owner 自己允许（用于起点格 claim）
+        private Dictionary<int, int> _reservedBy = new Dictionary<int, int>();
 
         public GridCellClaimBoard(int gridCount, ObstacleMap obstacleMap)
         {
             _gridCount = gridCount;
             _obstacleMap = obstacleMap ?? throw new ArgumentNullException(nameof(obstacleMap));
+        }
+
+        /// <summary>
+        /// 设置“保留格”映射（cellKey -> ownerRobotId）。
+        /// 用于防止其它机器人抢占某台机器人当前占用格（起点格），避免把对方锁死在原地。
+        /// </summary>
+        public void SetReservedCells(Dictionary<int, int> reservedBy)
+        {
+            _reservedBy = reservedBy ?? new Dictionary<int, int>();
         }
 
         /// <summary>
@@ -129,6 +142,14 @@ namespace GridDemo.Robots
                 }
 
                 int key = p.Y * _gridCount + p.X;
+
+                // 保留格：禁止抢占其它机器人的“当前占用格”（起点格）
+                // 但是：允许抢占自己的保留格（通常是自己的当前格），否则起点无法形成 claimedPrefix
+                int reservedOwner;
+                if (_reservedBy != null && _reservedBy.TryGetValue(key, out reservedOwner) && reservedOwner != robotId)
+                {
+                    break;
+                }
 
                 int owner;
                 if (_claimedBy.TryGetValue(key, out owner))
