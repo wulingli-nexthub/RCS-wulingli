@@ -338,6 +338,8 @@ namespace GridDemo.Robots
                 }
 
                 // 2) 新增机器人（随机找空闲格）
+                var newRobotIds = new List<int>();
+
                 if (_robots.Count < count)
                 {
                     var used = BuildUsedCellKeySet_NoLock();
@@ -350,7 +352,6 @@ namespace GridDemo.Robots
                         int key = cell.Y * _gridCount + cell.X;
                         used.Add(key);
 
-                        // 初始位置放到格子中心（世界坐标）
                         double x = cell.X * _cellSizeM + _cellSizeM / 2.0;
                         double y = cell.Y * _cellSizeM + _cellSizeM / 2.0;
 
@@ -369,25 +370,32 @@ namespace GridDemo.Robots
                             initialY: y,
                             getGoalOwnerMap: () => BuildGoalOwnerMap_NoLock());
 
-                        // 新机器人必须有目标，否则自动模式没有指令输出
-                        r.AutoNavigator.Enable();
-                        r.AutoNavigator.ClearGoal();
-                        r.Manager.ResetAutoCommands();
-                        r.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
-
                         // 继承当前全局加速度配置（从第一个机器人拷贝）
                         if (_robots.Count > 0)
                         {
                             r.Acc = _robots[0].Acc;
                         }
 
+                        // 关键修复：先加入 _robots，后续 Rebind 才能覆盖到它
                         _robots.Add(r);
+                        newRobotIds.Add(r.Id);
                     }
                 }
 
                 // 3) 重绑动态障碍：把所有机器人占用格注入 WalkableProvider / WorldWalkableProvider
                 RebindDynamicWalkable_NoLock();
 
+                // 关键修复：对“本次新建机器人”，在 walkable 已绑定后再 Enable/SetGoal（触发寻路）
+                for (int i = 0; i < newRobotIds.Count; i++)
+                {
+                    int id = newRobotIds[i];
+                    RobotInstance r = _robots[id];
+
+                    r.AutoNavigator.Enable();
+                    r.AutoNavigator.ClearGoal();
+                    r.Manager.ResetAutoCommands();
+                    r.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
+                }
                 // 4) 确保所有机器人自动启用（你当前需求：未选中机器人也应持续自动运行）
                 for (int i = 0; i < _robots.Count; i++)
                 {
@@ -806,7 +814,7 @@ namespace GridDemo.Robots
                 else
                 {
                     ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating);
-                    // 关键修复：先重绑 walkable（包含静态障碍），再 Enable() 触发 RebuildPath
+                    // 先重绑 walkable（包含静态障碍），再 Enable() 触发 RebuildPath
                     RebindDynamicWalkable_NoLock();
 
                     for (int i = 0; i < _robots.Count; i++)
