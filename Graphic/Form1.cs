@@ -83,6 +83,11 @@ namespace GridDemo
             btnResetRobot.Click += btnResetRobot_Click;
             btnStart.Click += btnStart_Click;
             btnStop.Click += btnStop_Click;
+
+            if (lvRobotStates != null)
+            {
+                lvRobotStates.ItemSelectionChanged += lvRobotStates_ItemSelectionChanged;
+            }
         }
 
         /// <summary>
@@ -211,6 +216,8 @@ namespace GridDemo
                 {
                     skControl.Invalidate();
                 }
+
+                UpdateRobotStatesList();
             };
             _renderTimer.Start();
             Log("Render timer started. intervalMs=" + intervalMs);
@@ -757,6 +764,7 @@ namespace GridDemo
 
             _engine.SetRobotCount(count, initialMaxSpeed: (double)numericVinit.Value, initialDirection: EnumMoveDirection.Right);
 
+            UpdateRobotStatesList();
             skControl.Invalidate();
         }
 
@@ -774,9 +782,9 @@ namespace GridDemo
             numericAddRobot.ValueChanged += numericAddRobot_ValueChanged;
 
             _engine.ResetToSingleRobotRandomRoam(initialMaxSpeed: (double)numericVinit.Value, initialDirection: EnumMoveDirection.Right);
-            // 重置机器人后：不默认选中任何机器人
             _engine.ClearSelectedRobot();
 
+            UpdateRobotStatesList();
             skControl.Invalidate();
         }
 
@@ -790,6 +798,7 @@ namespace GridDemo
             _engine.StartAll();
             Log("btnStart_Click: StartAll");
 
+            UpdateRobotStatesList();
             skControl.Invalidate();
         }
 
@@ -803,6 +812,87 @@ namespace GridDemo
             _engine.PauseAll();
             Log("btnStop_Click: PauseAll");
 
+            UpdateRobotStatesList();
+            skControl.Invalidate();
+        }
+
+        private void UpdateRobotStatesList()
+        {
+            if (_engine == null || lvRobotStates == null || lvRobotStates.IsDisposed)
+                return;
+
+            var states = _engine.GetRobotStatesSnapshot();
+            int selectedId = _engine.SelectedRobotId;
+
+            lvRobotStates.BeginUpdate();
+            try
+            {
+                while (lvRobotStates.Items.Count < states.Count)
+                {
+                    var item = new ListViewItem();
+                    item.SubItems.Add("");
+                    item.SubItems.Add("");
+                    item.SubItems.Add("");
+                    item.SubItems.Add("");
+                    lvRobotStates.Items.Add(item);
+                }
+
+                while (lvRobotStates.Items.Count > states.Count)
+                {
+                    lvRobotStates.Items.RemoveAt(lvRobotStates.Items.Count - 1);
+                }
+
+                for (int i = 0; i < states.Count; i++)
+                {
+                    var s = states[i];
+                    var item = lvRobotStates.Items[i];
+
+                    string idText = (i + 1).ToString();
+                    string posText = string.Format("{0:F2},{1:F2}", s.X, s.Y);
+                    string vText = s.Speed.ToString("F2");
+                    string aText = s.Acc.ToString("F2");
+                    string angText = s.OrientationAngle.ToString("F1");
+
+                    if (item.Text != idText) item.Text = idText;
+                    if (item.SubItems[1].Text != posText) item.SubItems[1].Text = posText;
+                    if (item.SubItems[2].Text != vText) item.SubItems[2].Text = vText;
+                    if (item.SubItems[3].Text != aText) item.SubItems[3].Text = aText;
+                    if (item.SubItems[4].Text != angText) item.SubItems[4].Text = angText;
+
+                    item.Tag = i;
+                }
+
+                if (selectedId >= 0 && selectedId < lvRobotStates.Items.Count)
+                {
+                    var selItem = lvRobotStates.Items[selectedId];
+                    if (!selItem.Selected)
+                    {
+                        lvRobotStates.SelectedIndices.Clear();
+                        selItem.Selected = true;
+                    }
+                }
+                else
+                {
+                    if (lvRobotStates.SelectedIndices.Count > 0)
+                        lvRobotStates.SelectedIndices.Clear();
+                }
+            }
+            finally
+            {
+                lvRobotStates.EndUpdate();
+            }
+        }
+
+        private void lvRobotStates_ItemSelectionChanged(object sender, ListViewItemSelectionChangedEventArgs e)
+        {
+            if (!e.IsSelected)
+                return;
+
+            if (_engine == null)
+                return;
+
+            int id = e.ItemIndex;
+            _engine.SelectRobot(id);
             skControl.Invalidate();
         }
     }

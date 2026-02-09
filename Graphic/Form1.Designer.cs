@@ -39,6 +39,13 @@
             this.numericVinit = new System.Windows.Forms.NumericUpDown();
             this.labelAcc = new System.Windows.Forms.Label();
             this.numericAcc = new System.Windows.Forms.NumericUpDown();
+            this.grpRobotStates = new System.Windows.Forms.GroupBox();
+            this.lvRobotStates = new System.Windows.Forms.ListView();
+            this.colId = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colPos = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colSpeed = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colAcc = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colAngle = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.skControl = new SkiaSharp.Views.Desktop.SKControl();
             this.panelRightTop = new System.Windows.Forms.Panel();
             this.panelObstacles = new System.Windows.Forms.Panel();
@@ -55,6 +62,7 @@
             ((System.ComponentModel.ISupportInitialize)(this.numericAddRobot)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
+            this.grpRobotStates.SuspendLayout();
             this.panelRightTop.SuspendLayout();
             this.panelObstacles.SuspendLayout();
             this.SuspendLayout();
@@ -84,6 +92,7 @@
             this.flowLeft.Controls.Add(this.cmbChooseModel);
             this.flowLeft.Controls.Add(this.cmbPathAlgorithm);
             this.flowLeft.Controls.Add(this.panel1);
+            this.flowLeft.Controls.Add(this.grpRobotStates);
             this.flowLeft.Dock = System.Windows.Forms.DockStyle.Fill;
             this.flowLeft.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
             this.flowLeft.Location = new System.Drawing.Point(0, 0);
@@ -257,6 +266,61 @@
             this.numericAcc.TabIndex = 5;
             this.numericAcc.ValueChanged += new System.EventHandler(this.numericAcc_ValueChanged);
             // 
+            // grpRobotStates
+            // 
+            this.grpRobotStates.Controls.Add(this.lvRobotStates);
+            this.grpRobotStates.Location = new System.Drawing.Point(15, 345);
+            this.grpRobotStates.Name = "grpRobotStates";
+            this.grpRobotStates.Size = new System.Drawing.Size(195, 400);
+            this.grpRobotStates.TabIndex = 3;
+            this.grpRobotStates.TabStop = false;
+            this.grpRobotStates.Text = "机器人状态";
+            // 
+            // lvRobotStates
+            // 
+            this.lvRobotStates.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
+            this.colId,
+            this.colPos,
+            this.colSpeed,
+            this.colAcc,
+            this.colAngle});
+            this.lvRobotStates.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.lvRobotStates.FullRowSelect = true;
+            this.lvRobotStates.GridLines = true;
+            this.lvRobotStates.HideSelection = false;
+            this.lvRobotStates.Location = new System.Drawing.Point(3, 24);
+            this.lvRobotStates.MultiSelect = false;
+            this.lvRobotStates.Name = "lvRobotStates";
+            this.lvRobotStates.Size = new System.Drawing.Size(189, 373);
+            this.lvRobotStates.TabIndex = 0;
+            this.lvRobotStates.UseCompatibleStateImageBehavior = false;
+            this.lvRobotStates.View = System.Windows.Forms.View.Details;
+            // 
+            // colId
+            // 
+            this.colId.Text = "Id";
+            this.colId.Width = 35;
+            // 
+            // colPos
+            // 
+            this.colPos.Text = "(X,Y)";
+            this.colPos.Width = 72;
+            // 
+            // colSpeed
+            // 
+            this.colSpeed.Text = "V";
+            this.colSpeed.Width = 30;
+            // 
+            // colAcc
+            // 
+            this.colAcc.Text = "A";
+            this.colAcc.Width = 30;
+            // 
+            // colAngle
+            // 
+            this.colAngle.Text = "Ang";
+            this.colAngle.Width = 35;
+            // 
             // skControl
             // 
             this.skControl.Dock = System.Windows.Forms.DockStyle.Fill;
@@ -334,7 +398,7 @@
             this.ClientSize = new System.Drawing.Size(1221, 774);
             this.Controls.Add(this.splitMain);
             this.Name = "Form1";
-            this.Text = " RCS Ver3.4.1 吴灵丽（三期 28号）";
+            this.Text = " RCS Ver3.4.2 吴灵丽（三期 28号）";
             this.splitMain.Panel1.ResumeLayout(false);
             this.splitMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.splitMain)).EndInit();
@@ -345,6 +409,7 @@
             ((System.ComponentModel.ISupportInitialize)(this.numericAddRobot)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
+            this.grpRobotStates.ResumeLayout(false);
             this.panelRightTop.ResumeLayout(false);
             this.panelObstacles.ResumeLayout(false);
             this.panelObstacles.PerformLayout();
@@ -379,5 +444,13 @@
         private System.Windows.Forms.Button btnResetRobot;
         private System.Windows.Forms.Button btnStart;
         private System.Windows.Forms.Button btnStop;
+
+        private System.Windows.Forms.GroupBox grpRobotStates;
+        private System.Windows.Forms.ListView lvRobotStates;
+        private System.Windows.Forms.ColumnHeader colId;
+        private System.Windows.Forms.ColumnHeader colPos;
+        private System.Windows.Forms.ColumnHeader colSpeed;
+        private System.Windows.Forms.ColumnHeader colAcc;
+        private System.Windows.Forms.ColumnHeader colAngle;
     }
 }
