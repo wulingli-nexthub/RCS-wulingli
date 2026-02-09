@@ -28,8 +28,6 @@ namespace GridDemo.MultiRobots
             _world = world;
         }
 
-        public HashSet<int> PausedRobotIds => _pausedRobotIds;
-
         /// <summary>
         /// 当前全局寻路算法：
         /// - get：读取选中机器人的算法作为“当前配置”；
@@ -211,16 +209,13 @@ namespace GridDemo.MultiRobots
             }
         }
 
-        /// <summary> 将指定机器人加入“单机暂停”集合。 </summary>
-        public void PauseRobot(int robotId) => _pausedRobotIds.Add(robotId);
-
-        /// <summary> 将指定机器人从“单机暂停”集合移除。 </summary>
+        // 将指定机器人从“单机暂停”集合移除。
         public void ResumeRobot(int robotId) => _pausedRobotIds.Remove(robotId);
 
-        /// <summary> 判断机器人是否处于“单机暂停”。 </summary>
+        // 判断机器人是否处于“单机暂停”。
         public bool IsPaused(int robotId) => _pausedRobotIds.Contains(robotId);
 
-        /// <summary> 清空所有单机暂停状态。 </summary>
+        // 清空所有单机暂停状态。
         public void ClearAllPause() => _pausedRobotIds.Clear();
     }
 }

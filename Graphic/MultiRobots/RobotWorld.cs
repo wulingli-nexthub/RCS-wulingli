@@ -6,7 +6,7 @@ using System.Collections.Generic;
 
 namespace GridDemo.MultiRobots
 {
-    /// <summary>
+    /// <summary> 
     /// RobotWorld：承载“世界级别”的基础数据与操作。
     /// 职责：
     /// - 保存所有机器人列表与障碍地图；
@@ -112,24 +112,6 @@ namespace GridDemo.MultiRobots
                 _selectedRobotId = _robots.Count - 1;
 
             return _robots[_selectedRobotId];
-        }
-
-        /// <summary> 在锁保护下往世界中添加一个机器人。 </summary>
-        public void AddRobot(RobotInstance robot)
-        {
-            lock (_robotLock)
-            {
-                _robots.Add(robot);
-            }
-        }
-
-        /// <summary> 在锁保护下按索引删除一个机器人实例。 </summary>
-        public void RemoveRobotAt(int index)
-        {
-            lock (_robotLock)
-            {
-                _robots.RemoveAt(index);
-            }
         }
 
         /// <summary>
