@@ -94,6 +94,10 @@
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
     <Compile Include="Maps\ObstacleMap.cs" />
+    <Compile Include="MultiRobots\DynamicWalkableBinder.cs" />
+    <Compile Include="MultiRobots\PathClaimManager.cs" />
+    <Compile Include="MultiRobots\RobotControlManager.cs" />
+    <Compile Include="MultiRobots\RobotWorld.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Robots\GridCellClaimBoard.cs" />

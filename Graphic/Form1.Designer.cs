@@ -168,11 +168,6 @@
             // numericAddRobot
             // 
             this.numericAddRobot.Location = new System.Drawing.Point(116, 124);
-            this.numericAddRobot.Maximum = new decimal(new int[] {
-            10,
-            0,
-            0,
-            0});
             this.numericAddRobot.Minimum = new decimal(new int[] {
             1,
             0,
@@ -339,7 +334,7 @@
             this.ClientSize = new System.Drawing.Size(1221, 774);
             this.Controls.Add(this.splitMain);
             this.Name = "Form1";
-            this.Text = " RCS Ver3.3.2 吴灵丽（三期 28号）";
+            this.Text = " RCS Ver3.4.1 吴灵丽（三期 28号）";
             this.splitMain.Panel1.ResumeLayout(false);
             this.splitMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.splitMain)).EndInit();

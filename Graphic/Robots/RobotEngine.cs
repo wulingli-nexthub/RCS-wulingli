@@ -1,4 +1,5 @@
 ﻿using Graphic.Maps;
+using GridDemo.MultiRobots;
 using GridDemo.RobotModels.Pathfinding;
 using GridDemo.RobotRuns;
 using System;
@@ -11,132 +12,137 @@ namespace GridDemo.Robots
     /// </summary>
     internal enum EnumRobotProcessState
     {
-        Idle, // 空闲：不更新仿真
-        AutoNavigating, // 自动巡航：自动寻路 + 移动
-        ManualControl, // 手动控制：键盘等输入控制
-        ObstacleEditing, // 障碍编辑：暂停运动，仅编辑地图
-        Error // 错误：不更新仿真
+        Idle,             // 空闲：不更新仿真
+        AutoNavigating,   // 自动巡航：自动寻路 + 移动
+        ManualControl,    // 手动控制：键盘等输入控制
+        ObstacleEditing,  // 障碍编辑：暂停运动，仅编辑地图
+        Error             // 错误：不更新仿真
     }
 
     /// <summary>
-    /// 多机器人仿真/调度引擎：
-    /// - 持有所有机器人实例（<see cref="RobotInstance"/>）与地图数据（障碍、抢占板）。
-    /// - 在仿真线程中每帧调用 <see cref="Tick"/>：
-    ///   1) 重建动态可通行性（把其它机器人/目标格视为动态障碍）
-    ///   2) 路径格子锁抢占（按完整路径 -> 抢占前缀）
-    ///   3) 根据抢占前缀生成指令，并驱动运动学更新
-    ///   4) 机器人移动后释放已走过格子锁（边走边释放）
+    /// 多机器人仿真/调度引擎（重构版）：
+    /// - 作为“外观层”，对 UI 暴露统一接口；
+    /// - 把复杂逻辑下沉到：
+    ///    * RobotWorld：世界/机器人集合/障碍图等基础数据
+    ///    * DynamicWalkableBinder：动态可通行性绑定
+    ///    * PathClaimManager：路径格子锁抢占 + 死锁/让步
+    ///    * RobotControlManager：自动/手动控制 + 单机暂停 + 手动输入
     ///
-    /// 并发模型：
-    /// - UI 与仿真线程共享状态，通过 <see cref="_robotLock"/> 保证一致性。
+    /// Tick 过程：
+    /// 1) PathClaimManager 冷却计数衰减（让步冷却、死锁淡出）
+    /// 2) DynamicWalkableBinder 重绑 walkable（静态障碍 + 其他机器人占用格 + 目标格）
+    /// 3) PathClaimManager 路径抢占（完整路径 -> 抢占前缀）
+    /// 4) 对每台机器人：
+    ///    - 自动：按抢占前缀发指令；
+    ///    - 手动：根据键盘输入发指令；
+    ///    - 执行 Move.Update()，然后边走边释放旧格子锁。
     /// </summary>
     internal sealed class RobotEngine
     {
-        private EnumRobotProcessState _processState = EnumRobotProcessState.Idle; // 当前引擎状态（默认 Idle）
-
-        // 全局互斥锁：保护 _robots、导航器路径、抢占结果、速度/位置等跨线程共享数据
+        // 全局互斥锁：保护所有跨线程共享状态（世界/机器人/路径/锁等）
         private readonly object _robotLock = new object();
 
-        // 静态障碍物地图（线程安全：内部有自己的锁）
-        private readonly ObstacleMap _obstacleMap;
+        // 世界基础数据（障碍图、机器人集合、网格参数等）
+        private readonly RobotWorld _world;
 
-        // 仿真离散参数：网格大小（米）、仿真步长（秒）、网格数量（宽高一致）
+        // 动态可通行性绑定（基于其它机器人位置/终点）
+        private readonly DynamicWalkableBinder _walkableBinder;
+
+        // 路径格子锁抢占 + 死锁/让步管理
+        private readonly PathClaimManager _pathClaimManager;
+
+        // 控制模式与手动输入/单机暂停
+        private readonly RobotControlManager _control;
+
+        // 当前引擎状态
+        private EnumRobotProcessState _processState = EnumRobotProcessState.Idle;
+
+        // 全局运行开关：false 则 Tick 直接 return（UI 暂停）
+        private bool _isRunning;
+
+        // 仅为便于保持原 API 属性，镜像保留世界/网格参数
+        private readonly int _gridCount;
         private readonly double _cellSizeM;
         private readonly double _dt;
-        private readonly int _gridCount;
-
-        // 世界尺寸（米），用于边界限制与坐标换算
         private readonly double _worldWidthM;
         private readonly double _worldHeightM;
 
-        // 随机生成器：用于随机生成机器人初始格、随机目标
-        private readonly Random _rng = new Random();
-
-        // 所有机器人实例（Id 通常为 0..Count-1）
-        private readonly List<RobotInstance> _robots = new List<RobotInstance>();
-
-        // UI 选中的机器人（-1 表示未选中）
-        private int _selectedRobotId = -1;
-
-        // --- 碰撞让步冷却（目前用于避免频繁让步时抖动/震荡） ---
-        private const int YieldCooldownFrames = 12; // 12 帧 * 20ms ≈ 240ms
-        private readonly Dictionary<int, int> _yieldCooldownTicks = new Dictionary<int, int>(); // robotId -> 冷却剩余帧数
-
-        // --- 互卡检测：等待确认后再触发重规划/让步 ---
-        // 说明：当前“两个机器人相遇就重规划”太激进，会造成抖动和频繁改道。
-        // 改为：记录“阻塞关系(blocked->blocker)”的持续帧数，超过阈值才认为互卡成立。
-        private const int DeadlockConfirmFrames = 100; // 约 2 秒（dt=0.02 -> 100帧）
-        private const int DeadlockClearFrames = 12;    // 关系消失后保留一小段时间，避免瞬时抖动
-        private readonly Dictionary<int, DeadlockInfo> _deadlockByBlockedId = new Dictionary<int, DeadlockInfo>(); // blockedId -> info
-
-        private struct DeadlockInfo
+        /// <summary>
+        /// 构造引擎：
+        /// - 初始化世界与仿真参数；
+        /// - 创建 RobotWorld / PathClaimManager / DynamicWalkableBinder / RobotControlManager；
+        /// - 至少创建 1 台机器人并加入世界；
+        /// - 默认不运行（等待 UI 点击“启动”）。
+        /// </summary>
+        public RobotEngine(int gridCount, double cellSizeM, double dt,
+                           double initialMaxSpeed, EnumMoveDirection initialDirection)
         {
-            public int BlockerId;           // 当前认为是谁挡住了我
-            public int ConfirmFrames;       // 持续阻塞累计帧数
-            public int LostFrames;          // 连续“未观测到阻塞”帧数（用于消抖清理）
-        }
-
-        // 格子锁抢占板：负责对路径格子进行抢占/释放，避免多机器人同格冲突
-        private readonly GridCellClaimBoard _claimBoard;
-
-        // 全局运行开关：false 则 Tick() 直接 return（UI 暂停）
-        private bool _isRunning;
-
-        // 单机器人暂停：不会影响其它机器人；Tick 中遇到 paused 机器人会强制停车且不派发指令
-        private readonly HashSet<int> _pausedRobotIds = new HashSet<int>();
-
-        // 边走边释放：记录每台机器人上一帧所在格子，检测换格后释放“已走出”的旧格锁
-        private readonly Dictionary<int, GridPos> _lastGridCellByRobotId = new Dictionary<int, GridPos>();
-
-        public RobotEngine(int gridCount, double cellSizeM, double dt, double initialMaxSpeed, EnumMoveDirection initialDirection)
-        {
-            // 初始化世界与仿真参数
             _gridCount = gridCount;
             _cellSizeM = cellSizeM;
             _dt = dt;
 
-            // 世界尺寸 = 网格数 * 单格尺寸
             _worldWidthM = gridCount * cellSizeM;
             _worldHeightM = gridCount * cellSizeM;
 
-            // 静态障碍地图
-            _obstacleMap = new ObstacleMap(gridCount, gridCount);
+            _world = new RobotWorld(_robotLock, gridCount, cellSizeM, dt);
+            _pathClaimManager = new PathClaimManager(_world);
+            _walkableBinder = new DynamicWalkableBinder(_world);
+            _control = new RobotControlManager(_world);
 
-            // 格子锁抢占板：需要知道地图尺寸与障碍（障碍格天然不可抢占）
-            _claimBoard = new GridCellClaimBoard(_gridCount, _obstacleMap);
-
-            // 构造时至少一个机器人
+            // 创建至少 1 台机器人
             SetRobotCount(1, initialMaxSpeed, initialDirection);
 
-            // 默认不运行（等待 UI 点击“启动”）
             _processState = EnumRobotProcessState.Idle;
             _isRunning = false;
         }
 
-        // 对外暴露世界与网格参数（供 UI 绘制/坐标换算）
+        #region 对外属性/基础信息
+
         public double WorldWidthM => _worldWidthM;
         public double WorldHeightM => _worldHeightM;
         public double CellSizeM => _cellSizeM;
         public int GridCount => _gridCount;
 
-        /// <summary>
-        /// 当前选中机器人 Id（线程安全）。
-        /// </summary>
+        /// <summary> 当前选中机器人 Id（线程安全）。 </summary>
         public int SelectedRobotId
         {
             get
             {
                 lock (_robotLock)
                 {
-                    return _selectedRobotId;
+                    return _world.SelectedRobotId;
                 }
             }
         }
 
         /// <summary>
+        /// 当前寻路算法（读：选中机器人；写：同步所有机器人）。
+        /// 实际委托给 RobotControlManager。
+        /// </summary>
+        public EnumPathfindingAlgorithm Algorithm
+        {
+            get => _control.Algorithm;
+            set => _control.Algorithm = value;
+        }
+
+        /// <summary> 选中机器人是否启用自动导航。 </summary>
+        public bool AutoEnabled => _control.AutoEnabled;
+
+        /// <summary> 获取障碍物地图快照（用于渲染）。 </summary>
+        public bool[,] GetObstacleSnapshot()
+        {
+            return _world.ObstacleMap.GetSnapshot();
+        }
+
+        #endregion
+
+        #region 全局启动/暂停 & 选中管理
+
+        /// <summary>
         /// 全局启动：
         /// - 恢复 Tick 推进；
         /// - 清空所有单机暂停；
+        /// - 重绑 walkable；
         /// - 确保所有机器人启用自动导航。
         /// </summary>
         public void StartAll()
@@ -146,16 +152,13 @@ namespace GridDemo.Robots
                 _isRunning = true;
                 ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating);
 
-                _pausedRobotIds.Clear();
-                // 关键修复：启动前先重绑 walkable，保证 Enable()->RebuildPath 使用正确的障碍判定
-                RebindDynamicWalkable_NoLock();
+                _control.ClearAllPause();
+                _walkableBinder.RebindDynamicWalkable_NoLock();
 
-                for (int i = 0; i < _robots.Count; i++)
+                foreach (var r in _world.Robots)
                 {
-                    if (!_robots[i].AutoNavigator.IsEnabled)
-                    {
-                        _robots[i].AutoNavigator.Enable();
-                    }
+                    if (!r.AutoNavigator.IsEnabled)
+                        r.AutoNavigator.Enable();
                 }
             }
         }
@@ -172,13 +175,13 @@ namespace GridDemo.Robots
                 _isRunning = false;
                 ChangeProcessState_NoLock(EnumRobotProcessState.Idle);
 
-                _pausedRobotIds.Clear();
+                _control.ClearAllPause();
 
-                for (int i = 0; i < _robots.Count; i++)
+                foreach (var r in _world.Robots)
                 {
-                    _robots[i].Speed = 0.0;
-                    _robots[i].Manager.Acc = 0.0;
-                    _robots[i].Move.StopImmediately_NoLock();
+                    r.Speed = 0.0;
+                    r.Manager.Acc = 0.0;
+                    r.Move.StopImmediately_NoLock();
                 }
             }
         }
@@ -188,87 +191,49 @@ namespace GridDemo.Robots
         /// </summary>
         public void ClearSelectedRobot()
         {
+            _world.SelectedRobotId = -1;
+        }
+
+        /// <summary>
+        /// 选中某台机器人：
+        /// - 更新 SelectedRobotId；
+        /// - 清除对该机器人的单机暂停，使其继续运动。
+        /// </summary>
+        public bool SelectRobot(int id)
+        {
             lock (_robotLock)
             {
-                _selectedRobotId = -1;
+                if (id < 0 || id >= _world.Robots.Count)
+                    return false;
+
+                _world.SelectedRobotId = id;
+                _control.ResumeRobot(id);
+                return true;
             }
         }
 
-        /// <summary>
-        /// 当前寻路算法（对外提供统一入口）：
-        /// - get：读取选中机器人的算法作为“当前配置”；
-        /// - set：同步到所有机器人。
-        /// </summary>
-        public EnumPathfindingAlgorithm Algorithm
-        {
-            get
-            {
-                lock (_robotLock)
-                {
-                    return GetSelectedRobot_NoLock().AutoNavigator.Algorithm;
-                }
-            }
-            set
-            {
-                lock (_robotLock)
-                {
-                    for (int i = 0; i < _robots.Count; i++)
-                    {
-                        _robots[i].AutoNavigator.Algorithm = value;
-                    }
-                }
-            }
-        }
+        #endregion
 
-        /// <summary>
-        /// 选中机器人是否启用自动导航（供 UI 状态显示）。
-        /// </summary>
-        public bool AutoEnabled
-        {
-            get
-            {
-                lock (_robotLock)
-                {
-                    if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                    {
-                        return false;
-                    }
-
-                    return _robots[_selectedRobotId].AutoNavigator.IsEnabled;
-                }
-            }
-        }
-
-        /// <summary>
-        /// 获取障碍物地图快照（用于渲染）。
-        /// </summary>
-        public bool[,] GetObstacleSnapshot()
-        {
-            return _obstacleMap.GetSnapshot();
-        }
+        #region 障碍物编辑
 
         /// <summary>
         /// 切换指定格子的障碍状态。
-        /// 自动模式下会触发所有启用自动的机器人重建路径（障碍改变会使旧路径失效）。
+        /// 自动模式下会触发所有启用自动的机器人重建路径。
+        /// 障碍编辑模式下不重规划。
         /// </summary>
         public void ToggleObstacle(GridPos p)
         {
-            _obstacleMap.Toggle(p);
+            _world.ObstacleMap.Toggle(p);
 
-            // 障碍编辑模式下不重规划：避免一边涂障碍一边机器人不断停/重算
             if (_processState == EnumRobotProcessState.ObstacleEditing)
-            {
                 return;
-            }
 
             lock (_robotLock)
             {
-                for (int i = 0; i < _robots.Count; i++)
+                foreach (var r in _world.Robots)
                 {
-                    if (_robots[i].AutoNavigator.IsEnabled)
-                    {
-                        _robots[i].AutoNavigator.RebuildPath();
-                    }
+                    if (r.AutoNavigator.IsEnabled)
+                        r.AutoNavigator.RebuildPath();
                 }
             }
         }
@@ -276,79 +241,117 @@ namespace GridDemo.Robots
         /// <summary>
         /// 清空所有障碍物。
         /// 自动模式下会触发所有启用自动的机器人重建路径。
+        /// 障碍编辑模式下不重规划。
         /// </summary>
         public void ClearObstacles()
         {
-            _obstacleMap.Clear();
+            _world.ObstacleMap.Clear();
 
             if (_processState == EnumRobotProcessState.ObstacleEditing)
-            {
                 return;
-            }
 
             lock (_robotLock)
             {
-                for (int i = 0; i < _robots.Count; i++)
+                foreach (var r in _world.Robots)
                 {
-                    if (_robots[i].AutoNavigator.IsEnabled)
-                    {
-                        _robots[i].AutoNavigator.RebuildPath();
-                    }
+                    if (r.AutoNavigator.IsEnabled)
+                        r.AutoNavigator.RebuildPath();
                 }
             }
         }
 
         /// <summary>
+        /// 切换障碍编辑模式：
+        /// - enabled=true：暂停所有运动（禁用自动/手动，停止命令）
+        /// - enabled=false：恢复自动巡航，并重绑 walkable 后重新启用 AutoNavigator。
+        /// </summary>
+        public void SetObstacleEditMode(bool enabled)
+        {
+            lock (_robotLock)
+            {
+                if (enabled)
+                {
+                    ChangeProcessState_NoLock(EnumRobotProcessState.ObstacleEditing);
+
+                    foreach (var r in _world.Robots)
+                    {
+                        r.Speed = 0.0;
+                        r.Manager.Acc = 0.0;
+                        r.Move.StopImmediately_NoLock();
+
+                        if (r.AutoNavigator.IsEnabled)
+                            r.AutoNavigator.Disable();
+
+                        r.Manual.Disable();
+                        r.Manager.ResetAutoCommands();
+                    }
+                }
+                else
+                {
+                    ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating);
+
+                    // 先重绑 walkable（包含静态障碍），再 Enable()
+                    _walkableBinder.RebindDynamicWalkable_NoLock();
+
+                    foreach (var r in _world.Robots)
+                    {
+                        r.AutoNavigator.Enable();
+                        r.Manager.ResetAutoCommands();
+                    }
+                }
+            }
+        }
+
+        #endregion
+
+        #region 机器人数量 / 初始化 / 重置
+
+        /// <summary>
         /// 设置机器人数量：
-        /// - 多 -> 少：删除尾部机器人
-        /// - 少 -> 多：新增机器人，随机放到空闲格，并给随机目标以确保其能动起来
-        /// - 完成后重绑动态可行走判定（把“其它机器人所在格”当作动态障碍）
+        /// - 多 -> 少：删除尾部机器人（先清理其所有抢占/状态）；
+        /// - 少 -> 多：新增机器人，随机放到空闲格，并给随机目标；
+        /// - 最后重绑动态 walkable。
         /// </summary>
         public void SetRobotCount(int count, double initialMaxSpeed, EnumMoveDirection initialDirection)
         {
             if (count < 1)
-            {
                 count = 1;
-            }
 
             lock (_robotLock)
             {
+                var robots = _world.Robots;
+
                 // 1) 删除多余机器人（从尾部删，保持前面不动）
-                while (_robots.Count > count)
+                while (robots.Count > count)
                 {
-                    int removeIndex = _robots.Count - 1;
-                    int removeRobotId = _robots[removeIndex].Id;
+                    int removeIndex = robots.Count - 1;
+                    int removeRobotId = robots[removeIndex].Id;
 
-                    // 关键修复：删除机器人前，必须释放其所有格子锁/路径前缀等残留
-                    _claimBoard.ReleaseAllByRobot(removeRobotId);
-                    _lastGridCellByRobotId.Remove(removeRobotId);
-                    _pausedRobotIds.Remove(removeRobotId);
-                    _yieldCooldownTicks.Remove(removeRobotId);
+                    // 清理该机器人所有抢占/冷却/历史状态
+                    _pathClaimManager.ClearRobotState(removeRobotId);
 
-                    // 同时清理导航器侧的 claimed 前缀（避免 UI/逻辑读到旧值）
-                    _robots[removeIndex].AutoNavigator.SetClaimedPathPrefix(null);
+                    // 清理导航器侧已声明的路径前缀
+                    robots[removeIndex].AutoNavigator.SetClaimedPathPrefix(null);
 
-                    _robots.RemoveAt(removeIndex);
+                    robots.RemoveAt(removeIndex);
                 }
 
                 // 修正选中项，避免越界
-                if (_selectedRobotId >= _robots.Count)
-                {
-                    _selectedRobotId = Math.Max(0, _robots.Count - 1);
-                }
+                if (_world.SelectedRobotId >= robots.Count)
+                    _world.SelectedRobotId = robots.Count > 0 ? robots.Count - 1 : -1;
 
                 // 2) 新增机器人（随机找空闲格）
                 var newRobotIds = new List<int>();
 
-                if (_robots.Count < count)
+                if (robots.Count < count)
                 {
-                    var used = BuildUsedCellKeySet_NoLock();
+                    var used = _world.BuildUsedCellKeySet_NoLock();
 
-                    while (_robots.Count < count)
+                    while (robots.Count < count)
                     {
-                        int id = _robots.Count;
+                        int id = robots.Count;
 
-                        GridPos cell = PickRandomFreeCell_NoLock(used);
+                        GridPos cell = _world.PickRandomFreeCell_NoLock(used);
                         int key = cell.Y * _gridCount + cell.X;
                         used.Add(key);
 
@@ -358,7 +361,7 @@ namespace GridDemo.Robots
                         var r = new RobotInstance(
                             id: id,
                             robotLock: _robotLock,
-                            obstacleMap: _obstacleMap,
+                            obstacleMap: _world.ObstacleMap,
                             gridCount: _gridCount,
                             cellSizeM: _cellSizeM,
                             dt: _dt,
@@ -368,67 +371,50 @@ namespace GridDemo.Robots
                             initialDirection: initialDirection,
                             initialX: x,
                             initialY: y,
-                            getGoalOwnerMap: () => BuildGoalOwnerMap_NoLock());
+                            getGoalOwnerMap: () => _world.BuildGoalOwnerMap_NoLock());
 
                         // 继承当前全局加速度配置（从第一个机器人拷贝）
-                        if (_robots.Count > 0)
-                        {
-                            r.Acc = _robots[0].Acc;
-                        }
+                        if (robots.Count > 0)
+                            r.Acc = robots[0].Acc;
 
-                        // 关键修复：先加入 _robots，后续 Rebind 才能覆盖到它
-                        _robots.Add(r);
+                        robots.Add(r);
                         newRobotIds.Add(r.Id);
                     }
                 }
 
-                // 3) 重绑动态障碍：把所有机器人占用格注入 WalkableProvider / WorldWalkableProvider
-                RebindDynamicWalkable_NoLock();
+                // 3) 重绑动态 walkable
+                _walkableBinder.RebindDynamicWalkable_NoLock();
 
-                // 关键修复：对“本次新建机器人”，在 walkable 已绑定后再 Enable/SetGoal（触发寻路）
-                for (int i = 0; i < newRobotIds.Count; i++)
+                // 4) 对“本次新建机器人”，在 walkable 已绑定后再 Enable/SetGoal（触发寻路）
+                foreach (int newId in newRobotIds)
                 {
-                    int id = newRobotIds[i];
-                    RobotInstance r = _robots[id];
-
+                    RobotInstance r = _world.Robots[newId];
                     r.AutoNavigator.Enable();
                     r.AutoNavigator.ClearGoal();
                     r.Manager.ResetAutoCommands();
-                    r.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
+                    r.AutoNavigator.SetGoal(
+                        _world.PickRandomFreeCell_NoLock(used: null),
+                        rebuildIfEnabled: true);
                 }
-                // 4) 确保所有机器人自动启用（你当前需求：未选中机器人也应持续自动运行）
-                for (int i = 0; i < _robots.Count; i++)
+
+                // 5) 确保所有机器人自动启用，未选中机器人也持续自动运行
+                foreach (var r in robots)
                 {
-                    if (!_robots[i].AutoNavigator.IsEnabled)
+                    if (!r.AutoNavigator.IsEnabled)
                     {
-                        _robots[i].AutoNavigator.Enable();
-                        _robots[i].AutoNavigator.ClearGoal();
-                        _robots[i].Manager.ResetAutoCommands();
-                        _robots[i].AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
+                        r.AutoNavigator.Enable();
+                        r.AutoNavigator.ClearGoal();
+                        r.Manager.ResetAutoCommands();
+                        r.AutoNavigator.SetGoal(
+                            _world.PickRandomFreeCell_NoLock(used: null),
+                            rebuildIfEnabled: true);
                     }
                 }
             }
         }
 
         /// <summary>
-        /// 构建所有机器人当前占用格 key（y*W+x）集合（要求已持有 _robotLock）。
-        /// 用途：新增机器人时避免出生点重叠。
-        /// </summary>
-        private HashSet<int> BuildUsedCellKeySet_NoLock()
-        {
-            var used = new HashSet<int>(_robots.Count);
-
-            for (int i = 0; i < _robots.Count; i++)
-            {
-                GridPos c = _robots[i].GetGridPos_NoLock();
-                used.Add(c.Y * _gridCount + c.X);
-            }
-
-            return used;
-        }
-
-        /// <summary>
-        /// 将引擎重置成单机器人（保留接口，当前随机巡航逻辑已被注释/关闭）。
+        /// 将引擎重置成单机器人（保留接口，当前为随机巡航逻辑）。
         /// </summary>
         public void ResetToSingleRobotRandomRoam(double initialMaxSpeed, EnumMoveDirection initialDirection)
         {
@@ -438,203 +424,133 @@ namespace GridDemo.Robots
                 _isRunning = false;
                 ChangeProcessState_NoLock(EnumRobotProcessState.Idle);
 
-                // 2) 重置为单机器人（保留位置/实例创建逻辑）
+                // 2) 重置为单机器人
                 SetRobotCount(1, initialMaxSpeed, initialDirection);
 
-                // 3) 清理引擎侧“路径/抢占/释放/让步冷却”等残留
-                _yieldCooldownTicks.Clear();
-                _pausedRobotIds.Clear();
-                _lastGridCellByRobotId.Clear();
-                _claimBoard.ReleaseAllByRobot(0);
+                // 3) 清理引擎侧“路径/抢占/释放/让步冷却/暂停”等残留
+                _control.ClearAllPause();
+                _pathClaimManager.ClearRobotState(0);
 
                 // 4) 清理机器人侧“目标/路径/命令”，并硬停
-                RobotInstance r0 = _robots[0];
+                var r0 = _world.Robots[0];
 
                 r0.Speed = 0.0;
                 r0.Manager.Acc = 0.0;
                 r0.Move.StopImmediately_NoLock();
                 r0.Manager.ResetAutoCommands();
 
-                // 关键：清目标 + 清路径前缀，避免 UI 仍绘制上一次路径
                 r0.AutoNavigator.SetClaimedPathPrefix(null);
                 r0.AutoNavigator.ClearGoal();
 
                 // 5) 重绑 walkable，确保后续 StartAll Enable/RebuildPath 能用最新判定
-                RebindDynamicWalkable_NoLock();
+                _walkableBinder.RebindDynamicWalkable_NoLock();
 
-                // 6) 维持“自动已启用但无目标”的等待态（不生成运动指令）
+                // 6) 维持“自动已启用但无目标”的等待态
                 if (!r0.AutoNavigator.IsEnabled)
-                {
                     r0.AutoNavigator.Enable();
-                }
             }
         }
 
-        /// <summary>
-        /// 选中某台机器人：
-        /// - 更新 _selectedRobotId；
-        /// - 不再强制停车/不加入单机暂停（选中时保持继续运动）。
-        /// </summary>
-        public bool SelectRobot(int id)
-        {
-            lock (_robotLock)
-            {
-                if (id < 0 || id >= _robots.Count)
-                {
-                    return false;
-                }
+        #endregion
 
-                _selectedRobotId = id;
+        #region 快照获取（供 UI 渲染）
 
-                // 选中时不再暂停该机器人，也不再强制停车
-                // 这样 UI 选中仅用于“查看/操作对象”，不会打断其当前自动运动。
-                _pausedRobotIds.Remove(id);
-
-                return true;
-            }
-        }
-
-        /// <summary>
-        /// 获取所有机器人状态快照（供渲染线程读取）。
-        /// </summary>
+        /// <summary> 获取所有机器人状态快照（供渲染线程读取）。 </summary>
         public List<RobotStateSnapshot> GetRobotStatesSnapshot()
         {
             lock (_robotLock)
             {
-                var list = new List<RobotStateSnapshot>(_robots.Count);
-                for (int i = 0; i < _robots.Count; i++)
-                {
-                    list.Add(_robots[i].GetSnapshot());
-                }
+                var list = new List<RobotStateSnapshot>(_world.Robots.Count);
+                foreach (var r in _world.Robots)
+                    list.Add(r.GetSnapshot());
                 return list;
             }
         }
 
-        /// <summary>
-        /// 获取选中机器人状态快照（未选中时返回 default）。
-        /// </summary>
+        /// <summary> 获取选中机器人状态快照（未选中时返回 default）。 </summary>
         public RobotStateSnapshot GetStateSnapshot()
         {
             lock (_robotLock)
             {
-                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                {
-                    return default(RobotStateSnapshot);
-                }
-
-                return _robots[_selectedRobotId].GetSnapshot();
+                int id = _world.SelectedRobotId;
+                if (id < 0 || id >= _world.Robots.Count)
+                    return default;
+                return _world.Robots[id].GetSnapshot();
             }
         }
 
-        /// <summary>
-        /// 获取选中机器人的路径点（世界坐标）快照，用于 UI 绘制。
-        /// </summary>
+        /// <summary> 获取选中机器人的路径点（世界坐标）快照，用于 UI 绘制。 </summary>
         public List<(double X, double Y)> GetPathWorldPointsSnapshot()
         {
             lock (_robotLock)
             {
-                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                {
+                int id = _world.SelectedRobotId;
+                if (id < 0 || id >= _world.Robots.Count)
                     return null;
-                }
 
-                return _robots[_selectedRobotId].AutoNavigator.GetPathWorldPointsSnapshot();
+                return _world.Robots[id].AutoNavigator.GetPathWorldPointsSnapshot();
             }
         }
 
-        /// <summary>
-        /// 获取所有机器人的抢占格子快照（用于渲染显示“格子锁”效果）。
-        /// </summary>
+        /// <summary> 获取所有机器人的抢占格子快照（用于显示“格子锁”效果）。 </summary>
         public Dictionary<int, List<GridPos>> GetClaimedCellsSnapshot()
         {
             lock (_robotLock)
             {
-                return _claimBoard.GetClaimedCellsSnapshot();
+                return _pathClaimManager.ClaimBoard.GetClaimedCellsSnapshot();
             }
         }
 
-        /// <summary>
-        /// 获取所有机器人目标点世界坐标快照（用于渲染）。
-        /// </summary>
+        /// <summary> 获取所有机器人目标点世界坐标快照（用于渲染）。 </summary>
         public List<(int Id, double X, double Y)> GetRobotsGoalWorldSnapshot()
         {
             lock (_robotLock)
             {
-                var list = new List<(int Id, double X, double Y)>(_robots.Count);
+                var list = new List<(int Id, double X, double Y)>(_world.Robots.Count);
 
-                for (int i = 0; i < _robots.Count; i++)
+                foreach (var r in _world.Robots)
                 {
-                    var g = _robots[i].AutoNavigator.GetGoalWorldSnapshot();
+                    var g = r.AutoNavigator.GetGoalWorldSnapshot();
                     if (g.HasValue)
-                    {
-                        list.Add((_robots[i].Id, g.Value.X, g.Value.Y));
-                    }
+                        list.Add((r.Id, g.Value.X, g.Value.Y));
                 }
 
                 return list;
             }
         }
+
+        #endregion
+
+        #region 控制参数 / 模式切换 / 手动输入
 
         /// <summary>
         /// 设置前进加速度（同步到所有机器人）。
         /// 自动模式下需要 ResetAutoCommands，使下一帧派发的 MoveDistance 读取到新加速度。
         /// </summary>
-        public void SetForwardAcc(double acc)
-        {
-            lock (_robotLock)
-            {
-                for (int i = 0; i < _robots.Count; i++)
-                {
-                    _robots[i].Acc = acc;
-                    _robots[i].Manager.ResetAutoCommands();
-                }
-            }
-        }
+        public void SetForwardAcc(double acc) => _control.SetForwardAcc(acc);
+
+        /// <summary> 设置最大速度（同步到所有机器人）。 </summary>
+        public void SetMaxSpeed(double vmax) => _control.SetMaxSpeed(vmax);
 
         /// <summary>
-        /// 设置最大速度（同步到所有机器人）。
-        /// </summary>
-        public void SetMaxSpeed(double vmax)
-        {
-            lock (_robotLock)
-            {
-                for (int i = 0; i < _robots.Count; i++)
-                {
-                    _robots[i].Manager.MaxSpeed = vmax;
-                }
-            }
-        }
-
-        /// <summary>
-        /// 切到自动模式（当前设计：只对“选中机器人”做对齐/清命令；未选中机器人由 Tick 保持自动）。
+        /// 切到自动模式（当前只对选中机器人做切换；未选中机器人由 Tick 保持自动）。
         /// </summary>
         public void EnableAuto()
         {
+            _control.EnableAutoForSelected();
             lock (_robotLock)
             {
                 ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating);
-
-                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                {
-                    return;
-                }
-
-                RobotInstance r = _robots[_selectedRobotId];
-                r.Manual.Disable();
-                r.Manager.SetMode(EnumRobotControlMode.Auto);
-
-                r.AutoNavigator.Enable();
-                r.Manager.ResetAutoCommands();
-                r.Manager.AlignOrientationToDirectionWithTurn();
             }
         }
 
         /// <summary>
         /// 切到手动模式：
         /// - 禁用选中机器人的自动导航；
-        /// - 释放该机器人格子锁（手动不按路径走，否则会长期占用锁）；
+        /// - 释放其所有格子锁和路径前缀；
         /// - 立即停车并清命令；
-        /// - 启用手动输入并解除单机暂停。
+        /// - 启用手动输入并解除单机暂停；
+        /// - 引擎模式切换为 ManualControl。
         /// </summary>
         public void EnableManual()
         {
@@ -642,119 +558,20 @@ namespace GridDemo.Robots
             {
                 _isRunning = true;
                 ChangeProcessState_NoLock(EnumRobotProcessState.ManualControl);
-
-                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                {
-                    return;
-                }
-
-                RobotInstance r = _robots[_selectedRobotId];
-
-                if (r.AutoNavigator.IsEnabled)
-                {
-                    r.AutoNavigator.Disable();
-                }
-
-                _claimBoard.ReleaseAllByRobot(r.Id);
-                _lastGridCellByRobotId.Remove(r.Id);
-                r.AutoNavigator.SetClaimedPathPrefix(null);
-
-                r.Speed = 0.0;
-                r.Manager.Acc = 0.0;
-                r.Move.StopImmediately_NoLock();
-                r.Manager.ResetAutoCommands();
-
-                r.Manual.Enable();
-                _pausedRobotIds.Remove(r.Id);
+                _control.EnableManualForSelected(_pathClaimManager);
             }
         }
 
-        /// <summary>
-        /// 触发选中机器人重建路径（用于 UI 手动点击“重建路径”）。
-        /// </summary>
+        /// <summary> 触发选中机器人重建路径（供 UI 手动点击）。 </summary>
         public void RebuildPath()
         {
             lock (_robotLock)
             {
-                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                {
+                int id = _world.SelectedRobotId;
+                if (id < 0 || id >= _world.Robots.Count)
                     return;
-                }
 
-                _robots[_selectedRobotId].AutoNavigator.RebuildPath();
-            }
-        }
-
-        /// <summary>
-        /// 手动：前进键按下/抬起（W）。
-        /// 仅当选中机器人处于“手动启用”时才接受输入。
-        /// </summary>
-        public void ManualForwardKey(bool down)
-        {
-            lock (_robotLock)
-            {
-                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                {
-                    return;
-                }
-
-                RobotInstance r = _robots[_selectedRobotId];
-
-                if (!r.Manual.IsEnabled)
-                {
-                    return;
-                }
-
-                r.Manual.InputForwardKey(down);
-                _pausedRobotIds.Remove(r.Id);
-            }
-        }
-
-        /// <summary>
-        /// 手动：左转键按下/抬起（A）。
-        /// </summary>
-        public void ManualTurnLeftKey(bool down)
-        {
-            lock (_robotLock)
-            {
-                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                {
-                    return;
-                }
-
-                RobotInstance r = _robots[_selectedRobotId];
-
-                if (!r.Manual.IsEnabled)
-                {
-                    return;
-                }
-
-                r.Manual.InputTurnLeftKey(down);
-                _pausedRobotIds.Remove(r.Id);
-            }
-        }
-
-        /// <summary>
-        /// 手动：右转键按下/抬起（D）。
-        /// </summary>
-        public void ManualTurnRightKey(bool down)
-        {
-            lock (_robotLock)
-            {
-                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                {
-                    return;
-                }
-
-                RobotInstance r = _robots[_selectedRobotId];
-
-                if (!r.Manual.IsEnabled)
-                {
-                    return;
-                }
-
-                r.Manual.InputTurnRightKey(down);
-                _pausedRobotIds.Remove(r.Id);
+                _world.Robots[id].AutoNavigator.RebuildPath();
             }
         }
 
@@ -766,80 +583,50 @@ namespace GridDemo.Robots
         {
             lock (_robotLock)
             {
-                if (_selectedRobotId < 0 || _selectedRobotId >= _robots.Count)
-                {
+                int id = _world.SelectedRobotId;
+                if (id < 0 || id >= _world.Robots.Count)
                     return false;
-                }
 
-                RobotInstance r = _robots[_selectedRobotId];
+                RobotInstance r = _world.Robots[id];
 
-                _claimBoard.ReleaseAllByRobot(r.Id);
-                _lastGridCellByRobotId.Remove(r.Id);
+                _pathClaimManager.ClaimBoard.ReleaseAllByRobot(r.Id);
+                _pathClaimManager.ClearRobotState(r.Id);
 
                 r.AutoNavigator.SetGoal(goal, rebuildIfEnabled: true);
-                _pausedRobotIds.Remove(r.Id);
+                _control.ResumeRobot(r.Id);
 
                 return true;
             }
         }
 
-        /// <summary>
-        /// 切换障碍编辑模式：
-        /// - enabled=true：暂停所有运动（禁用自动/手动）
-        /// - enabled=false：恢复自动巡航，并重置自动命令
-        /// </summary>
-        public void SetObstacleEditMode(bool enabled)
-        {
-            lock (_robotLock)
-            {
-                if (enabled)
-                {
-                    ChangeProcessState_NoLock(EnumRobotProcessState.ObstacleEditing);
+        /// <summary> 手动：前进键按下/抬起（W）。 </summary>
+        public void ManualForwardKey(bool down) => _control.ManualForwardKey(down);
 
-                    for (int i = 0; i < _robots.Count; i++)
-                    {
-                        _robots[i].Speed = 0.0;
-                        _robots[i].Manager.Acc = 0.0;
-                        _robots[i].Move.StopImmediately_NoLock();
+        /// <summary> 手动：左转键按下/抬起（A）。 </summary>
+        public void ManualTurnLeftKey(bool down) => _control.ManualTurnLeftKey(down);
 
-                        if (_robots[i].AutoNavigator.IsEnabled)
-                        {
-                            _robots[i].AutoNavigator.Disable();
-                        }
+        /// <summary> 手动：右转键按下/抬起（D）。 </summary>
+        public void ManualTurnRightKey(bool down) => _control.ManualTurnRightKey(down);
 
-                        _robots[i].Manual.Disable();
-                        _robots[i].Manager.ResetAutoCommands();
-                    }
-                }
-                else
-                {
-                    ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating);
-                    // 先重绑 walkable（包含静态障碍），再 Enable() 触发 RebuildPath
-                    RebindDynamicWalkable_NoLock();
+        #endregion
 
-                    for (int i = 0; i < _robots.Count; i++)
-                    {
-                        _robots[i].AutoNavigator.Enable();
-                        _robots[i].Manager.ResetAutoCommands();
-                    }
-                }
-            }
-        }
+        #region 主循环 Tick
 
         /// <summary>
-        /// 仿真主循环入口（由 RobotSimulationLoop 在后台线程中每 dt 调用一次）。
-        /// 一帧 Tick 做的事：
-        /// 1) 冷却计数衰减
-        /// 2) 绑定动态 walkable（静态障碍 + 其他机器人占用格 + 其他机器人目标格）
-        /// 3) 路径抢占（完整路径 -> 抢占前缀）并回灌到导航器
-        /// 4) 对每台机器人：派发指令 -> 更新运动学 -> 释放已走出的格子锁
+        /// 仿真主循环入口（由后台线程每 dt 调用一次）。
+        /// 一帧 Tick 主要流程：
+        /// 1) 冷却计数衰减（让步冷却 + 死锁关系淡出）；
+        /// 2) 重绑动态 walkable（把其它机器人占用格/目标格当作动态障碍/保留格）；
+        /// 3) 执行路径格子锁抢占，并把“抢占前缀”写回 AutoNavigator；
+        /// 4) 逐机器人：
+        ///    - 若单机暂停：停车；
+        ///    - 否则自动/手动生成指令并执行运动学更新；
+        ///    - 边走边释放：检测换格后释放上一格锁。
         /// </summary>
         public void Tick()
         {
             if (!_isRunning)
-            {
                 return;
-            }
 
             // 不推进仿真的状态直接 return（避免编辑障碍时机器人乱动）
             switch (_processState)
@@ -852,63 +639,22 @@ namespace GridDemo.Robots
 
             lock (_robotLock)
             {
-                // 让步冷却推进（每帧减 1，归零则移除）
-                if (_yieldCooldownTicks.Count > 0)
+                // 1) 冷却/死锁淡出推进
+                _pathClaimManager.TickCooling_NoLock();
+
+                // 2) 动态可通行性重绑（把其它机器人占用格/终点当动态障碍）
+                _walkableBinder.RebindDynamicWalkable_NoLock();
+
+                // 3) 格子锁抢占 + 死锁检测与处理
+                _pathClaimManager.ApplyPathClaiming_NoLock();
+
+                // 4) 逐机器人更新控制与运动
+                foreach (var r in _world.Robots)
                 {
-                    var keys = new List<int>(_yieldCooldownTicks.Keys);
-                    for (int i = 0; i < keys.Count; i++)
-                    {
-                        int id = keys[i];
-                        int t = _yieldCooldownTicks[id] - 1;
-                        if (t <= 0)
-                        {
-                            _yieldCooldownTicks.Remove(id);
-                        }
-                        else
-                        {
-                            _yieldCooldownTicks[id] = t;
-                        }
-                    }
-                }
-
-                // 互卡关系“淡出计数”：未被观测到的关系逐步清理
-                if (_deadlockByBlockedId.Count > 0)
-                {
-                    var deadlockKeys = new List<int>(_deadlockByBlockedId.Keys);
-                    for (int i = 0; i < deadlockKeys.Count; i++)
-                    {
-                        int blockedId = deadlockKeys[i];
-                        DeadlockInfo info = _deadlockByBlockedId[blockedId];
-
-                        // 每帧默认认为“本帧未观测到”，ApplyPathClaiming_NoLock() 若观测到会把 LostFrames 置 0
-                        info.LostFrames++;
-
-                        if (info.LostFrames >= DeadlockClearFrames)
-                        {
-                            _deadlockByBlockedId.Remove(blockedId);
-                        }
-                        else
-                        {
-                            _deadlockByBlockedId[blockedId] = info;
-                        }
-                    }
-                }
-
-                // 1) 动态可通行性重绑（把其它机器人占用格当动态障碍）
-                RebindDynamicWalkable_NoLock();
-
-                // 2) 先做格子锁抢占，再出指令（保证出指令一定在“已抢占前缀”内）
-                ApplyPathClaiming_NoLock();
-
-                // 3) 逐机器人更新
-                for (int i = 0; i < _robots.Count; i++)
-                {
-                    RobotInstance r = _robots[i];
-                    bool isSelected = r.Id == _selectedRobotId;
+                    bool isSelected = (r.Id == _world.SelectedRobotId);
 
                     // 单机暂停：该机器人不派发指令，强制停车
-                    bool isPausedBySingle = _pausedRobotIds.Contains(r.Id);
-                    if (isPausedBySingle)
+                    if (_control.IsPaused(r.Id))
                     {
                         r.Speed = 0.0;
                         r.Manager.Acc = 0.0;
@@ -922,9 +668,7 @@ namespace GridDemo.Robots
                     {
                         r.Manual.Disable();
                         if (!r.AutoNavigator.IsEnabled)
-                        {
                             r.AutoNavigator.Enable();
-                        }
                     }
 
                     // 未选中机器人如果没路径，给随机目标以继续“巡航”
@@ -933,15 +677,17 @@ namespace GridDemo.Robots
                         List<(double X, double Y)> path = r.AutoNavigator.GetPathWorldPointsSnapshot();
                         if (path == null || path.Count == 0)
                         {
-                            r.AutoNavigator.SetGoal(PickRandomFreeCell_NoLock(used: null), rebuildIfEnabled: true);
+                            r.AutoNavigator.SetGoal(
+                                _world.PickRandomFreeCell_NoLock(used: null),
+                                rebuildIfEnabled: true);
                             r.Manager.ResetAutoCommands();
                         }
                     }
 
-                    // RobotManager.Tick：保留为统一生命周期入口（本项目内目前为空实现）
-                    r.Manager.Tick(_dt);
+                    // RobotManager 统一生命周期入口
+                    r.Manager.Tick(_world.Dt);
 
-                    // 自动模式：沿“抢占路径前缀”生成指令；生成失败则停车等待下一帧抢占
+                    // 自动模式：沿“抢占路径前缀”生成指令；生成失败则适当停车等待下一帧抢占
                     if (r.AutoNavigator.IsEnabled)
                     {
                         RobotCommand cmd = r.AutoNavigator.TryBuildNextCommandFromClaimedPath();
@@ -951,18 +697,16 @@ namespace GridDemo.Robots
                         }
                         else
                         {
-                            // 关键修复：
-                            // 不能在“没有新指令”时直接 StopImmediately，
-                            // 否则会打断上一条 MoveDistance 的收尾，导致停在网格线而不是格子中心。
-                            // 只有当机器人确实空闲（既不在转向，也不在执行 MoveDistance）时才允许硬停。
-                            if (!r.Manager.IsTurning && !r.Move.IsMoveDistanceActive_NoLock())
+                            // 没有新指令时，不中断正在进行的 MoveDistance/转向
+                            if (!r.Manager.IsTurning &&
+                                !r.Move.IsMoveDistanceActive_NoLock())
                             {
                                 r.Move.StopImmediately_NoLock();
                             }
                         }
                     }
                     // 手动模式：仅对选中机器人派发手动命令
-                    else if (r.Manual.IsEnabled && r.Id == _selectedRobotId)
+                    else if (r.Manual.IsEnabled && isSelected)
                     {
                         RobotCommand cmd = r.Manual.TryBuildNextCommand();
                         r.Manager.DispatchDirect_NoLock(cmd);
@@ -971,248 +715,15 @@ namespace GridDemo.Robots
                     // 运动学执行：推进位置/速度/朝向
                     r.Move.Update();
 
-                    // 边走边释放：换格后释放上一个格子的锁，降低堵塞
-                    ReleaseClaimByMovement_NoLock(r);
+                    // 边走边释放：换格后释放上一个格子的锁
+                    _pathClaimManager.ReleaseClaimByMovement_NoLock(r);
                 }
             }
         }
 
-        /// <summary>
-        /// 对每台机器人执行路径格子锁抢占，并把抢占到的“路径前缀”回灌给对应导航器。
-        /// 抢占顺序：按“距目标 Manhattan 距离”由近到远，近者更容易抢到整段，降低临近终点互堵。
-        /// </summary>
-        private void ApplyPathClaiming_NoLock()
-        {
-            var items = new List<(RobotInstance R, int Dist)>(_robots.Count);
+        #endregion
 
-            // 收集机器人及其到目标的距离
-            for (int i = 0; i < _robots.Count; i++)
-            {
-                RobotInstance r = _robots[i];
-
-                GridPos? goal = r.AutoNavigator.GetGoalGridSnapshot();
-                if (!goal.HasValue)
-                {
-                    _claimBoard.ReleaseAllByRobot(r.Id);
-                    r.AutoNavigator.SetClaimedPathPrefix(null);
-                    continue;
-                }
-
-                GridPos cur = r.GetGridPos_NoLock();
-                int dist = Math.Abs(cur.X - goal.Value.X) + Math.Abs(cur.Y - goal.Value.Y);
-                items.Add((r, dist));
-            }
-
-            // 距离近优先；距离相同按 Id 排序，确保确定性
-            items.Sort((a, b) =>
-            {
-                int c = a.Dist.CompareTo(b.Dist);
-                if (c != 0) return c;
-                return a.R.Id.CompareTo(b.R.Id);
-            });
-
-            // 预先建立“当前占用格 -> robotId”映射，用于死锁/阻塞检测
-            var occupiedByKey = new Dictionary<int, int>(_robots.Count);
-            for (int i = 0; i < _robots.Count; i++)
-            {
-                GridPos c = _robots[i].GetGridPos_NoLock();
-                int key = c.Y * _gridCount + c.X;
-                if (!occupiedByKey.ContainsKey(key))
-                {
-                    occupiedByKey.Add(key, _robots[i].Id);
-                }
-            }
-            // 关键修复：把所有机器人“当前占用格”设置为保留格，禁止他人抢占起点格导致锁死
-            _claimBoard.SetReservedCells(occupiedByKey);
-
-            // 逐台抢占并回灌 claimed 前缀
-            for (int i = 0; i < items.Count; i++)
-            {
-                RobotInstance r = items[i].R;
-
-                // 让步冷却期间：该机器人不再扩张 claim（只保留当前位置），避免“占着通道不放”
-                int cooldown;
-                if (_yieldCooldownTicks.TryGetValue(r.Id, out cooldown) && cooldown > 0)
-                {
-                    // 只保留当前格（如果当前格可 claim，则让 claimBoard 保持一致；否则至少不再占用其它格）
-                    _claimBoard.ReleaseAllByRobot(r.Id);
-
-                    GridPos curCell = r.GetGridPos_NoLock();
-                    var keep = new List<GridPos>(1) { curCell };
-                    List<GridPos> claimedKeep = _claimBoard.ClaimPathToGoalOrPrefix(r.Id, keep, 0);
-                    r.AutoNavigator.SetClaimedPathPrefix(claimedKeep);
-                    continue;
-                }
-
-                // 引擎抢占基于“完整路径快照”
-                List<GridPos> path = r.AutoNavigator.GetPathGridSnapshot();
-
-                // 没路径时尝试重建
-                if ((path == null || path.Count == 0) && r.AutoNavigator.IsEnabled)
-                {
-                    r.AutoNavigator.RebuildPath();
-                    path = r.AutoNavigator.GetPathGridSnapshot();
-                }
-
-                if (path == null || path.Count == 0)
-                {
-                    _claimBoard.ReleaseAllByRobot(r.Id);
-                    r.AutoNavigator.SetClaimedPathPrefix(null);
-                    continue;
-                }
-
-                // 从当前所在格开始抢占
-                GridPos curCell2 = r.GetGridPos_NoLock();
-                int startIndex = 0;
-
-                for (int j = 0; j < path.Count; j++)
-                {
-                    if (path[j].Equals(curCell2))
-                    {
-                        startIndex = j;
-                        break;
-                    }
-                }
-
-                List<GridPos> claimedPrefix = _claimBoard.ClaimPathToGoalOrPrefix(r.Id, path, startIndex);
-                r.AutoNavigator.SetClaimedPathPrefix(claimedPrefix);
-
-                // ------------------ 互卡优化：先累计，再触发 ------------------
-                if (!r.AutoNavigator.IsEnabled)
-                {
-                    continue;
-                }
-
-                int claimedCount = (claimedPrefix == null) ? 0 : claimedPrefix.Count;
-
-                // “几乎动不了”：只有当前位置(<=1)说明下一步就被挡住（注意：路径包含起点时 <=1 很常见）
-                bool stuckAtStart = claimedCount <= 1;
-
-                if (!stuckAtStart)
-                {
-                    // 本帧未观测到阻塞：若之前有记录，允许淡出逻辑在 Tick() 里清理
-                    continue;
-                }
-
-                int nextIndex = startIndex + 1;
-                if (nextIndex < 0 || nextIndex >= path.Count)
-                {
-                    continue;
-                }
-
-                GridPos nextCell = path[nextIndex];
-                int nextKey = nextCell.Y * _gridCount + nextCell.X;
-
-                int blockerId;
-                if (!occupiedByKey.TryGetValue(nextKey, out blockerId) || blockerId == r.Id)
-                {
-                    continue;
-                }
-
-                // 记录/更新阻塞关系：blocked=r.Id, blocker=blockerId
-                DeadlockInfo info;
-                if (!_deadlockByBlockedId.TryGetValue(r.Id, out info) || info.BlockerId != blockerId)
-                {
-                    info = new DeadlockInfo
-                    {
-                        BlockerId = blockerId,
-                        ConfirmFrames = 1,
-                        LostFrames = 0
-                    };
-                }
-                else
-                {
-                    info.ConfirmFrames++;
-                    info.LostFrames = 0;
-                }
-
-                _deadlockByBlockedId[r.Id] = info;
-
-                // 未达到确认阈值：只是相遇/短暂停顿 -> 先等待
-                if (info.ConfirmFrames < DeadlockConfirmFrames)
-                {
-                    continue;
-                }
-
-                // 达到确认阈值：认为互卡成立 -> 破局：
-                // 1) blocker 冷却（避免立刻又抢占回来）
-                // 2) 强制释放 blocker 的全部 claim（清通道，避免残留锁造成永久等待）
-                // 3) blocker 与 blocked 都重规划（两边都脱离“旧路径依赖”）
-                if (!_yieldCooldownTicks.ContainsKey(blockerId))
-                {
-                    _yieldCooldownTicks.Add(blockerId, YieldCooldownFrames);
-                }
-                else
-                {
-                    _yieldCooldownTicks[blockerId] = YieldCooldownFrames;
-                }
-
-                _claimBoard.ReleaseAllByRobot(blockerId);
-
-                RobotInstance blocker = TryGetRobotById_NoLock(blockerId);
-                if (blocker != null)
-                {
-                    blocker.AutoNavigator.SetClaimedPathPrefix(null);
-                    blocker.AutoNavigator.RebuildPath();
-                }
-
-                r.AutoNavigator.RebuildPath();
-
-                // 触发后重置计数，避免每帧重复触发
-                info.ConfirmFrames = 0;
-                info.LostFrames = 0;
-                _deadlockByBlockedId[r.Id] = info;
-            }
-        }
-
-        /// <summary>
-        /// 按 Id 查找机器人（要求调用方已持有锁）。
-        /// 当前项目 Id 通常与索引一致，但此方法用于容错与未来扩展。
-        /// </summary>
-        private RobotInstance TryGetRobotById_NoLock(int robotId)
-        {
-            if (robotId < 0)
-            {
-                return null;
-            }
-
-            if (robotId < _robots.Count && _robots[robotId].Id == robotId)
-            {
-                return _robots[robotId];
-            }
-
-            for (int i = 0; i < _robots.Count; i++)
-            {
-                if (_robots[i].Id == robotId)
-                {
-                    return _robots[i];
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// 边走边释放：当机器人换格后，释放其上一个格子的锁。
-        /// 目的：让后车更快抢到后续格，降低堵塞。
-        /// </summary>
-        private void ReleaseClaimByMovement_NoLock(RobotInstance r)
-        {
-            GridPos current = r.GetGridPos_NoLock();
-
-            GridPos last;
-            if (!_lastGridCellByRobotId.TryGetValue(r.Id, out last))
-            {
-                _lastGridCellByRobotId[r.Id] = current;
-                return;
-            }
-
-            if (!current.Equals(last))
-            {
-                _claimBoard.ReleaseCell(r.Id, last);
-                _lastGridCellByRobotId[r.Id] = current;
-            }
-        }
+        #region 内部小工具
 
         /// <summary>
         /// 修改引擎状态（要求调用方已持有锁）。
@@ -1222,185 +733,7 @@ namespace GridDemo.Robots
             _processState = newState;
         }
 
-        /// <summary>
-        /// 获取选中机器人实例（要求调用方已持有锁）。
-        /// 若当前未选中或越界，会自动修正到一个有效索引。
-        /// </summary>
-        private RobotInstance GetSelectedRobot_NoLock()
-        {
-            if (_selectedRobotId < 0)
-            {
-                _selectedRobotId = 0;
-            }
-            if (_selectedRobotId >= _robots.Count)
-            {
-                _selectedRobotId = _robots.Count - 1;
-            }
-
-            return _robots[_selectedRobotId];
-        }
-
-        /// <summary>
-        /// 随机选择一个非障碍且不在 used 集合中的格子（要求已持有锁）。
-        /// used 通常用于“生成新机器人位置”时避免初始重叠。
-        /// </summary>
-        private GridPos PickRandomFreeCell_NoLock(HashSet<int> used)
-        {
-            for (int tries = 0; tries < 5000; tries++)
-            {
-                int x = _rng.Next(0, _gridCount);
-                int y = _rng.Next(0, _gridCount);
-                int key = y * _gridCount + x;
-
-                if (used != null && used.Contains(key))
-                {
-                    continue;
-                }
-
-                var p = new GridPos(x, y);
-                if (_obstacleMap.IsObstacle(p))
-                {
-                    continue;
-                }
-
-                return p;
-            }
-
-            // 兜底返回：调用方需容错（(0,0) 可能仍不可用）
-            return new GridPos(0, 0);
-        }
-
-        /// <summary>
-        /// 重绑动态可通行判定（要求已持有锁）：
-        /// - occupied：其它机器人当前占用格视为不可通行
-        /// - goalOwnerByKey：其它机器人目标格视为不可通行（避免多机器人抢同终点）
-        /// - 自己所在格允许（否则会把起点当障碍导致寻路失败）
-        /// </summary>
-        private void RebindDynamicWalkable_NoLock()
-        {
-            var occupied = new HashSet<int>(_robots.Count);
-            var cellKeys = new int[_robots.Count];
-
-            // 统计所有机器人当前占用格
-            for (int i = 0; i < _robots.Count; i++)
-            {
-                GridPos c = _robots[i].GetGridPos_NoLock();
-                int key = c.Y * _gridCount + c.X;
-                cellKeys[i] = key;
-                occupied.Add(key);
-            }
-
-            // 统计所有机器人目标格的“拥有者集合”
-            // 关键修复：不能用 cellKey -> 单个 ownerId
-            // 因为当多个机器人目标格重合时，后加入的机器人会被忽略，导致其它机器人仍能把该终点当作可走。
-            var goalOwnersByKey = new Dictionary<int, HashSet<int>>();
-            for (int i = 0; i < _robots.Count; i++)
-            {
-                var g = _robots[i].AutoNavigator.GetGoalGridSnapshot();
-                if (g.HasValue)
-                {
-                    GridPos gp = g.Value;
-                    if (gp.X >= 0 && gp.Y >= 0 && gp.X < _gridCount && gp.Y < _gridCount)
-                    {
-                        int k = gp.Y * _gridCount + gp.X;
-
-                        HashSet<int> owners;
-                        if (!goalOwnersByKey.TryGetValue(k, out owners))
-                        {
-                            owners = new HashSet<int>();
-                            goalOwnersByKey.Add(k, owners);
-                        }
-
-                        owners.Add(_robots[i].Id);
-                    }
-                }
-            }
-
-            // 为每台机器人绑定两套判定：
-            // - AutoNavigator 用 GridPos 判定寻路可通行
-            // - Move 用世界坐标判定碰撞/穿越
-            for (int i = 0; i < _robots.Count; i++)
-            {
-                RobotInstance me = _robots[i];
-                int myKey = cellKeys[i];
-                int myId = me.Id;
-
-                me.AutoNavigator.SetIsWalkableProvider(p =>
-                {
-                    if (_obstacleMap.IsObstacle(p))
-                    {
-                        return false;
-                    }
-
-                    int key = p.Y * _gridCount + p.X;
-
-                    // 允许走自己起点格
-                    if (key == myKey)
-                    {
-                        return true;
-                    }
-
-                    // 禁止进入其它机器人终点格（自己的终点格必须可走）
-                    HashSet<int> owners;
-                    if (goalOwnersByKey.TryGetValue(key, out owners) && owners.Count > 0 && !owners.Contains(myId))
-                    {
-                        return false;
-                    }
-
-                    // 禁止进入其它机器人当前占用格
-                    return !occupied.Contains(key);
-                });
-
-                me.Move.SetIsWorldWalkableProvider((wx, wy) =>
-                {
-                    int gx = (int)Math.Floor(wx / _cellSizeM);
-                    int gy = (int)Math.Floor(wy / _cellSizeM);
-
-                    if (gx < 0 || gy < 0 || gx >= _gridCount || gy >= _gridCount)
-                        return false;
-
-                    var p = new GridPos(gx, gy);
-                    if (_obstacleMap.IsObstacle(p))
-                        return false;
-
-                    int key = p.Y * _gridCount + p.X;
-
-                    if (key == myKey)
-                        return true;
-
-                    // Move/碰撞层不把“其它机器人目标格”当成不可通行（保持你原来的修复）
-                    return !occupied.Contains(key);
-                });
-            }
-        }
-
-        /// <summary>
-        /// 构建“终点拥有者”映射（要求已持有锁）：cellKey -> robotId。
-        /// 给 AutoNavigator.RebuildPath_NoLock 用于把其它机器人的目标格视为不可走。
-        /// </summary>
-        internal Dictionary<int, int> BuildGoalOwnerMap_NoLock()
-        {
-            var goalOwnerByKey = new Dictionary<int, int>();
-
-            for (int i = 0; i < _robots.Count; i++)
-            {
-                var g = _robots[i].AutoNavigator.GetGoalGridSnapshot();
-                if (g.HasValue)
-                {
-                    GridPos gp = g.Value;
-                    if (gp.X >= 0 && gp.Y >= 0 && gp.X < _gridCount && gp.Y < _gridCount)
-                    {
-                        int k = gp.Y * _gridCount + gp.X;
-                        if (!goalOwnerByKey.ContainsKey(k))
-                        {
-                            goalOwnerByKey.Add(k, _robots[i].Id);
-                        }
-                    }
-                }
-            }
-
-            return goalOwnerByKey;
-        }
+        #endregion
     }
 
     /// <summary>
