@@ -25,8 +25,14 @@
         private void InitializeComponent()
         {
             this.splitMain = new System.Windows.Forms.SplitContainer();
-            this.flowLeft = new System.Windows.Forms.FlowLayoutPanel();
-            this.cmbPathAlgorithm = new System.Windows.Forms.ComboBox();
+            this.grpRobotStates = new System.Windows.Forms.GroupBox();
+            this.lvRobotStates = new System.Windows.Forms.ListView();
+            this.colId = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colMode = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colPos = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colSpeed = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colAcc = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.panelLeftTop = new System.Windows.Forms.Panel();
             this.panel1 = new System.Windows.Forms.Panel();
             this.btnStop = new System.Windows.Forms.Button();
             this.btnStart = new System.Windows.Forms.Button();
@@ -38,13 +44,7 @@
             this.numericVinit = new System.Windows.Forms.NumericUpDown();
             this.labelAcc = new System.Windows.Forms.Label();
             this.numericAcc = new System.Windows.Forms.NumericUpDown();
-            this.grpRobotStates = new System.Windows.Forms.GroupBox();
-            this.lvRobotStates = new System.Windows.Forms.ListView();
-            this.colId = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.colMode = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.colPos = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.colSpeed = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.colAcc = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.cmbPathAlgorithm = new System.Windows.Forms.ComboBox();
             this.skControl = new SkiaSharp.Views.Desktop.SKControl();
             this.panelRightTop = new System.Windows.Forms.Panel();
             this.panelObstacles = new System.Windows.Forms.Panel();
@@ -56,12 +56,12 @@
             this.splitMain.Panel1.SuspendLayout();
             this.splitMain.Panel2.SuspendLayout();
             this.splitMain.SuspendLayout();
-            this.flowLeft.SuspendLayout();
+            this.grpRobotStates.SuspendLayout();
+            this.panelLeftTop.SuspendLayout();
             this.panel1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.numericAddRobot)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).BeginInit();
-            this.grpRobotStates.SuspendLayout();
             this.panelRightTop.SuspendLayout();
             this.panelObstacles.SuspendLayout();
             this.SuspendLayout();
@@ -75,43 +75,84 @@
             // 
             // splitMain.Panel1
             // 
-            this.splitMain.Panel1.Controls.Add(this.flowLeft);
+            this.splitMain.Panel1.Controls.Add(this.grpRobotStates);
+            this.splitMain.Panel1.Controls.Add(this.panelLeftTop);
             // 
             // splitMain.Panel2
             // 
             this.splitMain.Panel2.Controls.Add(this.skControl);
             this.splitMain.Panel2.Controls.Add(this.panelRightTop);
             this.splitMain.Size = new System.Drawing.Size(1221, 774);
-            this.splitMain.SplitterDistance = 230;
+            this.splitMain.SplitterDistance = 280;
             this.splitMain.TabIndex = 0;
             // 
-            // flowLeft
+            // grpRobotStates
             // 
-            this.flowLeft.AutoScroll = true;
-            this.flowLeft.Controls.Add(this.cmbPathAlgorithm);
-            this.flowLeft.Controls.Add(this.panel1);
-            this.flowLeft.Controls.Add(this.grpRobotStates);
-            this.flowLeft.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.flowLeft.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
-            this.flowLeft.Location = new System.Drawing.Point(0, 0);
-            this.flowLeft.Name = "flowLeft";
-            this.flowLeft.Padding = new System.Windows.Forms.Padding(12);
-            this.flowLeft.Size = new System.Drawing.Size(230, 774);
-            this.flowLeft.TabIndex = 0;
-            this.flowLeft.WrapContents = false;
+            this.grpRobotStates.Controls.Add(this.lvRobotStates);
+            this.grpRobotStates.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.grpRobotStates.Location = new System.Drawing.Point(0, 310);
+            this.grpRobotStates.Name = "grpRobotStates";
+            this.grpRobotStates.Padding = new System.Windows.Forms.Padding(4);
+            this.grpRobotStates.Size = new System.Drawing.Size(280, 464);
+            this.grpRobotStates.TabIndex = 1;
+            this.grpRobotStates.TabStop = false;
+            this.grpRobotStates.Text = "机器人状态（双击切换模式）";
             // 
-            // cmbPathAlgorithm
+            // lvRobotStates
             // 
-            this.cmbPathAlgorithm.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.cmbPathAlgorithm.FormattingEnabled = true;
-            this.cmbPathAlgorithm.Items.AddRange(new object[] {
-            "Dijkstra",
-            "A*",
-            "蛇形"});
-            this.cmbPathAlgorithm.Location = new System.Drawing.Point(15, 15);
-            this.cmbPathAlgorithm.Name = "cmbPathAlgorithm";
-            this.cmbPathAlgorithm.Size = new System.Drawing.Size(195, 26);
-            this.cmbPathAlgorithm.TabIndex = 0;
+            this.lvRobotStates.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
+            this.colId,
+            this.colMode,
+            this.colPos,
+            this.colSpeed,
+            this.colAcc});
+            this.lvRobotStates.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.lvRobotStates.FullRowSelect = true;
+            this.lvRobotStates.GridLines = true;
+            this.lvRobotStates.HideSelection = false;
+            this.lvRobotStates.Location = new System.Drawing.Point(4, 25);
+            this.lvRobotStates.MultiSelect = false;
+            this.lvRobotStates.Name = "lvRobotStates";
+            this.lvRobotStates.Size = new System.Drawing.Size(272, 435);
+            this.lvRobotStates.TabIndex = 0;
+            this.lvRobotStates.UseCompatibleStateImageBehavior = false;
+            this.lvRobotStates.View = System.Windows.Forms.View.Details;
+            // 
+            // colId
+            // 
+            this.colId.Text = "Id";
+            this.colId.Width = 30;
+            // 
+            // colMode
+            // 
+            this.colMode.Text = "模式";
+            this.colMode.Width = 45;
+            // 
+            // colPos
+            // 
+            this.colPos.Text = "(X,Y)";
+            this.colPos.Width = 90;
+            // 
+            // colSpeed
+            // 
+            this.colSpeed.Text = "V";
+            this.colSpeed.Width = 45;
+            // 
+            // colAcc
+            // 
+            this.colAcc.Text = "A";
+            this.colAcc.Width = 45;
+            // 
+            // panelLeftTop
+            // 
+            this.panelLeftTop.Controls.Add(this.panel1);
+            this.panelLeftTop.Controls.Add(this.cmbPathAlgorithm);
+            this.panelLeftTop.Dock = System.Windows.Forms.DockStyle.Top;
+            this.panelLeftTop.Location = new System.Drawing.Point(0, 0);
+            this.panelLeftTop.Name = "panelLeftTop";
+            this.panelLeftTop.Padding = new System.Windows.Forms.Padding(8);
+            this.panelLeftTop.Size = new System.Drawing.Size(280, 310);
+            this.panelLeftTop.TabIndex = 0;
             // 
             // panel1
             // 
@@ -125,14 +166,15 @@
             this.panel1.Controls.Add(this.numericVinit);
             this.panel1.Controls.Add(this.labelAcc);
             this.panel1.Controls.Add(this.numericAcc);
-            this.panel1.Location = new System.Drawing.Point(15, 47);
+            this.panel1.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.panel1.Location = new System.Drawing.Point(8, 34);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(195, 260);
+            this.panel1.Size = new System.Drawing.Size(264, 268);
             this.panel1.TabIndex = 1;
             // 
             // btnStop
             // 
-            this.btnStop.Location = new System.Drawing.Point(108, 215);
+            this.btnStop.Location = new System.Drawing.Point(138, 215);
             this.btnStop.Name = "btnStop";
             this.btnStop.Size = new System.Drawing.Size(75, 33);
             this.btnStop.TabIndex = 9;
@@ -142,7 +184,7 @@
             // 
             // btnStart
             // 
-            this.btnStart.Location = new System.Drawing.Point(15, 215);
+            this.btnStart.Location = new System.Drawing.Point(42, 215);
             this.btnStart.Name = "btnStart";
             this.btnStart.Size = new System.Drawing.Size(75, 33);
             this.btnStart.TabIndex = 8;
@@ -152,7 +194,7 @@
             // 
             // btnResetRobot
             // 
-            this.btnResetRobot.Location = new System.Drawing.Point(54, 168);
+            this.btnResetRobot.Location = new System.Drawing.Point(84, 168);
             this.btnResetRobot.Name = "btnResetRobot";
             this.btnResetRobot.Size = new System.Drawing.Size(86, 36);
             this.btnResetRobot.TabIndex = 7;
@@ -252,67 +294,26 @@
             this.numericAcc.TabIndex = 5;
             this.numericAcc.ValueChanged += new System.EventHandler(this.numericAcc_ValueChanged);
             // 
-            // grpRobotStates
+            // cmbPathAlgorithm
             // 
-            this.grpRobotStates.Controls.Add(this.lvRobotStates);
-            this.grpRobotStates.Location = new System.Drawing.Point(15, 313);
-            this.grpRobotStates.Name = "grpRobotStates";
-            this.grpRobotStates.Size = new System.Drawing.Size(195, 430);
-            this.grpRobotStates.TabIndex = 2;
-            this.grpRobotStates.TabStop = false;
-            this.grpRobotStates.Text = "机器人状态（双击切换模式）";
-            // 
-            // lvRobotStates
-            // 
-            this.lvRobotStates.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
-            this.colId,
-            this.colMode,
-            this.colPos,
-            this.colSpeed,
-            this.colAcc});
-            this.lvRobotStates.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.lvRobotStates.FullRowSelect = true;
-            this.lvRobotStates.GridLines = true;
-            this.lvRobotStates.HideSelection = false;
-            this.lvRobotStates.Location = new System.Drawing.Point(3, 24);
-            this.lvRobotStates.MultiSelect = false;
-            this.lvRobotStates.Name = "lvRobotStates";
-            this.lvRobotStates.Size = new System.Drawing.Size(189, 403);
-            this.lvRobotStates.TabIndex = 0;
-            this.lvRobotStates.UseCompatibleStateImageBehavior = false;
-            this.lvRobotStates.View = System.Windows.Forms.View.Details;
-            // 
-            // colId
-            // 
-            this.colId.Text = "Id";
-            this.colId.Width = 25;
-            // 
-            // colMode
-            // 
-            this.colMode.Text = "模式";
-            this.colMode.Width = 38;
-            // 
-            // colPos
-            // 
-            this.colPos.Text = "(X,Y)";
-            this.colPos.Width = 62;
-            // 
-            // colSpeed
-            // 
-            this.colSpeed.Text = "V";
-            this.colSpeed.Width = 28;
-            // 
-            // colAcc
-            // 
-            this.colAcc.Text = "A";
-            this.colAcc.Width = 28;
+            this.cmbPathAlgorithm.Dock = System.Windows.Forms.DockStyle.Top;
+            this.cmbPathAlgorithm.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cmbPathAlgorithm.FormattingEnabled = true;
+            this.cmbPathAlgorithm.Items.AddRange(new object[] {
+            "Dijkstra",
+            "A*",
+            "蛇形"});
+            this.cmbPathAlgorithm.Location = new System.Drawing.Point(8, 8);
+            this.cmbPathAlgorithm.Name = "cmbPathAlgorithm";
+            this.cmbPathAlgorithm.Size = new System.Drawing.Size(264, 26);
+            this.cmbPathAlgorithm.TabIndex = 0;
             // 
             // skControl
             // 
             this.skControl.Dock = System.Windows.Forms.DockStyle.Fill;
             this.skControl.Location = new System.Drawing.Point(0, 70);
             this.skControl.Name = "skControl";
-            this.skControl.Size = new System.Drawing.Size(987, 704);
+            this.skControl.Size = new System.Drawing.Size(937, 704);
             this.skControl.TabIndex = 8;
             // 
             // panelRightTop
@@ -324,7 +325,7 @@
             this.panelRightTop.Location = new System.Drawing.Point(0, 0);
             this.panelRightTop.Name = "panelRightTop";
             this.panelRightTop.Padding = new System.Windows.Forms.Padding(10);
-            this.panelRightTop.Size = new System.Drawing.Size(987, 70);
+            this.panelRightTop.Size = new System.Drawing.Size(937, 70);
             this.panelRightTop.TabIndex = 0;
             // 
             // panelObstacles
@@ -333,7 +334,7 @@
             this.panelObstacles.Controls.Add(this.labelObstacles);
             this.panelObstacles.Controls.Add(this.btnClearObstacle);
             this.panelObstacles.Controls.Add(this.btnObstacle);
-            this.panelObstacles.Location = new System.Drawing.Point(689, 10);
+            this.panelObstacles.Location = new System.Drawing.Point(639, 10);
             this.panelObstacles.Name = "panelObstacles";
             this.panelObstacles.Size = new System.Drawing.Size(285, 54);
             this.panelObstacles.TabIndex = 1;
@@ -384,18 +385,18 @@
             this.ClientSize = new System.Drawing.Size(1221, 774);
             this.Controls.Add(this.splitMain);
             this.Name = "Form1";
-            this.Text = " RCS Ver3.4.3 吴灵丽（三期 28号）";
+            this.Text = " RCS Ver3.4.4 吴灵丽（三期 28号）";
             this.splitMain.Panel1.ResumeLayout(false);
             this.splitMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.splitMain)).EndInit();
             this.splitMain.ResumeLayout(false);
-            this.flowLeft.ResumeLayout(false);
+            this.grpRobotStates.ResumeLayout(false);
+            this.panelLeftTop.ResumeLayout(false);
             this.panel1.ResumeLayout(false);
             this.panel1.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.numericAddRobot)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericVinit)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericAcc)).EndInit();
-            this.grpRobotStates.ResumeLayout(false);
             this.panelRightTop.ResumeLayout(false);
             this.panelObstacles.ResumeLayout(false);
             this.panelObstacles.PerformLayout();
@@ -406,7 +407,7 @@
         #endregion
 
         private System.Windows.Forms.SplitContainer splitMain;
-        private System.Windows.Forms.FlowLayoutPanel flowLeft;
+        private System.Windows.Forms.Panel panelLeftTop;
         private System.Windows.Forms.Panel panelRightTop;
 
         private SkiaSharp.Views.Desktop.SKControl skControl;
