@@ -45,7 +45,6 @@
             this.colPos = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.colSpeed = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.colAcc = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.colAngle = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.skControl = new SkiaSharp.Views.Desktop.SKControl();
             this.panelRightTop = new System.Windows.Forms.Panel();
             this.panelObstacles = new System.Windows.Forms.Panel();
@@ -270,8 +269,7 @@
             this.colMode,
             this.colPos,
             this.colSpeed,
-            this.colAcc,
-            this.colAngle});
+            this.colAcc});
             this.lvRobotStates.Dock = System.Windows.Forms.DockStyle.Fill;
             this.lvRobotStates.FullRowSelect = true;
             this.lvRobotStates.GridLines = true;
@@ -308,11 +306,6 @@
             // 
             this.colAcc.Text = "A";
             this.colAcc.Width = 28;
-            // 
-            // colAngle
-            // 
-            this.colAngle.Text = "Ang";
-            this.colAngle.Width = 35;
             // 
             // skControl
             // 
@@ -444,6 +437,5 @@
         private System.Windows.Forms.ColumnHeader colPos;
         private System.Windows.Forms.ColumnHeader colSpeed;
         private System.Windows.Forms.ColumnHeader colAcc;
-        private System.Windows.Forms.ColumnHeader colAngle;
     }
 }

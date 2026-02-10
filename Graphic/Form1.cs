@@ -86,6 +86,7 @@ namespace GridDemo
             if (lvRobotStates != null)
             {
                 lvRobotStates.ItemSelectionChanged += lvRobotStates_ItemSelectionChanged;
+                lvRobotStates.MouseDoubleClick += lvRobotStates_MouseDoubleClick;
             }
         }
 
