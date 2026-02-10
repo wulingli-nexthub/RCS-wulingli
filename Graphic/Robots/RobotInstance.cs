@@ -127,7 +127,8 @@ namespace GridDemo.Robots
                 Y: Y,
                 Speed: Speed,
                 Acc: Acc,
-                OrientationAngle: Manager.OrientationAngle);
+                OrientationAngle: Manager.OrientationAngle,
+                IsAutoMode: AutoNavigator.IsEnabled);
         }
 
         /// <summary>

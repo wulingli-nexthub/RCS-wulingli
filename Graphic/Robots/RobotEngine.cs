@@ -562,6 +562,38 @@ namespace GridDemo.Robots
             }
         }
 
+        /// <summary>
+        /// 将指定 Id 的机器人切换到自动模式。
+        /// </summary>
+        public void EnableAutoForRobot(int robotId)
+        {
+            _control.EnableAutoForRobot(robotId);
+        }
+
+        /// <summary>
+        /// 将指定 Id 的机器人切换到手动模式。
+        /// </summary>
+        public void EnableManualForRobot(int robotId)
+        {
+            lock (_robotLock)
+            {
+                _control.EnableManualForRobot(robotId, _pathClaimManager);
+            }
+        }
+
+        /// <summary>
+        /// 查询指定 Id 的机器人是否为自动模式。
+        /// </summary>
+        public bool IsRobotAutoMode(int robotId)
+        {
+            lock (_robotLock)
+            {
+                if (robotId < 0 || robotId >= _world.Robots.Count)
+                    return false;
+                return _world.Robots[robotId].AutoNavigator.IsEnabled;
+            }
+        }
+
         /// <summary> 触发选中机器人重建路径（供 UI 手动点击）。 </summary>
         public void RebuildPath()
         {
@@ -742,13 +774,14 @@ namespace GridDemo.Robots
     /// </summary>
     internal readonly struct RobotStateSnapshot
     {
-        public RobotStateSnapshot(double X, double Y, double Speed, double Acc, double OrientationAngle)
+        public RobotStateSnapshot(double X, double Y, double Speed, double Acc, double OrientationAngle, bool IsAutoMode)
         {
             this.X = X;
             this.Y = Y;
             this.Speed = Speed;
             this.Acc = Acc;
             this.OrientationAngle = OrientationAngle;
+            this.IsAutoMode = IsAutoMode;
         }
 
         public double X { get; }
@@ -756,5 +789,8 @@ namespace GridDemo.Robots
         public double Speed { get; }
         public double Acc { get; }
         public double OrientationAngle { get; }
+
+        /// <summary> 该机器人是否处于自动模式（true=自动，false=手动）。 </summary>
+        public bool IsAutoMode { get; }
     }
 }

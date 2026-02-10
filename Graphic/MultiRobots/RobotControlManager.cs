@@ -130,6 +130,56 @@ namespace GridDemo.MultiRobots
         }
 
         /// <summary>
+        /// 将指定机器人切换到自动模式（按 Id）。
+        /// </summary>
+        public void EnableAutoForRobot(int robotId)
+        {
+            lock (_world.RobotLock)
+            {
+                if (robotId < 0 || robotId >= _world.Robots.Count)
+                    return;
+
+                RobotInstance r = _world.Robots[robotId];
+                r.Manual.Disable();
+                r.Manager.SetMode(EnumRobotControlMode.Auto);
+
+                r.AutoNavigator.Enable();
+                r.Manager.ResetAutoCommands();
+                r.Manager.AlignOrientationToDirectionWithTurn();
+            }
+        }
+
+        /// <summary>
+        /// 将指定机器人切换到手动模式（按 Id）。
+        /// 需要传入 PathClaimManager 以释放该机器人的格子锁。
+        /// </summary>
+        public void EnableManualForRobot(int robotId, PathClaimManager claimMgr)
+        {
+            lock (_world.RobotLock)
+            {
+                if (robotId < 0 || robotId >= _world.Robots.Count)
+                    return;
+
+                RobotInstance r = _world.Robots[robotId];
+
+                if (r.AutoNavigator.IsEnabled)
+                    r.AutoNavigator.Disable();
+
+                claimMgr.ClaimBoard.ReleaseAllByRobot(r.Id);
+                claimMgr.ClearRobotState(r.Id);
+                r.AutoNavigator.SetClaimedPathPrefix(null);
+
+                r.Speed = 0.0;
+                r.Manager.Acc = 0.0;
+                r.Move.StopImmediately_NoLock();
+                r.Manager.ResetAutoCommands();
+
+                r.Manual.Enable();
+                _pausedRobotIds.Remove(r.Id);
+            }
+        }
+
+        /// <summary>
         /// 设置所有机器人的前进加速度。
         /// 设置后重置自动命令，使下一条 MoveDistance 使用新加速度。
         /// </summary>

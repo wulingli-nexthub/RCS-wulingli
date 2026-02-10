@@ -76,7 +76,6 @@ namespace GridDemo
             numericAcc.KeyDown += Numeric_KeyDown_OnEnter;
             numericVinit.KeyDown += Numeric_KeyDown_OnEnter;
             numericAddRobot.KeyDown += Numeric_KeyDown_OnEnter;
-            cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
             cmbPathAlgorithm.SelectedIndexChanged += cmbPathAlgorithm_SelectedIndexChanged;
 
             numericAddRobot.ValueChanged += numericAddRobot_ValueChanged;
@@ -223,9 +222,6 @@ namespace GridDemo
             Log("Render timer started. intervalMs=" + intervalMs);
 
             // 5. 默认模式与算法
-            cmbChooseModel.SelectedIndexChanged -= cmbChooseModel_SelectedIndexChanged;
-            cmbChooseModel.SelectedIndex = 1;  // Auto
-            cmbChooseModel.SelectedIndexChanged += cmbChooseModel_SelectedIndexChanged;
             _engine.EnableAuto();
             Log("Default control mode: Auto");
 
@@ -563,36 +559,6 @@ namespace GridDemo
         }
 
         /// <summary>
-        /// 控制模式切换：手动/自动。
-        /// - 自动：禁用手动控制，启用自动导航
-        /// - 手动：禁用自动导航，启用手动控制，并把焦点回到窗体以便按键立即生效
-        /// </summary>
-        private void cmbChooseModel_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            if (_engine == null)
-            {
-                return;
-            }
-
-            Log("cmbChooseModel_SelectedIndexChanged: index=" + cmbChooseModel.SelectedIndex);
-
-            if (cmbChooseModel.SelectedIndex == 1)
-            {
-                _engine.EnableAuto();
-                Log("ControlMode -> Auto");
-            }
-            else
-            {
-                cmbChooseModel.SelectedIndex = 0;
-                _engine.EnableManual();
-                Log("ControlMode -> Manual");
-
-                this.ActiveControl = null;
-                BeginInvoke(new Action(() => Focus()));
-            }
-        }
-
-        /// <summary>
         /// 寻路算法下拉框切换：更新自动导航模块使用的算法，并在自动模式下即时重规划路径。
         /// </summary>
         private void cmbPathAlgorithm_SelectedIndexChanged(object sender, EventArgs e)
@@ -816,6 +782,10 @@ namespace GridDemo
             skControl.Invalidate();
         }
 
+        /// <summary>
+        /// 定时刷新机器人状态列表，包括模式列（自动/手动）。
+        /// 模式列显示"自动"或"手动"，用户可双击切换。
+        /// </summary>
         private void UpdateRobotStatesList()
         {
             if (_engine == null || lvRobotStates == null || lvRobotStates.IsDisposed)
@@ -827,13 +797,15 @@ namespace GridDemo
             lvRobotStates.BeginUpdate();
             try
             {
+                // 每行有 6 列：Id, 模式, (X,Y), V, A, Ang
                 while (lvRobotStates.Items.Count < states.Count)
                 {
                     var item = new ListViewItem();
-                    item.SubItems.Add("");
-                    item.SubItems.Add("");
-                    item.SubItems.Add("");
-                    item.SubItems.Add("");
+                    item.SubItems.Add("");  // colMode
+                    item.SubItems.Add("");  // colPos
+                    item.SubItems.Add("");  // colSpeed
+                    item.SubItems.Add("");  // colAcc
+                    item.SubItems.Add("");  // colAngle
                     lvRobotStates.Items.Add(item);
                 }
 
@@ -848,16 +820,18 @@ namespace GridDemo
                     var item = lvRobotStates.Items[i];
 
                     string idText = (i + 1).ToString();
+                    string modeText = s.IsAutoMode ? "自动" : "手动";
                     string posText = string.Format("{0:F2},{1:F2}", s.X, s.Y);
                     string vText = s.Speed.ToString("F2");
                     string aText = s.Acc.ToString("F2");
                     string angText = s.OrientationAngle.ToString("F1");
 
                     if (item.Text != idText) item.Text = idText;
-                    if (item.SubItems[1].Text != posText) item.SubItems[1].Text = posText;
-                    if (item.SubItems[2].Text != vText) item.SubItems[2].Text = vText;
-                    if (item.SubItems[3].Text != aText) item.SubItems[3].Text = aText;
-                    if (item.SubItems[4].Text != angText) item.SubItems[4].Text = angText;
+                    if (item.SubItems[1].Text != modeText) item.SubItems[1].Text = modeText;
+                    if (item.SubItems[2].Text != posText) item.SubItems[2].Text = posText;
+                    if (item.SubItems[3].Text != vText) item.SubItems[3].Text = vText;
+                    if (item.SubItems[4].Text != aText) item.SubItems[4].Text = aText;
+                    if (item.SubItems[5].Text != angText) item.SubItems[5].Text = angText;
 
                     item.Tag = i;
                 }
@@ -883,6 +857,9 @@ namespace GridDemo
             }
         }
 
+        /// <summary>
+        /// 单击选中机器人。
+        /// </summary>
         private void lvRobotStates_ItemSelectionChanged(object sender, ListViewItemSelectionChangedEventArgs e)
         {
             if (!e.IsSelected)
@@ -893,6 +870,46 @@ namespace GridDemo
 
             int id = e.ItemIndex;
             _engine.SelectRobot(id);
+            skControl.Invalidate();
+        }
+
+        /// <summary>
+        /// 双击列表行：切换该机器人的自动/手动模式。
+        /// - 当前为自动 → 切换为手动（同时选中该机器人，使 W/A/D 键对其生效）；
+        /// - 当前为手动 → 切换为自动。
+        /// </summary>
+        private void lvRobotStates_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            if (_engine == null)
+                return;
+
+            ListViewHitTestInfo hit = lvRobotStates.HitTest(e.Location);
+            if (hit.Item == null)
+                return;
+
+            int robotId = hit.Item.Index;
+
+            // 先选中该机器人
+            _engine.SelectRobot(robotId);
+
+            // 读取当前模式并切换
+            bool isAuto = _engine.IsRobotAutoMode(robotId);
+            if (isAuto)
+            {
+                _engine.EnableManualForRobot(robotId);
+                Log("ToggleMode: robot " + (robotId + 1) + " -> 手动");
+
+                // 手动模式需要焦点回到窗体，确保 W/A/D 键立即可用
+                this.ActiveControl = null;
+                BeginInvoke(new Action(() => Focus()));
+            }
+            else
+            {
+                _engine.EnableAutoForRobot(robotId);
+                Log("ToggleMode: robot " + (robotId + 1) + " -> 自动");
+            }
+
+            UpdateRobotStatesList();
             skControl.Invalidate();
         }
     }

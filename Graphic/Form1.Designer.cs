@@ -26,7 +26,6 @@
         {
             this.splitMain = new System.Windows.Forms.SplitContainer();
             this.flowLeft = new System.Windows.Forms.FlowLayoutPanel();
-            this.cmbChooseModel = new System.Windows.Forms.ComboBox();
             this.cmbPathAlgorithm = new System.Windows.Forms.ComboBox();
             this.panel1 = new System.Windows.Forms.Panel();
             this.btnStop = new System.Windows.Forms.Button();
@@ -42,6 +41,7 @@
             this.grpRobotStates = new System.Windows.Forms.GroupBox();
             this.lvRobotStates = new System.Windows.Forms.ListView();
             this.colId = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colMode = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.colPos = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.colSpeed = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.colAcc = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
@@ -89,7 +89,6 @@
             // flowLeft
             // 
             this.flowLeft.AutoScroll = true;
-            this.flowLeft.Controls.Add(this.cmbChooseModel);
             this.flowLeft.Controls.Add(this.cmbPathAlgorithm);
             this.flowLeft.Controls.Add(this.panel1);
             this.flowLeft.Controls.Add(this.grpRobotStates);
@@ -102,18 +101,6 @@
             this.flowLeft.TabIndex = 0;
             this.flowLeft.WrapContents = false;
             // 
-            // cmbChooseModel
-            // 
-            this.cmbChooseModel.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.cmbChooseModel.FormattingEnabled = true;
-            this.cmbChooseModel.Items.AddRange(new object[] {
-            "手动控制",
-            "自动巡航"});
-            this.cmbChooseModel.Location = new System.Drawing.Point(15, 15);
-            this.cmbChooseModel.Name = "cmbChooseModel";
-            this.cmbChooseModel.Size = new System.Drawing.Size(195, 26);
-            this.cmbChooseModel.TabIndex = 0;
-            // 
             // cmbPathAlgorithm
             // 
             this.cmbPathAlgorithm.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
@@ -122,10 +109,10 @@
             "Dijkstra",
             "A*",
             "蛇形"});
-            this.cmbPathAlgorithm.Location = new System.Drawing.Point(15, 47);
+            this.cmbPathAlgorithm.Location = new System.Drawing.Point(15, 15);
             this.cmbPathAlgorithm.Name = "cmbPathAlgorithm";
             this.cmbPathAlgorithm.Size = new System.Drawing.Size(195, 26);
-            this.cmbPathAlgorithm.TabIndex = 1;
+            this.cmbPathAlgorithm.TabIndex = 0;
             // 
             // panel1
             // 
@@ -139,10 +126,10 @@
             this.panel1.Controls.Add(this.numericVinit);
             this.panel1.Controls.Add(this.labelAcc);
             this.panel1.Controls.Add(this.numericAcc);
-            this.panel1.Location = new System.Drawing.Point(15, 79);
+            this.panel1.Location = new System.Drawing.Point(15, 47);
             this.panel1.Name = "panel1";
             this.panel1.Size = new System.Drawing.Size(195, 260);
-            this.panel1.TabIndex = 2;
+            this.panel1.TabIndex = 1;
             // 
             // btnStop
             // 
@@ -269,17 +256,18 @@
             // grpRobotStates
             // 
             this.grpRobotStates.Controls.Add(this.lvRobotStates);
-            this.grpRobotStates.Location = new System.Drawing.Point(15, 345);
+            this.grpRobotStates.Location = new System.Drawing.Point(15, 313);
             this.grpRobotStates.Name = "grpRobotStates";
-            this.grpRobotStates.Size = new System.Drawing.Size(195, 400);
-            this.grpRobotStates.TabIndex = 3;
+            this.grpRobotStates.Size = new System.Drawing.Size(195, 430);
+            this.grpRobotStates.TabIndex = 2;
             this.grpRobotStates.TabStop = false;
-            this.grpRobotStates.Text = "机器人状态";
+            this.grpRobotStates.Text = "机器人状态（双击切换模式）";
             // 
             // lvRobotStates
             // 
             this.lvRobotStates.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
             this.colId,
+            this.colMode,
             this.colPos,
             this.colSpeed,
             this.colAcc,
@@ -291,7 +279,7 @@
             this.lvRobotStates.Location = new System.Drawing.Point(3, 24);
             this.lvRobotStates.MultiSelect = false;
             this.lvRobotStates.Name = "lvRobotStates";
-            this.lvRobotStates.Size = new System.Drawing.Size(189, 373);
+            this.lvRobotStates.Size = new System.Drawing.Size(189, 403);
             this.lvRobotStates.TabIndex = 0;
             this.lvRobotStates.UseCompatibleStateImageBehavior = false;
             this.lvRobotStates.View = System.Windows.Forms.View.Details;
@@ -299,22 +287,27 @@
             // colId
             // 
             this.colId.Text = "Id";
-            this.colId.Width = 35;
+            this.colId.Width = 25;
+            // 
+            // colMode
+            // 
+            this.colMode.Text = "模式";
+            this.colMode.Width = 38;
             // 
             // colPos
             // 
             this.colPos.Text = "(X,Y)";
-            this.colPos.Width = 72;
+            this.colPos.Width = 62;
             // 
             // colSpeed
             // 
             this.colSpeed.Text = "V";
-            this.colSpeed.Width = 30;
+            this.colSpeed.Width = 28;
             // 
             // colAcc
             // 
             this.colAcc.Text = "A";
-            this.colAcc.Width = 30;
+            this.colAcc.Width = 28;
             // 
             // colAngle
             // 
@@ -398,7 +391,7 @@
             this.ClientSize = new System.Drawing.Size(1221, 774);
             this.Controls.Add(this.splitMain);
             this.Name = "Form1";
-            this.Text = " RCS Ver3.4.2 吴灵丽（三期 28号）";
+            this.Text = " RCS Ver3.4.3 吴灵丽（三期 28号）";
             this.splitMain.Panel1.ResumeLayout(false);
             this.splitMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.splitMain)).EndInit();
@@ -425,7 +418,6 @@
 
         private SkiaSharp.Views.Desktop.SKControl skControl;
         private System.Windows.Forms.Button btnReset;
-        private System.Windows.Forms.ComboBox cmbChooseModel;
         private System.Windows.Forms.ComboBox cmbPathAlgorithm;
 
         private System.Windows.Forms.Panel panelObstacles;
@@ -448,6 +440,7 @@
         private System.Windows.Forms.GroupBox grpRobotStates;
         private System.Windows.Forms.ListView lvRobotStates;
         private System.Windows.Forms.ColumnHeader colId;
+        private System.Windows.Forms.ColumnHeader colMode;
         private System.Windows.Forms.ColumnHeader colPos;
         private System.Windows.Forms.ColumnHeader colSpeed;
         private System.Windows.Forms.ColumnHeader colAcc;
