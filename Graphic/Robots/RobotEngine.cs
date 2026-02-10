@@ -21,7 +21,7 @@ namespace GridDemo.Robots
 
     /// <summary>
     /// 多机器人仿真/调度引擎（重构版）：
-    /// - 作为“外观层”，对 UI 暴露统一接口；
+    /// - 作为"外观层"，对 UI 暴露统一接口；
     /// - 把复杂逻辑下沉到：
     ///    * RobotWorld：世界/机器人集合/障碍图等基础数据
     ///    * DynamicWalkableBinder：动态可通行性绑定
@@ -68,11 +68,21 @@ namespace GridDemo.Robots
         private readonly double _worldHeightM;
 
         /// <summary>
+        /// 到达终点后停顿秒数（所有机器人共用）。
+        /// </summary>
+        private const double ArrivalPauseDurationS = 2.0;
+
+        /// <summary>
+        /// 到达目标格中心的世界坐标容差（米），与 AutoNavigator.ArriveEpsilonM 保持一致。
+        /// </summary>
+        private const double ArriveEpsilonM = 0.05;
+
+        /// <summary>
         /// 构造引擎：
         /// - 初始化世界与仿真参数；
         /// - 创建 RobotWorld / PathClaimManager / DynamicWalkableBinder / RobotControlManager；
         /// - 至少创建 1 台机器人并加入世界；
-        /// - 默认不运行（等待 UI 点击“启动”）。
+        /// - 默认不运行（等待 UI 点击"启动"）。
         /// </summary>
         public RobotEngine(int gridCount, double cellSizeM, double dt,
                            double initialMaxSpeed, EnumMoveDirection initialDirection)
@@ -187,7 +197,7 @@ namespace GridDemo.Robots
         }
 
         /// <summary>
-        /// 清空选中机器人（UI 不再对任何机器人施加“选中逻辑”）。
+        /// 清空选中机器人（UI 不再对任何机器人施加"选中逻辑"）。
         /// </summary>
         public void ClearSelectedRobot()
         {
@@ -385,7 +395,7 @@ namespace GridDemo.Robots
                 // 3) 重绑动态 walkable
                 _walkableBinder.RebindDynamicWalkable_NoLock();
 
-                // 4) 对“本次新建机器人”，在 walkable 已绑定后再 Enable/SetGoal（触发寻路）
+                // 4) 对"本次新建机器人"，在 walkable 已绑定后再 Enable/SetGoal（触发寻路）
                 foreach (int newId in newRobotIds)
                 {
                     RobotInstance r = _world.Robots[newId];
@@ -420,18 +430,18 @@ namespace GridDemo.Robots
         {
             lock (_robotLock)
             {
-                // 1) 重置后必须停在 Idle，等待 UI 点击“启动”
+                // 1) 重置后必须停在 Idle，等待 UI 点击"启动"
                 _isRunning = false;
                 ChangeProcessState_NoLock(EnumRobotProcessState.Idle);
 
                 // 2) 重置为单机器人
                 SetRobotCount(1, initialMaxSpeed, initialDirection);
 
-                // 3) 清理引擎侧“路径/抢占/释放/让步冷却/暂停”等残留
+                // 3) 清理引擎侧"路径/抢占/释放/让步冷却/暂停"等残留
                 _control.ClearAllPause();
                 _pathClaimManager.ClearRobotState(0);
 
-                // 4) 清理机器人侧“目标/路径/命令”，并硬停
+                // 4) 清理机器人侧"目标/路径/命令"，并硬停
                 var r0 = _world.Robots[0];
 
                 r0.Speed = 0.0;
@@ -442,10 +452,13 @@ namespace GridDemo.Robots
                 r0.AutoNavigator.SetClaimedPathPrefix(null);
                 r0.AutoNavigator.ClearGoal();
 
+                // 清理到达停顿计时器
+                r0.ResetArrivalPause();
+
                 // 5) 重绑 walkable，确保后续 StartAll Enable/RebuildPath 能用最新判定
                 _walkableBinder.RebindDynamicWalkable_NoLock();
 
-                // 6) 维持“自动已启用但无目标”的等待态
+                // 6) 维持"自动已启用但无目标"的等待态
                 if (!r0.AutoNavigator.IsEnabled)
                     r0.AutoNavigator.Enable();
             }
@@ -492,7 +505,7 @@ namespace GridDemo.Robots
             }
         }
 
-        /// <summary> 获取所有机器人的抢占格子快照（用于显示“格子锁”效果）。 </summary>
+        /// <summary> 获取所有机器人的抢占格子快照（用于显示"格子锁"效果）。 </summary>
         public Dictionary<int, List<GridPos>> GetClaimedCellsSnapshot()
         {
             lock (_robotLock)
@@ -624,6 +637,9 @@ namespace GridDemo.Robots
                 _pathClaimManager.ClaimBoard.ReleaseAllByRobot(r.Id);
                 _pathClaimManager.ClearRobotState(r.Id);
 
+                // 手动设置目标时清除到达停顿，立即出发
+                r.ResetArrivalPause();
+
                 r.AutoNavigator.SetGoal(goal, rebuildIfEnabled: true);
                 _control.ResumeRobot(r.Id);
 
@@ -649,7 +665,7 @@ namespace GridDemo.Robots
         /// 一帧 Tick 主要流程：
         /// 1) 冷却计数衰减（让步冷却 + 死锁关系淡出）；
         /// 2) 重绑动态 walkable（把其它机器人占用格/目标格当作动态障碍/保留格）；
-        /// 3) 执行路径格子锁抢占，并把“抢占前缀”写回 AutoNavigator；
+        /// 3) 执行路径格子锁抢占，并把"抢占前缀"写回 AutoNavigator；
         /// 4) 逐机器人：
         ///    - 若单机暂停：停车；
         ///    - 否则自动/手动生成指令并执行运动学更新；
@@ -703,23 +719,77 @@ namespace GridDemo.Robots
                             r.AutoNavigator.Enable();
                     }
 
-                    // 未选中机器人如果没路径，给随机目标以继续“巡航”
-                    if (!isSelected && r.AutoNavigator.IsEnabled)
+                    // 自动巡航：到达目标格中心后停顿 2 秒再分配新随机目标
+                    if (r.AutoNavigator.IsEnabled)
                     {
-                        List<(double X, double Y)> path = r.AutoNavigator.GetPathWorldPointsSnapshot();
-                        if (path == null || path.Count == 0)
+                        // 正在停顿倒计时中：递减计时器，保持停车
+                        if (r.ArrivalPauseRemainS >= 0.0)
                         {
-                            r.AutoNavigator.SetGoal(
-                                _world.PickRandomFreeCell_NoLock(used: null),
-                                rebuildIfEnabled: true);
-                            r.Manager.ResetAutoCommands();
+                            r.ArrivalPauseRemainS -= _dt;
+
+                            if (r.ArrivalPauseRemainS <= 0.0)
+                            {
+                                // 停顿结束：释放旧锁，分配新目标
+                                r.ResetArrivalPause();
+
+                                _pathClaimManager.ClaimBoard.ReleaseAllByRobot(r.Id);
+                                _pathClaimManager.ClearRobotState(r.Id);
+
+                                r.AutoNavigator.SetGoal(
+                                    _world.PickRandomFreeCell_NoLock(used: null),
+                                    rebuildIfEnabled: true);
+                                r.Manager.ResetAutoCommands();
+                            }
+                            else
+                            {
+                                // 仍在停顿中：保持停车，跳过后续运动
+                                r.Speed = 0.0;
+                                r.Manager.Acc = 0.0;
+                                r.Move.StopImmediately_NoLock();
+                                r.Move.Update();
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            // 非停顿状态：检测是否精确到达目标格中心
+                            GridPos? goal = r.AutoNavigator.GetGoalGridSnapshot();
+
+                            bool reachedGoal = false;
+
+                            if (goal.HasValue)
+                            {
+                                double goalCenterX = r.GridToCenterX(goal.Value.X);
+                                double goalCenterY = r.GridToCenterY(goal.Value.Y);
+
+                                bool arriveX = Math.Abs(r.X - goalCenterX) <= ArriveEpsilonM;
+                                bool arriveY = Math.Abs(r.Y - goalCenterY) <= ArriveEpsilonM;
+
+                                reachedGoal = arriveX && arriveY;
+                            }
+                            else
+                            {
+                                // 没有目标也视为需要分配新目标
+                                reachedGoal = true;
+                            }
+
+                            if (reachedGoal)
+                            {
+                                // 到达目标格中心：启动停顿倒计时，立即停车
+                                r.ArrivalPauseRemainS = ArrivalPauseDurationS;
+                                r.Speed = 0.0;
+                                r.Manager.Acc = 0.0;
+                                r.Move.StopImmediately_NoLock();
+                                r.Move.Update();
+                                continue;
+                            }
                         }
                     }
 
                     // RobotManager 统一生命周期入口
                     r.Manager.Tick(_world.Dt);
 
-                    // 自动模式：沿“抢占路径前缀”生成指令；生成失败则适当停车等待下一帧抢占
+                    // 自动模式：沿"抢占路径前缀"生成指令；生成失败则适当停车等待下一帧抢占
                     if (r.AutoNavigator.IsEnabled)
                     {
                         RobotCommand cmd = r.AutoNavigator.TryBuildNextCommandFromClaimedPath();

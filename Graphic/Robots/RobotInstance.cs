@@ -118,6 +118,21 @@ namespace GridDemo.Robots
         public RobotManual Manual { get; }
 
         /// <summary>
+        /// 到达终点后的停顿剩余时间（秒）。
+        /// 大于 0 表示正在停顿倒计时中；小于等于 0 表示无停顿状态。
+        /// -1 表示尚未进入停顿（初始/非到达状态）。
+        /// </summary>
+        public double ArrivalPauseRemainS { get; set; } = -1.0;
+
+        /// <summary>
+        /// 重置到达停顿计时器（用于引擎重置/手动设目标/删除机器人等场景）。
+        /// </summary>
+        public void ResetArrivalPause()
+        {
+            ArrivalPauseRemainS = -1.0;
+        }
+
+        /// <summary>
         /// 生成状态快照，将当前状态封装为不可变结构体。
         /// </summary>
         public RobotStateSnapshot GetSnapshot()
@@ -146,5 +161,15 @@ namespace GridDemo.Robots
 
             return new GridPos(gx, gy);
         }
+
+        /// <summary>
+        /// 计算目标格中心的世界坐标
+        /// </summary>
+        public double GridToCenterX(int gx) => gx * _cellSizeM + _cellSizeM / 2.0;
+
+        /// <summary>
+        /// 计算目标格中心的世界坐标
+        /// </summary>
+        public double GridToCenterY(int gy) => gy * _cellSizeM + _cellSizeM / 2.0;
     }
 }
