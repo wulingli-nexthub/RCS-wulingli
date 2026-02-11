@@ -85,20 +85,16 @@ namespace GridDemo.MultiRobots
                 me.AutoNavigator.SetIsWalkableProvider(p =>
                 {
                     if (obstacleMap.IsObstacle(p))
+                    {
                         return false;
+                    }
 
                     int key = p.Y * gridCount + p.X;
 
                     // 自己当前所在格必须允许，否则寻路起点会失败
                     if (key == myKey)
-                        return true;
-
-                    // 别人的终点格对自己封闭（但自己的终点格可行走）
-                    if (goalOwnersByKey.TryGetValue(key, out var owners) &&
-                        owners.Count > 0 &&
-                        !owners.Contains(myId))
                     {
-                        return false;
+                        return true;
                     }
 
                     // 禁止进入其它机器人当前占用格
