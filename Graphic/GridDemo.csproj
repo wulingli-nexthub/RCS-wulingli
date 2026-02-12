@@ -93,6 +93,7 @@
     <Compile Include="Form1.Designer.cs">
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
+    <Compile Include="Maps\MapFileService.cs" />
     <Compile Include="Maps\ObstacleMap.cs" />
     <Compile Include="MultiRobots\DynamicWalkableBinder.cs" />
     <Compile Include="MultiRobots\PathClaimManager.cs" />

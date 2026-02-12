@@ -1,5 +1,4 @@
-﻿using GridDemo.MultiRobots;
-using GridDemo.RobotModels.Pathfinding;
+﻿using GridDemo.RobotModels.Pathfinding;
 using GridDemo.Robots;
 using System;
 using System.Collections.Generic;

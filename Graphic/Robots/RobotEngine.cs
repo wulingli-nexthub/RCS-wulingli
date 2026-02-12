@@ -312,6 +312,56 @@ namespace GridDemo.Robots
             }
         }
 
+        /// <summary>
+        /// 保存当前障碍物地图到文件。
+        /// </summary>
+        /// <param name="filePath">目标文件路径。</param>
+        public void SaveMap(string filePath)
+        {
+            bool[,] snapshot = _world.ObstacleMap.GetSnapshot();
+            Maps.MapFileService.Save(filePath, _gridCount, _cellSizeM, snapshot);
+        }
+
+        /// <summary>
+        /// 从文件载入障碍物地图：
+        /// 1) 校验文件中 GridCount 与引擎一致；
+        /// 2) 清空当前障碍物；
+        /// 3) 按文件数据设置障碍物；
+        /// 4) 自动模式下触发所有机器人重建路径。
+        /// </summary>
+        /// <param name="filePath">地图文件路径。</param>
+        public void LoadMap(string filePath)
+        {
+            Maps.MapFileService.Load(filePath, out int fileGridCount, out double fileCellSizeM,
+                out System.Collections.Generic.List<GridPos> obstacles);
+
+            if (fileGridCount != _gridCount)
+                throw new System.ArgumentException(
+                    "地图文件 GridCount(" + fileGridCount + ") 与当前引擎 GridCount(" + _gridCount + ") 不一致，无法载入。");
+
+            lock (_robotLock)
+            {
+                // 清空现有障碍物
+                _world.ObstacleMap.Clear();
+
+                // 逐个设置障碍物（Clear 后全为 false，Toggle 一次变为 true）
+                for (int i = 0; i < obstacles.Count; i++)
+                {
+                    _world.ObstacleMap.Toggle(obstacles[i]);
+                }
+
+                // 非障碍编辑模式下，触发所有自动机器人重建路径
+                if (_processState != EnumRobotProcessState.ObstacleEditing)
+                {
+                    foreach (var r in _world.Robots)
+                    {
+                        if (r.AutoNavigator.IsEnabled)
+                            r.AutoNavigator.RebuildPath();
+                    }
+                }
+            }
+        }
+
         #endregion
 
         #region 机器人数量 / 初始化 / 重置

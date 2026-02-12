@@ -913,5 +913,83 @@ namespace GridDemo
             UpdateRobotStatesList();
             skControl.Invalidate();
         }
+
+        /// <summary>
+        /// "保存地图"按钮点击：
+        /// 仅在障碍物编辑模式关闭时可用，将当前障碍物信息保存为 JSON 文件。
+        /// 弹出保存文件对话框，由用户选择保存位置和文件名。
+        /// </summary>
+        private void btnSaveMap_Click(object sender, EventArgs e)
+        {
+            if (_engine == null) return;
+
+            // 仅在障碍物设置关闭后才允许保存
+            if (_isObstacleEditMode)
+            {
+                MessageBox.Show("请先关闭障碍物设置再保存地图。", "提示",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            using (var dlg = new SaveFileDialog())
+            {
+                dlg.Title = "保存地图文件";
+                dlg.Filter = "JSON 地图文件 (*.json)|*.json|所有文件 (*.*)|*.*";
+                dlg.DefaultExt = "json";
+                dlg.FileName = "map.json";
+
+                if (dlg.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                try
+                {
+                    _engine.SaveMap(dlg.FileName);
+                    Log("SaveMap: " + dlg.FileName);
+                    MessageBox.Show("地图已保存到：\n" + dlg.FileName, "保存成功",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    Log("SaveMap error: " + ex);
+                    MessageBox.Show("保存地图失败：\n" + ex.Message, "错误",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        /// <summary>
+        /// "载入地图"按钮点击：
+        /// 从 JSON 文件读取障碍物信息并应用到当前地图。
+        /// 载入会清空当前障碍物，然后按文件内容重新设置。
+        /// </summary>
+        private void btnLoadMap_Click(object sender, EventArgs e)
+        {
+            if (_engine == null) return;
+
+            using (var dlg = new OpenFileDialog())
+            {
+                dlg.Title = "载入地图文件";
+                dlg.Filter = "JSON 地图文件 (*.json)|*.json|所有文件 (*.*)|*.*";
+
+                if (dlg.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                try
+                {
+                    _engine.LoadMap(dlg.FileName);
+                    Log("LoadMap: " + dlg.FileName);
+                    skControl.Invalidate();
+                    MessageBox.Show("地图载入成功！", "载入成功",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    Log("LoadMap error: " + ex);
+                    MessageBox.Show("载入地图失败：\n" + ex.Message, "错误",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
     }
 }

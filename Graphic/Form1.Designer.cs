@@ -48,6 +48,8 @@
             this.skControl = new SkiaSharp.Views.Desktop.SKControl();
             this.panelRightTop = new System.Windows.Forms.Panel();
             this.panelObstacles = new System.Windows.Forms.Panel();
+            this.btnLoadMap = new System.Windows.Forms.Button();
+            this.btnSaveMap = new System.Windows.Forms.Button();
             this.labelObstacles = new System.Windows.Forms.Label();
             this.btnClearObstacle = new System.Windows.Forms.Button();
             this.btnObstacle = new System.Windows.Forms.Button();
@@ -331,18 +333,40 @@
             // panelObstacles
             // 
             this.panelObstacles.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.panelObstacles.Controls.Add(this.btnLoadMap);
+            this.panelObstacles.Controls.Add(this.btnSaveMap);
             this.panelObstacles.Controls.Add(this.labelObstacles);
             this.panelObstacles.Controls.Add(this.btnClearObstacle);
             this.panelObstacles.Controls.Add(this.btnObstacle);
-            this.panelObstacles.Location = new System.Drawing.Point(639, 10);
+            this.panelObstacles.Location = new System.Drawing.Point(478, 10);
             this.panelObstacles.Name = "panelObstacles";
-            this.panelObstacles.Size = new System.Drawing.Size(285, 54);
+            this.panelObstacles.Size = new System.Drawing.Size(446, 54);
             this.panelObstacles.TabIndex = 1;
+            // 
+            // btnLoadMap
+            // 
+            this.btnLoadMap.Location = new System.Drawing.Point(341, 10);
+            this.btnLoadMap.Name = "btnLoadMap";
+            this.btnLoadMap.Size = new System.Drawing.Size(91, 39);
+            this.btnLoadMap.TabIndex = 4;
+            this.btnLoadMap.Text = "载入地图";
+            this.btnLoadMap.UseVisualStyleBackColor = true;
+            this.btnLoadMap.Click += new System.EventHandler(this.btnLoadMap_Click);
+            // 
+            // btnSaveMap
+            // 
+            this.btnSaveMap.Location = new System.Drawing.Point(236, 10);
+            this.btnSaveMap.Name = "btnSaveMap";
+            this.btnSaveMap.Size = new System.Drawing.Size(99, 39);
+            this.btnSaveMap.TabIndex = 3;
+            this.btnSaveMap.Text = "保存地图";
+            this.btnSaveMap.UseVisualStyleBackColor = true;
+            this.btnSaveMap.Click += new System.EventHandler(this.btnSaveMap_Click);
             // 
             // labelObstacles
             // 
             this.labelObstacles.AutoSize = true;
-            this.labelObstacles.Location = new System.Drawing.Point(13, 20);
+            this.labelObstacles.Location = new System.Drawing.Point(3, 20);
             this.labelObstacles.Name = "labelObstacles";
             this.labelObstacles.Size = new System.Drawing.Size(98, 18);
             this.labelObstacles.TabIndex = 0;
@@ -350,9 +374,9 @@
             // 
             // btnClearObstacle
             // 
-            this.btnClearObstacle.Location = new System.Drawing.Point(211, 10);
+            this.btnClearObstacle.Location = new System.Drawing.Point(167, 10);
             this.btnClearObstacle.Name = "btnClearObstacle";
-            this.btnClearObstacle.Size = new System.Drawing.Size(61, 39);
+            this.btnClearObstacle.Size = new System.Drawing.Size(63, 39);
             this.btnClearObstacle.TabIndex = 2;
             this.btnClearObstacle.Text = "清空";
             this.btnClearObstacle.UseVisualStyleBackColor = true;
@@ -360,7 +384,7 @@
             // 
             // btnObstacle
             // 
-            this.btnObstacle.Location = new System.Drawing.Point(141, 10);
+            this.btnObstacle.Location = new System.Drawing.Point(107, 10);
             this.btnObstacle.Name = "btnObstacle";
             this.btnObstacle.Size = new System.Drawing.Size(54, 39);
             this.btnObstacle.TabIndex = 1;
@@ -385,7 +409,7 @@
             this.ClientSize = new System.Drawing.Size(1221, 774);
             this.Controls.Add(this.splitMain);
             this.Name = "Form1";
-            this.Text = " RCS Ver3.4.5 吴灵丽（三期 28号）";
+            this.Text = " RCS Ver3.4.6 吴灵丽（三期 28号）";
             this.splitMain.Panel1.ResumeLayout(false);
             this.splitMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.splitMain)).EndInit();
@@ -418,6 +442,8 @@
         private System.Windows.Forms.Label labelObstacles;
         private System.Windows.Forms.Button btnObstacle;
         private System.Windows.Forms.Button btnClearObstacle;
+        private System.Windows.Forms.Button btnSaveMap;
+        private System.Windows.Forms.Button btnLoadMap;
 
         private System.Windows.Forms.Panel panel1;
         private System.Windows.Forms.Label labelRobot;
