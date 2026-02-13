@@ -783,7 +783,7 @@ namespace GridDemo
             skControl.Invalidate();
         }
 
-        /// <summary>
+        /// <summary> 
         /// 定时刷新机器人状态列表，包括模式列（自动/手动）。
         /// 模式列显示"自动"或"手动"，用户可双击切换。
         /// 更新选中行时临时解绑 ItemSelectionChanged，避免"更新→事件→更新"的循环导致闪烁。
@@ -792,7 +792,7 @@ namespace GridDemo
         {
             if (_engine == null || lvRobotStates == null || lvRobotStates.IsDisposed)
                 return;
-
+             
             var states = _engine.GetRobotStatesSnapshot();
             int selectedId = _engine.SelectedRobotId;
 

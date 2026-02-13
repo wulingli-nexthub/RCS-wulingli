@@ -87,9 +87,6 @@
     <Compile Include="Events\DestinationPicker.cs" />
     <Compile Include="Events\MousePan.cs" />
     <Compile Include="Events\MouseWheel.cs" />
-    <Compile Include="Form1.Initialize.cs">
-      <DependentUpon>Form1.cs</DependentUpon>
-    </Compile>
     <Compile Include="Form1.cs">
       <SubType>Form</SubType>
     </Compile>
