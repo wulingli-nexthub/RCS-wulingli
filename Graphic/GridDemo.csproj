@@ -76,6 +76,9 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Draws\DoubleBufferedListView.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Include="Draws\Draw.ClaimedCells.cs" />
     <Compile Include="Draws\Draw.Grid.cs" />
     <Compile Include="Draws\Draw.Obstacles.cs" />

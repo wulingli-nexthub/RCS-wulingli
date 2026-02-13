@@ -26,7 +26,7 @@
         {
             this.splitMain = new System.Windows.Forms.SplitContainer();
             this.grpRobotStates = new System.Windows.Forms.GroupBox();
-            this.lvRobotStates = new System.Windows.Forms.ListView();
+            this.lvRobotStates = new GridDemo.Draws.DoubleBufferedListView();
             this.colId = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.colMode = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.colPos = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
@@ -458,7 +458,7 @@
         private System.Windows.Forms.Button btnStop;
 
         private System.Windows.Forms.GroupBox grpRobotStates;
-        private System.Windows.Forms.ListView lvRobotStates;
+        private GridDemo.Draws.DoubleBufferedListView lvRobotStates;
         private System.Windows.Forms.ColumnHeader colId;
         private System.Windows.Forms.ColumnHeader colMode;
         private System.Windows.Forms.ColumnHeader colPos;

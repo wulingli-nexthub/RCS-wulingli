@@ -786,6 +786,7 @@ namespace GridDemo
         /// <summary>
         /// 定时刷新机器人状态列表，包括模式列（自动/手动）。
         /// 模式列显示"自动"或"手动"，用户可双击切换。
+        /// 更新选中行时临时解绑 ItemSelectionChanged，避免"更新→事件→更新"的循环导致闪烁。
         /// </summary>
         private void UpdateRobotStatesList()
         {
@@ -794,6 +795,9 @@ namespace GridDemo
 
             var states = _engine.GetRobotStatesSnapshot();
             int selectedId = _engine.SelectedRobotId;
+
+            // 临时解绑选中事件，避免程序化更改选中行时触发回调
+            lvRobotStates.ItemSelectionChanged -= lvRobotStates_ItemSelectionChanged;
 
             lvRobotStates.BeginUpdate();
             try
@@ -855,6 +859,9 @@ namespace GridDemo
             finally
             {
                 lvRobotStates.EndUpdate();
+
+                // 恢复选中事件绑定
+                lvRobotStates.ItemSelectionChanged += lvRobotStates_ItemSelectionChanged;
             }
         }
 
