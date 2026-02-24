@@ -289,19 +289,6 @@ namespace GridDemo
                 return;
             }
 
-            // 小键盘 1..9 选中机器人（编号显示为 1..N）
-            if (e.KeyCode >= Keys.NumPad1 && e.KeyCode <= Keys.NumPad9)
-            {
-                int id = (int)e.KeyCode - (int)Keys.NumPad1;
-                if (_engine.SelectRobot(id))
-                {
-                    Log("SelectRobot: " + (id + 1));
-                    skControl.Invalidate();
-                }
-                e.Handled = true;
-                return;
-            }
-
             switch (e.KeyCode)
             {
                 case Keys.W:
