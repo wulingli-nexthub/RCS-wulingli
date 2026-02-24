@@ -31,8 +31,6 @@ namespace GridDemo.MultiRobots
         private readonly int _gridCount;
         private readonly double _cellSizeM;
         private readonly double _dt;
-        private readonly double _worldWidthM;
-        private readonly double _worldHeightM;
 
         public RobotWorld(
             object robotLock,
@@ -44,9 +42,6 @@ namespace GridDemo.MultiRobots
             _gridCount = gridCount;
             _cellSizeM = cellSizeM;
             _dt = dt;
-
-            _worldWidthM = gridCount * cellSizeM;
-            _worldHeightM = gridCount * cellSizeM;
 
             _obstacleMap = new ObstacleMap(gridCount, gridCount);
         }
@@ -63,8 +58,6 @@ namespace GridDemo.MultiRobots
         public int GridCount => _gridCount;
         public double CellSizeM => _cellSizeM;
         public double Dt => _dt;
-        public double WorldWidthM => _worldWidthM;
-        public double WorldHeightM => _worldHeightM;
 
         /// <summary>
         /// 当前选中机器人 Id（-1 表示未选中）。
@@ -104,13 +97,20 @@ namespace GridDemo.MultiRobots
         public RobotInstance GetSelectedRobot_NoLock()
         {
             if (_robots.Count == 0)
+            {
                 return null;
+            }
 
             if (_selectedRobotId < 0)
+            {
                 _selectedRobotId = 0;
+            }
+                
             if (_selectedRobotId >= _robots.Count)
+            {
                 _selectedRobotId = _robots.Count - 1;
-
+            }
+                
             return _robots[_selectedRobotId];
         }
 
@@ -128,11 +128,15 @@ namespace GridDemo.MultiRobots
                 int key = y * _gridCount + x;
 
                 if (used != null && used.Contains(key))
+                {
                     continue;
+                }
 
                 var p = new GridPos(x, y);
                 if (_obstacleMap.IsObstacle(p))
+                {
                     continue;
+                }
 
                 return p;
             }

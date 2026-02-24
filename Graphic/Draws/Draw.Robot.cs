@@ -62,7 +62,7 @@ namespace GridDemo.Draws
             double currentScale = _getScale(); // 读取当前缩放比例（用于决定显示尺寸）
             float radiusPx = (float)(currentScale / 6.0); // 将缩放换算为机器人圆点半径（像素）
 
-            // 1) 目标点：按机器人颜色画
+            // 1) 绘制目标点：半透明圆 + 描边 + 编号标签
             if (goals != null && goals.Count > 0)
             {
                 float goalRadiusPx = Math.Max(4.0f, radiusPx * 0.60f);
@@ -103,7 +103,7 @@ namespace GridDemo.Draws
                 }
             }
 
-            // 2) 机器人本体：按机器人颜色画
+            // 2) 绘制机器人本体：填充圆 + 描边（选中加粗）+ 方向箭头 + 编号标签
             for (int i = 0; i < robots.Count; i++)
             {
                 var r = robots[i];
@@ -115,6 +115,7 @@ namespace GridDemo.Draws
                 bool isSelected = r.Id == selectedId;
                 SKColor baseColor = RobotPalette.GetRobotColor(r.Id);
 
+                // 本体圆：选中时 alpha=255（不透明），未选中时 alpha=220（微透明）
                 using (var fill = new SKPaint
                 {
                     Color = isSelected
@@ -135,6 +136,7 @@ namespace GridDemo.Draws
                     canvas.DrawCircle(cx, cy, radiusPx, stroke);
                 }
 
+                // 方向箭头：从圆心略偏移处开始，沿朝向角延伸
                 float arrowTotalLen = radiusPx * 1.8f;
                 float arrowStartOffset = radiusPx * 0.3f;
                 float arrowLineWidth = Math.Max(1.0f, radiusPx * 0.12f);
@@ -159,6 +161,7 @@ namespace GridDemo.Draws
                     canvas.DrawLine(x1, y1, x2, y2, arrowPaint);
                 }
 
+                // 编号标签：显示在右上角
                 using (var textPaint = new SKPaint { Color = SKColors.Black, IsAntialias = true })
                 using (var font = new SKFont { Size = Math.Max(10.0f, radiusPx * 0.9f) })
                 {

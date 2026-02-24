@@ -121,7 +121,7 @@ namespace GridDemo
                 + ", World=(" + _worldWidthM.ToString("F2") + "m," + _worldHeightM.ToString("F2") + "m)");
 
             // 2. 初始化 WorldTransform 与 Draw 层
-            _scale = 50;          // 比如一个默认缩放，可以重用你原来的初始值
+            _scale = 50;
             _offsetX = 0;
             _offsetY = 0;
 
