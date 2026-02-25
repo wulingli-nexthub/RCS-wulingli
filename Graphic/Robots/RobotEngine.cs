@@ -335,8 +335,11 @@ namespace GridDemo.Robots
                 out System.Collections.Generic.List<GridPos> obstacles);
 
             if (fileGridCount != _gridCount)
+            {
                 throw new System.ArgumentException(
                     "地图文件 GridCount(" + fileGridCount + ") 与当前引擎 GridCount(" + _gridCount + ") 不一致，无法载入。");
+
+            }
 
             lock (_robotLock)
             {

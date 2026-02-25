@@ -48,7 +48,9 @@ namespace GridDemo.MultiRobots
                 lock (_world.RobotLock)
                 {
                     foreach (var r in _world.Robots)
+                    {
                         r.AutoNavigator.Algorithm = value;
+                    }
                 }
             }
         }
@@ -62,7 +64,9 @@ namespace GridDemo.MultiRobots
                 {
                     int id = _world.SelectedRobotId;
                     if (id < 0 || id >= _world.Robots.Count)
+                    {
                         return false;
+                    }
                     return _world.Robots[id].AutoNavigator.IsEnabled;
                 }
             }
@@ -81,8 +85,10 @@ namespace GridDemo.MultiRobots
             {
                 int id = _world.SelectedRobotId;
                 if (id < 0 || id >= _world.Robots.Count)
+                {
                     return;
-
+                }
+                    
                 RobotInstance r = _world.Robots[id];
                 r.Manual.Disable();
                 r.Manager.SetMode(EnumRobotControlMode.Auto);
@@ -108,13 +114,17 @@ namespace GridDemo.MultiRobots
             {
                 int id = _world.SelectedRobotId;
                 if (id < 0 || id >= _world.Robots.Count)
+                {
                     return;
+                }
 
                 RobotInstance r = _world.Robots[id];
 
                 if (r.AutoNavigator.IsEnabled)
+                {
                     r.AutoNavigator.Disable();
-
+                }
+                    
                 claimMgr.ClaimBoard.ReleaseAllByRobot(r.Id);
                 claimMgr.ClearRobotState(r.Id);
                 r.AutoNavigator.SetClaimedPathPrefix(null);
@@ -137,7 +147,9 @@ namespace GridDemo.MultiRobots
             lock (_world.RobotLock)
             {
                 if (robotId < 0 || robotId >= _world.Robots.Count)
+                {
                     return;
+                }
 
                 RobotInstance r = _world.Robots[robotId];
                 r.Manual.Disable();
@@ -158,12 +170,16 @@ namespace GridDemo.MultiRobots
             lock (_world.RobotLock)
             {
                 if (robotId < 0 || robotId >= _world.Robots.Count)
+                {
                     return;
+                }
 
                 RobotInstance r = _world.Robots[robotId];
 
                 if (r.AutoNavigator.IsEnabled)
+                {
                     r.AutoNavigator.Disable();
+                }
 
                 claimMgr.ClaimBoard.ReleaseAllByRobot(r.Id);
                 claimMgr.ClearRobotState(r.Id);
@@ -201,7 +217,9 @@ namespace GridDemo.MultiRobots
             lock (_world.RobotLock)
             {
                 foreach (var r in _world.Robots)
+                {
                     r.Manager.MaxSpeed = vmax;
+                }
             }
         }
 
@@ -212,11 +230,15 @@ namespace GridDemo.MultiRobots
             {
                 int id = _world.SelectedRobotId;
                 if (id < 0 || id >= _world.Robots.Count)
+                {
                     return;
+                }
 
                 var r = _world.Robots[id];
                 if (!r.Manual.IsEnabled)
+                {
                     return;
+                }
 
                 r.Manual.InputForwardKey(down);
                 _pausedRobotIds.Remove(r.Id);
@@ -230,11 +252,15 @@ namespace GridDemo.MultiRobots
             {
                 int id = _world.SelectedRobotId;
                 if (id < 0 || id >= _world.Robots.Count)
+                {
                     return;
+                }
 
                 var r = _world.Robots[id];
                 if (!r.Manual.IsEnabled)
+                {
                     return;
+                }
 
                 r.Manual.InputTurnLeftKey(down);
                 _pausedRobotIds.Remove(r.Id);
@@ -248,11 +274,15 @@ namespace GridDemo.MultiRobots
             {
                 int id = _world.SelectedRobotId;
                 if (id < 0 || id >= _world.Robots.Count)
+                {
                     return;
+                }
 
                 var r = _world.Robots[id];
                 if (!r.Manual.IsEnabled)
+                {
                     return;
+                }
 
                 r.Manual.InputTurnRightKey(down);
                 _pausedRobotIds.Remove(r.Id);

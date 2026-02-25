@@ -68,9 +68,13 @@ namespace GridDemo.MultiRobots
                     int id = keys[i];
                     int t = _yieldCooldownTicks[id] - 1;
                     if (t <= 0)
+                    {
                         _yieldCooldownTicks.Remove(id);
+                    }
                     else
+                    {
                         _yieldCooldownTicks[id] = t;
+                    }
                 }
             }
 
@@ -85,9 +89,13 @@ namespace GridDemo.MultiRobots
                     info.LostFrames++;
 
                     if (info.LostFrames >= DeadlockClearFrames)
+                    {
                         _deadlockByBlockedId.Remove(blockedId);
+                    }
                     else
+                    {
                         _deadlockByBlockedId[blockedId] = info;
+                    }
                 }
             }
         }
@@ -132,7 +140,10 @@ namespace GridDemo.MultiRobots
             items.Sort((a, b) =>
             {
                 int c = a.Dist.CompareTo(b.Dist);
-                if (c != 0) return c;
+                if (c != 0)
+                {
+                    return c;
+                }
                 return a.R.Id.CompareTo(b.R.Id);
             });
 
@@ -143,7 +154,9 @@ namespace GridDemo.MultiRobots
                 GridPos c = robots[i].GetGridPos_NoLock();
                 int key = c.Y * gridCount + c.X;
                 if (!occupiedByKey.ContainsKey(key))
+                {
                     occupiedByKey.Add(key, robots[i].Id);
+                }
             }
 
             // 关键：把所有机器人“当前占用格”设置为保留格，禁止他人 claim 起点格
@@ -198,24 +211,32 @@ namespace GridDemo.MultiRobots
 
                 // 4. 死锁/互卡检测
                 if (!r.AutoNavigator.IsEnabled)
+                {
                     continue;
-
+                }
+                    
                 int claimedCount = claimedPrefix?.Count ?? 0;
                 bool stuckAtStart = claimedCount <= 1;  // 只拿到当前格或更少，说明下一步就被堵
 
                 if (!stuckAtStart)
+                {
                     continue;
-
+                }
+                    
                 int nextIndex = startIndex + 1;
                 if (nextIndex < 0 || nextIndex >= path.Count)
+                {
                     continue;
-
+                }
+                   
                 GridPos nextCell = path[nextIndex];
                 int nextKey = nextCell.Y * gridCount + nextCell.X;
 
                 if (!occupiedByKey.TryGetValue(nextKey, out int blockerId) || blockerId == r.Id)
+                {
                     continue;
-
+                }
+                    
                 // blocked=r.Id, blocker=blockerId
                 DeadlockInfo info;
                 if (!_deadlockByBlockedId.TryGetValue(r.Id, out info) || info.BlockerId != blockerId)
@@ -236,8 +257,10 @@ namespace GridDemo.MultiRobots
                 _deadlockByBlockedId[r.Id] = info;
 
                 if (info.ConfirmFrames < DeadlockConfirmFrames)
+                {
                     continue;
-
+                }
+                    
                 // 达到确认阈值 -> 破局：
                 // 1) blocker 进入冷却期；
                 // 2) 释放 blocker 的全部 claim；
@@ -300,7 +323,9 @@ namespace GridDemo.MultiRobots
             foreach (var kv in _deadlockByBlockedId)
             {
                 if (kv.Key == robotId || kv.Value.BlockerId == robotId)
+                {
                     toRemove.Add(kv.Key);
+                }
             }
             foreach (var k in toRemove)
                 _deadlockByBlockedId.Remove(k);
@@ -309,16 +334,23 @@ namespace GridDemo.MultiRobots
         /// <summary> 内部工具：按 Id 查找机器人（已持有锁）。 </summary>
         private RobotInstance TryGetRobotById_NoLock(int robotId)
         {
-            if (robotId < 0) return null;
+            if (robotId < 0)
+            {
+                return null;
+            }
 
             var robots = _world.Robots;
             if (robotId < robots.Count && robots[robotId].Id == robotId)
+            {
                 return robots[robotId];
+            }
 
             for (int i = 0; i < robots.Count; i++)
             {
                 if (robots[i].Id == robotId)
+                {
                     return robots[i];
+                }
             }
             return null;
         }
