@@ -25,7 +25,7 @@ namespace GridDemo.MultiRobots
         private const int YieldCooldownFrames = 12;
 
         // 死锁确认阈值与清理时间
-        private const int DeadlockConfirmFrames = 100;
+        private const int DeadlockConfirmFrames = 150;
         private const int DeadlockClearFrames = 12;
 
         // robotId -> 冷却剩余帧数
