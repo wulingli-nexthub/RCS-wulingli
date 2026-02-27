@@ -52,6 +52,7 @@ namespace GridDemo.Robots
 
         // 控制模式与手动输入/单机暂停
         private readonly RobotControlManager _control;
+        private readonly ObstacleManager _obstacleManager;
 
         // 当前引擎状态
         private EnumRobotProcessState _processState = EnumRobotProcessState.Idle;
@@ -79,7 +80,7 @@ namespace GridDemo.Robots
         /// <summary>
         /// 构造引擎：
         /// - 初始化世界与仿真参数；
-        /// - 创建 RobotWorld / PathClaimManager / DynamicWalkableBinder / RobotControlManager；
+        /// - 创建 RobotWorld / PathClaimManager / DynamicWalkableBinder / RobotControlManager / ObstacleManager；
         /// - 至少创建 1 台机器人并加入世界；
         /// - 默认不运行（等待 UI 点击"启动"）。
         /// </summary>
@@ -97,6 +98,7 @@ namespace GridDemo.Robots
             _pathClaimManager = new PathClaimManager(_world);
             _walkableBinder = new DynamicWalkableBinder(_world);
             _control = new RobotControlManager(_world);
+            _obstacleManager = new ObstacleManager(_world, _walkableBinder);
 
             // 创建至少 1 台机器人
             SetRobotCount(1, initialMaxSpeed, initialDirection);
@@ -232,19 +234,7 @@ namespace GridDemo.Robots
         /// </summary>
         public void ToggleObstacle(GridPos p)
         {
-            _world.ObstacleMap.Toggle(p);
-
-            if (_processState == EnumRobotProcessState.ObstacleEditing)
-                return;
-
-            lock (_robotLock)
-            {
-                foreach (var r in _world.Robots)
-                {
-                    if (r.AutoNavigator.IsEnabled)
-                        r.AutoNavigator.RebuildPath();
-                }
-            }
+            _obstacleManager.ToggleObstacle(p);
         }
 
         /// <summary>
@@ -254,19 +244,7 @@ namespace GridDemo.Robots
         /// </summary>
         public void ClearObstacles()
         {
-            _world.ObstacleMap.Clear();
-
-            if (_processState == EnumRobotProcessState.ObstacleEditing)
-                return;
-
-            lock (_robotLock)
-            {
-                foreach (var r in _world.Robots)
-                {
-                    if (r.AutoNavigator.IsEnabled)
-                        r.AutoNavigator.RebuildPath();
-                }
-            }
+            _obstacleManager.ClearObstacles();
         }
 
         /// <summary>
@@ -281,32 +259,12 @@ namespace GridDemo.Robots
                 if (enabled)
                 {
                     ChangeProcessState_NoLock(EnumRobotProcessState.ObstacleEditing);
-
-                    foreach (var r in _world.Robots)
-                    {
-                        r.Speed = 0.0;
-                        r.Manager.Acc = 0.0;
-                        r.Move.StopImmediately_NoLock();
-
-                        if (r.AutoNavigator.IsEnabled)
-                            r.AutoNavigator.Disable();
-
-                        r.Manual.Disable();
-                        r.Manager.ResetAutoCommands();
-                    }
+                    _obstacleManager.EnterEditMode_NoLock();
                 }
                 else
                 {
                     ChangeProcessState_NoLock(EnumRobotProcessState.AutoNavigating);
-
-                    // 先重绑 walkable（包含静态障碍），再 Enable()
-                    _walkableBinder.RebindDynamicWalkable_NoLock();
-
-                    foreach (var r in _world.Robots)
-                    {
-                        r.AutoNavigator.Enable();
-                        r.Manager.ResetAutoCommands();
-                    }
+                    _obstacleManager.ExitEditMode_NoLock();
                 }
             }
         }
