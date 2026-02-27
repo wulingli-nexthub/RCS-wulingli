@@ -181,11 +181,23 @@ namespace GridDemo.Robots
             int gx = (int)Math.Floor(X / _cellSizeM);
             int gy = (int)Math.Floor(Y / _cellSizeM);
 
-            if (gx < 0) gx = 0;
-            if (gy < 0) gy = 0;
-            if (gx >= _gridCount) gx = _gridCount - 1;
-            if (gy >= _gridCount) gy = _gridCount - 1;
-
+            if (gx < 0)
+            {
+                gx = 0;
+            }
+            if (gy < 0)
+            {
+                gy = 0;
+            }
+            if (gx >= _gridCount)
+            {
+                gx = _gridCount - 1;
+            }
+            if (gy >= _gridCount)
+            {
+                gy = _gridCount - 1;
+            }
+                
             return new GridPos(gx, gy);
         }
 

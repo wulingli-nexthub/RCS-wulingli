@@ -107,17 +107,23 @@ namespace GridDemo.MultiRobots
                     int gy = (int)Math.Floor(wy / cellSizeM);
 
                     if (gx < 0 || gy < 0 || gx >= gridCount || gy >= gridCount)
+                    {
                         return false;
+                    }
 
                     var p = new GridPos(gx, gy);
                     if (obstacleMap.IsObstacle(p))
+                    {
                         return false;
+                    }
 
                     int key = p.Y * gridCount + p.X;
 
                     // 自己所在格始终可行走
                     if (key == myKey)
+                    {
                         return true;
+                    }
 
                     // 注意：Move 层不把“其它机器人目标格”当成障碍，只关心当前占用格
                     return !occupied.Contains(key);
