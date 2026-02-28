@@ -1,5 +1,5 @@
-﻿using GridDemo.RobotModels;
-using GridDemo.RobotModels.Pathfinding;
+﻿using GridDemo.Models;
+using GridDemo.Models.Pathfinding;
 using GridDemo.WorldView;
 using System;
 using System.Windows.Forms;

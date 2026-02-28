@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace Graphic.Properties
+namespace GridDemo.Properties
 {
 
 

@@ -1,10 +1,9 @@
-﻿using GridDemo.MultiRobots;
-using GridDemo.RobotModels.Pathfinding;
-using GridDemo.Robots;
+﻿using GridDemo.Models.Pathfinding;
 using System;
 using System.Collections.Generic;
+using GridDemo.Maps;
 
-namespace GridDemo.Managers
+namespace GridDemo.Models
 {
     /// <summary>
     /// 机器人生命周期管理器：

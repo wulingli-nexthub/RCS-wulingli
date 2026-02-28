@@ -1,11 +1,9 @@
-﻿using Graphic.Maps;
-using GridDemo.RobotModels;
-using GridDemo.RobotModels.Pathfinding;
-using GridDemo.RobotRuns;
+﻿using GridDemo.Maps;
+using GridDemo.Models.Pathfinding;
 using System;
 using System.Collections.Generic;
 
-namespace GridDemo.Robots
+namespace GridDemo.Models
 {
     /// <summary>
     /// 单个机器人运行实例（多机器人引擎内部使用）。

@@ -1,7 +1,7 @@
-﻿using GridDemo.Robots;
+﻿using GridDemo.Models;
 using System;
 
-namespace GridDemo.RobotRuns
+namespace GridDemo.Models
 {
     /// <summary>
     /// 机器人“平移/前进”执行器（运动学积分 + 边界/障碍碰撞）：

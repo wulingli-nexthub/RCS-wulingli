@@ -1,11 +1,9 @@
-﻿using GridDemo.Managers;
-using GridDemo.MultiRobots;
-using GridDemo.RobotModels.Pathfinding;
-using GridDemo.RobotRuns;
+﻿using GridDemo.Maps;
+using GridDemo.Models.Pathfinding;
 using System;
 using System.Collections.Generic;
 
-namespace GridDemo.Robots
+namespace GridDemo.Models
 {
     /// <summary>
     /// 机器人引擎当前运行/交互模式

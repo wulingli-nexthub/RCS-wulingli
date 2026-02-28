@@ -1,4 +1,4 @@
-﻿using GridDemo.RobotModels.Pathfinding;
+﻿using GridDemo.Models.Pathfinding;
 using GridDemo.WorldView;
 using SkiaSharp;
 using System;

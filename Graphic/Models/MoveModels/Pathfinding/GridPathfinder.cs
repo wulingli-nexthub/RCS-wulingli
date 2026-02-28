@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace GridDemo.RobotModels.Pathfinding
+namespace GridDemo.Models.Pathfinding
 {
     /// <summary>
     /// 算法枚举，迪杰斯特拉或A*

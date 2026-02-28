@@ -1,7 +1,7 @@
-﻿using GridDemo.Robots;
+﻿using GridDemo.Models;
 using System;
 
-namespace GridDemo.RobotRuns
+namespace GridDemo.Models
 {
     /// <summary>
     /// 机器人转向控制器：

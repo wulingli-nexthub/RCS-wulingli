@@ -1,10 +1,9 @@
-﻿using Graphic.Maps;
-using GridDemo.RobotModels.Pathfinding;
-using GridDemo.Robots;
+﻿using GridDemo.Models;
+using GridDemo.Models.Pathfinding;
 using System;
 using System.Collections.Generic;
 
-namespace GridDemo.MultiRobots
+namespace GridDemo.Maps
 {
     /// <summary> 
     /// RobotWorld：承载“世界级别”的基础数据与操作。

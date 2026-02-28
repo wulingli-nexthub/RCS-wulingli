@@ -1,9 +1,10 @@
-﻿using GridDemo.RobotModels.Pathfinding;
-using GridDemo.Robots;
+﻿using GridDemo.Models.Pathfinding;
+using GridDemo.Models;
 using System;
 using System.Collections.Generic;
+using GridDemo.Maps;
 
-namespace GridDemo.MultiRobots
+namespace GridDemo.Models
 {
     /// <summary>
     /// DynamicWalkableBinder：

@@ -1,8 +1,6 @@
-﻿using GridDemo.RobotRuns;
-using GridDemo.Robots;
-using System;
+﻿using System;
 
-namespace GridDemo.RobotModels
+namespace GridDemo.Models
 {
     /// <summary>
     /// 机器人手动控制器（键盘）：

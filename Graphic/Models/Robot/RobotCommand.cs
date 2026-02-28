@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace GridDemo.RobotRuns
+namespace GridDemo.Models
 {
     internal enum EnumRobotCommandType
     {

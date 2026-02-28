@@ -1,8 +1,9 @@
-﻿using GridDemo.Robots;
-using GridDemo.RobotModels.Pathfinding;
+﻿using GridDemo.Maps;
+using GridDemo.Models;
+using GridDemo.Models.Pathfinding;
 using System.Collections.Generic;
 
-namespace GridDemo.MultiRobots
+namespace GridDemo.Models
 {
     /// <summary>
     /// RobotControlManager：

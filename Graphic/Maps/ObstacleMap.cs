@@ -1,19 +1,19 @@
-﻿using GridDemo.RobotModels.Pathfinding;
+﻿using GridDemo.Models.Pathfinding;
 using System;
 
-namespace Graphic.Maps
+namespace GridDemo.Maps
 {
     /// <summary>
     /// 障碍物网格（线程安全）：
     /// - 使用 <see cref="bool[,]"/> 记录每个格子是否为障碍物（true=障碍，false=可通行）；
-    /// - 以网格坐标 <see cref="GridPos"/> 作为访问键（与寻路模块 <see cref="GridDemo.RobotModels.Pathfinding.GridPathfinder"/> 统一坐标系）；
+    /// - 以网格坐标 <see cref="GridPos"/> 作为访问键（与寻路模块 <see cref="GridDemo.Models.Pathfinding.GridPathfinder"/> 统一坐标系）；
     /// - 提供 Toggle 用于 UI 点击“设置/取消障碍物”；
     /// - 提供快照 GetSnapshot 用于绘制（避免绘制时与写入竞争）。
     ///
     /// 典型调用链（项目内）：
     /// - UI（<see cref="GridDemo.Form1"/>）鼠标点击调用 <see cref="Toggle"/>；
-    /// - 自动导航（<see cref="GridDemo.RobotModels.RobotAutoNavigator"/>）通过注入的 isWalkableProvider 间接调用 <see cref="IsObstacle"/>；
-    /// - 运动学碰撞（<see cref="GridDemo.RobotRuns.RobotMove"/>）的 isWorldWalkable 委托最终也会查询本地图。
+    /// - 自动导航（<see cref="GridDemo.Models.RobotAutoNavigator"/>）通过注入的 isWalkableProvider 间接调用 <see cref="IsObstacle"/>；
+    /// - 运动学碰撞（<see cref="GridDemo.Models.RobotMove"/>）的 isWorldWalkable 委托最终也会查询本地图。
     /// </summary>
     internal sealed class ObstacleMap
     {

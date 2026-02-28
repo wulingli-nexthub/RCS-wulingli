@@ -1,9 +1,10 @@
-﻿using Graphic.Maps;
-using GridDemo.RobotModels.Pathfinding;
+﻿using GridDemo.Maps;
+using GridDemo.Models;
+using GridDemo.Models.Pathfinding;
 using System;
 using System.Collections.Generic;
 
-namespace GridDemo.Robots
+namespace GridDemo.Models
 {
     /// <summary>
     /// 网格“格子锁/抢占板”（Claim Board）：用于多机器人在同一网格世界中做互斥占用。

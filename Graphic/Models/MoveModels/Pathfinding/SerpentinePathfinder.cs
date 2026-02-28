@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace GridDemo.RobotModels.Pathfinding
+namespace GridDemo.Models.Pathfinding
 {
     /// <summary>
     /// 蛇形路径生成器（整行到边界再下移一格再整行）：

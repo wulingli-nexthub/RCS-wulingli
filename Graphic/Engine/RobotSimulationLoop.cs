@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Threading;
 
-namespace GridDemo.Robots
+namespace GridDemo.Models
 {
     /// <summary>
     /// 机器人仿真循环（后台线程驱动）：

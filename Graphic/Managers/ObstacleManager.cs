@@ -1,9 +1,8 @@
 ﻿using GridDemo.Maps;
-using GridDemo.MultiRobots;
-using GridDemo.RobotModels.Pathfinding;
+using GridDemo.Models.Pathfinding;
 using System;
 
-namespace GridDemo.Robots
+namespace GridDemo.Models
 {
     /// <summary>
     /// 障碍物管理器：
