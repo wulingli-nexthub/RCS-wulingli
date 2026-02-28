@@ -1,4 +1,5 @@
-﻿using GridDemo.MultiRobots;
+﻿using GridDemo.Managers;
+using GridDemo.MultiRobots;
 using GridDemo.RobotModels.Pathfinding;
 using GridDemo.RobotRuns;
 using System;
@@ -41,18 +42,13 @@ namespace GridDemo.Robots
         // 全局互斥锁：保护所有跨线程共享状态（世界/机器人/路径/锁等）
         private readonly object _robotLock = new object();
 
-        // 世界基础数据（障碍图、机器人集合、网格参数等）
+        // 子管理器
         private readonly RobotWorld _world;
-
-        // 动态可通行性绑定（基于其它机器人位置/终点）
         private readonly DynamicWalkableBinder _walkableBinder;
-
-        // 路径格子锁抢占 + 死锁/让步管理
         private readonly PathClaimManager _pathClaimManager;
-
-        // 控制模式与手动输入/单机暂停
         private readonly RobotControlManager _control;
         private readonly ObstacleManager _obstacleManager;
+        private readonly RobotLifecycleManager _lifecycle;
 
         // 当前引擎状态
         private EnumRobotProcessState _processState = EnumRobotProcessState.Idle;
@@ -78,11 +74,7 @@ namespace GridDemo.Robots
         private const double ArriveEpsilonM = 0.05;
 
         /// <summary>
-        /// 构造引擎：
-        /// - 初始化世界与仿真参数；
-        /// - 创建 RobotWorld / PathClaimManager / DynamicWalkableBinder / RobotControlManager / ObstacleManager；
-        /// - 至少创建 1 台机器人并加入世界；
-        /// - 默认不运行（等待 UI 点击"启动"）。
+        /// 构造引擎：初始化各子管理器，创建至少 1 台机器人，默认不运行。
         /// </summary>
         public RobotEngine(int gridCount, double cellSizeM, double dt,
                            double initialMaxSpeed, EnumMoveDirection initialDirection)
@@ -90,7 +82,6 @@ namespace GridDemo.Robots
             _gridCount = gridCount;
             _cellSizeM = cellSizeM;
             _dt = dt;
-
             _worldWidthM = gridCount * cellSizeM;
             _worldHeightM = gridCount * cellSizeM;
 
@@ -99,9 +90,15 @@ namespace GridDemo.Robots
             _walkableBinder = new DynamicWalkableBinder(_world);
             _control = new RobotControlManager(_world);
             _obstacleManager = new ObstacleManager(_world, _walkableBinder);
+            _lifecycle = new RobotLifecycleManager(
+                _world, _pathClaimManager, _walkableBinder, _control,
+                gridCount, cellSizeM, dt, _worldWidthM, _worldHeightM);
 
             // 创建至少 1 台机器人
-            SetRobotCount(1, initialMaxSpeed, initialDirection);
+            lock (_robotLock)
+            {
+                _lifecycle.SetRobotCount_NoLock(1, initialMaxSpeed, initialDirection);
+            }
 
             _processState = EnumRobotProcessState.Idle;
             _isRunning = false;
@@ -326,151 +323,24 @@ namespace GridDemo.Robots
 
         #region 机器人数量 / 初始化 / 重置
 
-        /// <summary>
-        /// 设置机器人数量：
-        /// - 多 -> 少：删除尾部机器人（先清理其所有抢占/状态）；
-        /// - 少 -> 多：新增机器人，随机放到空闲格，并给随机目标；
-        /// - 最后重绑动态 walkable。
-        /// </summary>
+        /// <summary> 设置机器人数量。 </summary>
         public void SetRobotCount(int count, double initialMaxSpeed, EnumMoveDirection initialDirection)
         {
-            if (count < 1)
-                count = 1;
-
             lock (_robotLock)
             {
-                var robots = _world.Robots;
-
-                // 1) 删除多余机器人（从尾部删，保持前面不动）
-                while (robots.Count > count)
-                {
-                    int removeIndex = robots.Count - 1;
-                    int removeRobotId = robots[removeIndex].Id;
-
-                    // 清理该机器人所有抢占/冷却/历史状态
-                    _pathClaimManager.ClearRobotState(removeRobotId);
-
-                    // 清理导航器侧已声明的路径前缀
-                    robots[removeIndex].AutoNavigator.SetClaimedPathPrefix(null);
-
-                    robots.RemoveAt(removeIndex);
-                }
-
-                // 修正选中项，避免越界
-                if (_world.SelectedRobotId >= robots.Count)
-                    _world.SelectedRobotId = robots.Count > 0 ? robots.Count - 1 : -1;
-
-                // 2) 新增机器人（随机找空闲格）
-                var newRobotIds = new List<int>();
-
-                if (robots.Count < count)
-                {
-                    var used = _world.BuildUsedCellKeySet_NoLock();
-
-                    while (robots.Count < count)
-                    {
-                        int id = robots.Count;
-
-                        GridPos cell = _world.PickRandomFreeCell_NoLock(used);
-                        int key = cell.Y * _gridCount + cell.X;
-                        used.Add(key);
-
-                        double x = cell.X * _cellSizeM + _cellSizeM / 2.0;
-                        double y = cell.Y * _cellSizeM + _cellSizeM / 2.0;
-
-                        var r = new RobotInstance(
-                            id: id,
-                            robotLock: _robotLock,
-                            obstacleMap: _world.ObstacleMap,
-                            gridCount: _gridCount,
-                            cellSizeM: _cellSizeM,
-                            dt: _dt,
-                            worldWidthM: _worldWidthM,
-                            worldHeightM: _worldHeightM,
-                            initialMaxSpeed: initialMaxSpeed,
-                            initialDirection: initialDirection,
-                            initialX: x,
-                            initialY: y,
-                            getGoalOwnerMap: () => _world.BuildGoalOwnerMap_NoLock());
-
-                        // 继承当前全局加速度配置（从第一个机器人拷贝）
-                        if (robots.Count > 0)
-                            r.Acc = robots[0].Acc;
-
-                        robots.Add(r);
-                        newRobotIds.Add(r.Id);
-                    }
-                }
-
-                // 3) 重绑动态 walkable
-                _walkableBinder.RebindDynamicWalkable_NoLock();
-
-                // 4) 对"本次新建机器人"，在 walkable 已绑定后再 Enable/SetGoal（触发寻路）
-                foreach (int newId in newRobotIds)
-                {
-                    RobotInstance r = _world.Robots[newId];
-                    r.AutoNavigator.Enable();
-                    r.AutoNavigator.ClearGoal();
-                    r.Manager.ResetAutoCommands();
-                    r.AutoNavigator.SetGoal(
-                        _world.PickRandomFreeCell_NoLock(used: null),
-                        rebuildIfEnabled: true);
-                }
-
-                // 5) 确保所有机器人自动启用，未选中机器人也持续自动运行
-                foreach (var r in robots)
-                {
-                    if (!r.AutoNavigator.IsEnabled)
-                    {
-                        r.AutoNavigator.Enable();
-                        r.AutoNavigator.ClearGoal();
-                        r.Manager.ResetAutoCommands();
-                        r.AutoNavigator.SetGoal(
-                            _world.PickRandomFreeCell_NoLock(used: null),
-                            rebuildIfEnabled: true);
-                    }
-                }
+                _lifecycle.SetRobotCount_NoLock(count, initialMaxSpeed, initialDirection);
             }
         }
 
-        /// <summary>
-        /// 将引擎重置成单机器人（保留接口，当前为随机巡航逻辑）。
-        /// </summary>
+        /// <summary> 重置为单机器人随机巡航。 </summary>
         public void ResetToSingleRobotRandomRoam(double initialMaxSpeed, EnumMoveDirection initialDirection)
         {
             lock (_robotLock)
             {
-                // 1) 重置后必须停在 Idle，等待 UI 点击"启动"
                 _isRunning = false;
                 ChangeProcessState_NoLock(EnumRobotProcessState.Idle);
 
-                // 2) 重置为单机器人
-                SetRobotCount(1, initialMaxSpeed, initialDirection);
-
-                // 3) 清理引擎侧"路径/抢占/释放/让步冷却/暂停"等残留
-                _control.ClearAllPause();
-                _pathClaimManager.ClearRobotState(0);
-
-                // 4) 清理机器人侧"目标/路径/命令"，并硬停
-                var r0 = _world.Robots[0];
-
-                r0.Speed = 0.0;
-                r0.Manager.Acc = 0.0;
-                r0.Move.StopImmediately_NoLock();
-                r0.Manager.ResetAutoCommands();
-
-                r0.AutoNavigator.SetClaimedPathPrefix(null);
-                r0.AutoNavigator.ClearGoal();
-
-                // 清理到达停顿计时器
-                r0.ResetArrivalPause();
-
-                // 5) 重绑 walkable，确保后续 StartAll Enable/RebuildPath 能用最新判定
-                _walkableBinder.RebindDynamicWalkable_NoLock();
-
-                // 6) 维持"自动已启用但无目标"的等待态
-                if (!r0.AutoNavigator.IsEnabled)
-                    r0.AutoNavigator.Enable();
+                _lifecycle.ResetToSingleRobot_NoLock(initialMaxSpeed, initialDirection);
             }
         }
 
