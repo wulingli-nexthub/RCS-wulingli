@@ -76,48 +76,48 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Draws\DoubleBufferedListView.cs">
+    <Compile Include="UI\Draws\DoubleBufferedListView.cs">
       <SubType>Component</SubType>
     </Compile>
-    <Compile Include="Draws\Draw.ClaimedCells.cs" />
-    <Compile Include="Draws\Draw.Grid.cs" />
-    <Compile Include="Draws\Draw.Obstacles.cs" />
-    <Compile Include="Draws\Draw.Path.cs" />
-    <Compile Include="Draws\Draw.Robot.cs" />
-    <Compile Include="Events\DestinationPicker.cs" />
-    <Compile Include="Events\MousePan.cs" />
-    <Compile Include="Events\MouseWheel.cs" />
-    <Compile Include="Form1.cs">
+    <Compile Include="UI\Draws\Draw.ClaimedCells.cs" />
+    <Compile Include="UI\Draws\Draw.Grid.cs" />
+    <Compile Include="UI\Draws\Draw.Obstacles.cs" />
+    <Compile Include="UI\Draws\Draw.Path.cs" />
+    <Compile Include="UI\Draws\Draw.Robot.cs" />
+    <Compile Include="UI\Events\DestinationPicker.cs" />
+    <Compile Include="UI\Events\MousePan.cs" />
+    <Compile Include="UI\Events\MouseWheel.cs" />
+    <Compile Include="UI\Form1.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="Form1.Designer.cs">
+    <Compile Include="UI\Form1.Designer.cs">
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
     <Compile Include="Managers\RobotLifecycleManager.cs" />
     <Compile Include="Maps\MapFileService.cs" />
     <Compile Include="Maps\ObstacleMap.cs" />
-    <Compile Include="MultiRobots\DynamicWalkableBinder.cs" />
-    <Compile Include="MultiRobots\PathClaimManager.cs" />
-    <Compile Include="MultiRobots\RobotControlManager.cs" />
-    <Compile Include="MultiRobots\RobotWorld.cs" />
+    <Compile Include="Managers\DynamicWalkableBinder.cs" />
+    <Compile Include="Managers\PathClaimManager.cs" />
+    <Compile Include="Managers\RobotControlManager.cs" />
+    <Compile Include="Maps\RobotWorld.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Robots\GridCellClaimBoard.cs" />
-    <Compile Include="Robots\ObstacleManager.cs" />
-    <Compile Include="Robots\RobotEngine.cs" />
-    <Compile Include="RobotModels\Pathfinding\GridPathfinder.cs" />
-    <Compile Include="RobotModels\Pathfinding\SerpentinePathfinder.cs" />
-    <Compile Include="RobotModels\Robot.AutoNavigator.cs" />
-    <Compile Include="RobotModels\Robot.Manual.cs" />
-    <Compile Include="Robots\Robot.Manager.cs" />
-    <Compile Include="RobotRuns\Robot.Move.cs" />
-    <Compile Include="RobotRuns\Robot.Turn.cs" />
-    <Compile Include="RobotRuns\RobotCommand.cs" />
-    <Compile Include="Robots\RobotInstance.cs" />
-    <Compile Include="Robots\RobotSimulationLoop.cs" />
-    <Compile Include="WorldView\CenterGrid\CenterGrid.cs" />
-    <Compile Include="WorldView\WorldTransform.cs" />
-    <EmbeddedResource Include="Form1.resx">
+    <Compile Include="Managers\GridCellClaimBoard.cs" />
+    <Compile Include="Managers\ObstacleManager.cs" />
+    <Compile Include="Engine\RobotEngine.cs" />
+    <Compile Include="Models\MoveModels\Pathfinding\GridPathfinder.cs" />
+    <Compile Include="Models\MoveModels\Pathfinding\SerpentinePathfinder.cs" />
+    <Compile Include="Models\MoveModels\Robot.AutoNavigator.cs" />
+    <Compile Include="Models\MoveModels\Robot.Manual.cs" />
+    <Compile Include="Models\Robot\Robot.Manager.cs" />
+    <Compile Include="Models\Motion\Robot.Move.cs" />
+    <Compile Include="Models\Motion\Robot.Turn.cs" />
+    <Compile Include="Models\Robot\RobotCommand.cs" />
+    <Compile Include="Models\Robot\RobotInstance.cs" />
+    <Compile Include="Engine\RobotSimulationLoop.cs" />
+    <Compile Include="UI\WorldView\CenterGrid\CenterGrid.cs" />
+    <Compile Include="UI\WorldView\WorldTransform.cs" />
+    <EmbeddedResource Include="UI\Form1.resx">
       <DependentUpon>Form1.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
