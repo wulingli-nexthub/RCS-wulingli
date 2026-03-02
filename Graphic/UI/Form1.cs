@@ -374,6 +374,13 @@ namespace GridDemo
                     skControl.Invalidate();
                     return;
                 }
+                else
+                {
+                    // 点击空白区域，取消选中
+                    _engine.ClearSelectedRobot();
+                    Log("ClearSelectedRobot: click on empty area");
+                    skControl.Invalidate();
+                }
             }
 
             // 右键：仅在非蛇形时，给“选中机器人”选目的地
