@@ -26,6 +26,12 @@
         {
             this.splitMain = new System.Windows.Forms.SplitContainer();
             this.grpRobotStates = new System.Windows.Forms.GroupBox();
+            this.lvRobotStates = new GridDemo.Draws.DoubleBufferedListView();
+            this.colId = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colMode = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colPos = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colSpeed = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colAcc = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.panelLeftTop = new System.Windows.Forms.Panel();
             this.panel1 = new System.Windows.Forms.Panel();
             this.btnStop = new System.Windows.Forms.Button();
@@ -48,12 +54,6 @@
             this.btnClearObstacle = new System.Windows.Forms.Button();
             this.btnObstacle = new System.Windows.Forms.Button();
             this.btnReset = new System.Windows.Forms.Button();
-            this.lvRobotStates = new GridDemo.Draws.DoubleBufferedListView();
-            this.colId = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.colMode = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.colPos = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.colSpeed = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.colAcc = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             ((System.ComponentModel.ISupportInitialize)(this.splitMain)).BeginInit();
             this.splitMain.Panel1.SuspendLayout();
             this.splitMain.Panel2.SuspendLayout();
@@ -99,6 +99,51 @@
             this.grpRobotStates.TabIndex = 1;
             this.grpRobotStates.TabStop = false;
             this.grpRobotStates.Text = "机器人状态（双击切换模式）";
+            // 
+            // lvRobotStates
+            // 
+            this.lvRobotStates.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
+            this.colId,
+            this.colMode,
+            this.colPos,
+            this.colSpeed,
+            this.colAcc});
+            this.lvRobotStates.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.lvRobotStates.FullRowSelect = true;
+            this.lvRobotStates.GridLines = true;
+            this.lvRobotStates.HideSelection = false;
+            this.lvRobotStates.Location = new System.Drawing.Point(4, 25);
+            this.lvRobotStates.MultiSelect = false;
+            this.lvRobotStates.Name = "lvRobotStates";
+            this.lvRobotStates.Size = new System.Drawing.Size(272, 435);
+            this.lvRobotStates.TabIndex = 0;
+            this.lvRobotStates.UseCompatibleStateImageBehavior = false;
+            this.lvRobotStates.View = System.Windows.Forms.View.Details;
+            // 
+            // colId
+            // 
+            this.colId.Text = "Id";
+            this.colId.Width = 30;
+            // 
+            // colMode
+            // 
+            this.colMode.Text = "模式";
+            this.colMode.Width = 45;
+            // 
+            // colPos
+            // 
+            this.colPos.Text = "(X,Y)";
+            this.colPos.Width = 90;
+            // 
+            // colSpeed
+            // 
+            this.colSpeed.Text = "V";
+            this.colSpeed.Width = 45;
+            // 
+            // colAcc
+            // 
+            this.colAcc.Text = "A";
+            this.colAcc.Width = 45;
             // 
             // panelLeftTop
             // 
@@ -357,51 +402,6 @@
             this.btnReset.UseVisualStyleBackColor = true;
             this.btnReset.Click += new System.EventHandler(this.btnReset_Click);
             // 
-            // lvRobotStates
-            // 
-            this.lvRobotStates.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
-            this.colId,
-            this.colMode,
-            this.colPos,
-            this.colSpeed,
-            this.colAcc});
-            this.lvRobotStates.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.lvRobotStates.FullRowSelect = true;
-            this.lvRobotStates.GridLines = true;
-            this.lvRobotStates.HideSelection = false;
-            this.lvRobotStates.Location = new System.Drawing.Point(4, 25);
-            this.lvRobotStates.MultiSelect = false;
-            this.lvRobotStates.Name = "lvRobotStates";
-            this.lvRobotStates.Size = new System.Drawing.Size(272, 435);
-            this.lvRobotStates.TabIndex = 0;
-            this.lvRobotStates.UseCompatibleStateImageBehavior = false;
-            this.lvRobotStates.View = System.Windows.Forms.View.Details;
-            // 
-            // colId
-            // 
-            this.colId.Text = "Id";
-            this.colId.Width = 30;
-            // 
-            // colMode
-            // 
-            this.colMode.Text = "模式";
-            this.colMode.Width = 45;
-            // 
-            // colPos
-            // 
-            this.colPos.Text = "(X,Y)";
-            this.colPos.Width = 90;
-            // 
-            // colSpeed
-            // 
-            this.colSpeed.Text = "V";
-            this.colSpeed.Width = 45;
-            // 
-            // colAcc
-            // 
-            this.colAcc.Text = "A";
-            this.colAcc.Width = 45;
-            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 18F);
@@ -409,7 +409,7 @@
             this.ClientSize = new System.Drawing.Size(1221, 774);
             this.Controls.Add(this.splitMain);
             this.Name = "Form1";
-            this.Text = " RCS Ver3.5.3 吴灵丽（三期 28号）";
+            this.Text = " RCS Ver3.5.4 吴灵丽（三期 28号）";
             this.splitMain.Panel1.ResumeLayout(false);
             this.splitMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.splitMain)).EndInit();

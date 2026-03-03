@@ -366,7 +366,7 @@ namespace GridDemo
                 skControl.Invalidate();
                 return;
             }
-            // 左键：优先选中机器人
+            // 左键：优先选中机器人，未命中则取消选中
             if (e.Button == MouseButtons.Left)
             {
                 if (TrySelectRobotAtMouse(e.X, e.Y))
@@ -374,9 +374,16 @@ namespace GridDemo
                     skControl.Invalidate();
                     return;
                 }
+                else
+                {
+                    // 点击空白区域，取消选中
+                    _engine.ClearSelectedRobot();
+                    Log("ClearSelectedRobot: click on empty area");
+                    skControl.Invalidate();
+                }
             }
 
-            // 右键：仅在非蛇形时，给“选中机器人”选目的地
+            // 右键：仅在非蛇形时，给"选中机器人"选目的地
             if (e.Button == MouseButtons.Right && _currentAlgorithm != EnumPathfindingAlgorithm.Serpentine)
             {
                 var world = _worldTransform.ScreenToWorld(e.X, e.Y);
