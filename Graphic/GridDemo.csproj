@@ -76,6 +76,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Managers\DeadlockDiagnoser.cs" />
     <Compile Include="UI\Draws\DoubleBufferedListView.cs">
       <SubType>Component</SubType>
     </Compile>
