@@ -164,7 +164,9 @@ namespace GridDemo.Models
                 foreach (var r in _world.Robots)
                 {
                     if (!r.AutoNavigator.IsEnabled)
+                    {
                         r.AutoNavigator.Enable();
+                    }
                 }
             }
         }
@@ -210,7 +212,9 @@ namespace GridDemo.Models
             lock (_robotLock)
             {
                 if (id < 0 || id >= _world.Robots.Count)
+                {
                     return false;
+                }
 
                 _world.SelectedRobotId = id;
                 _control.ResumeRobot(id);
@@ -311,7 +315,9 @@ namespace GridDemo.Models
                     foreach (var r in _world.Robots)
                     {
                         if (r.AutoNavigator.IsEnabled)
+                        {
                             r.AutoNavigator.RebuildPath();
+                        }
                     }
                 }
             }
@@ -480,7 +486,9 @@ namespace GridDemo.Models
             lock (_robotLock)
             {
                 if (robotId < 0 || robotId >= _world.Robots.Count)
+                {
                     return false;
+                }
                 return _world.Robots[robotId].AutoNavigator.IsEnabled;
             }
         }
@@ -492,7 +500,9 @@ namespace GridDemo.Models
             {
                 int id = _world.SelectedRobotId;
                 if (id < 0 || id >= _world.Robots.Count)
+                {
                     return;
+                }
 
                 _world.Robots[id].AutoNavigator.RebuildPath();
             }
@@ -508,7 +518,9 @@ namespace GridDemo.Models
             {
                 int id = _world.SelectedRobotId;
                 if (id < 0 || id >= _world.Robots.Count)
+                {
                     return false;
+                }
 
                 RobotInstance r = _world.Robots[id];
 
@@ -552,7 +564,9 @@ namespace GridDemo.Models
         public void Tick()
         {
             if (!_isRunning)
+            {
                 return;
+            }
 
             // 不推进仿真的状态直接 return（避免编辑障碍时机器人乱动）
             switch (_processState)
@@ -594,7 +608,9 @@ namespace GridDemo.Models
                     {
                         r.Manual.Disable();
                         if (!r.AutoNavigator.IsEnabled)
+                        {
                             r.AutoNavigator.Enable();
+                        }
                     }
 
                     // 自动巡航：到达目标格中心后停顿 2 秒再分配新随机目标

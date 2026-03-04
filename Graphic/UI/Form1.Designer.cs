@@ -409,7 +409,7 @@
             this.ClientSize = new System.Drawing.Size(1221, 774);
             this.Controls.Add(this.splitMain);
             this.Name = "Form1";
-            this.Text = " RCS Ver3.5.4 吴灵丽（三期 28号）";
+            this.Text = " RCS Ver3.5.5 吴灵丽（三期 28号）";
             this.splitMain.Panel1.ResumeLayout(false);
             this.splitMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.splitMain)).EndInit();
