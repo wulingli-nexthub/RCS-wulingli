@@ -32,6 +32,16 @@ namespace GridDemo.Models
         // 边走边释放：记录上一帧所在格
         private readonly Dictionary<int, GridPos> _lastGridCellByRobotId = new Dictionary<int, GridPos>();
 
+        // ── 后退让路状态 ──
+        private readonly Dictionary<int, RetreatState> _retreatByRobotId = new Dictionary<int, RetreatState>();
+
+        private struct RetreatState
+        {
+            public int KeeperId;   // 需要让路给谁
+            public int RetreatDx;  // 后退方向 X 分量 (-1/0/1)
+            public int RetreatDy;  // 后退方向 Y 分量 (-1/0/1)
+        }
+
         public PathClaimManager(RobotWorld world)
         {
             _world = world;
@@ -40,6 +50,12 @@ namespace GridDemo.Models
 
         /// <summary> 对外暴露格子锁抢占板（供 UI 显示快照等）。 </summary>
         public GridCellClaimBoard ClaimBoard => _claimBoard;
+
+        /// <summary> 查询某机器人是否正在后退让路中。 </summary>
+        public bool IsRetreating(int robotId)
+        {
+            return _retreatByRobotId.ContainsKey(robotId);
+        }
 
         /// <summary>
         /// 每帧调用：推进让步冷却计数。
@@ -141,6 +157,13 @@ namespace GridDemo.Models
             {
                 RobotInstance r = items[i].R;
 
+                // ── 正在后退让路的机器人 ──
+                if (_retreatByRobotId.TryGetValue(r.Id, out RetreatState retreatState))
+                {
+                    HandleRetreatingRobot(r, retreatState, gridCount, occupiedByKey);
+                    continue;
+                }
+
                 // 3.1 让步冷却期间：该机器人不再扩张 claim（只保留当前位置）
                 if (_yieldCooldownTicks.TryGetValue(r.Id, out int cooldown) && cooldown > 0)
                 {
@@ -223,6 +246,12 @@ namespace GridDemo.Models
                     continue;
                 }
 
+                // 堵路方已在后退让路中 → 无需重复处理
+                if (_retreatByRobotId.ContainsKey(blockerId))
+                {
+                    continue;
+                }
+
                 RobotInstance blocker = TryGetRobotById_NoLock(blockerId);
                 if (blocker == null)
                 {
@@ -249,26 +278,14 @@ namespace GridDemo.Models
 
                 int blockedOrder = i; // 被堵方在 items 中的索引
 
-                // 检查是否互堵（堵路方的下一步也是被堵方当前格）
-                bool isMutualBlock = IsMutuallyBlocked(blocker, curCell2);
-
                 bool blockedHasHigherPriority = blockedOrder < blockerOrder;
 
-                if (blockedHasHigherPriority || isMutualBlock)
+                if (blockedHasHigherPriority)
                 {
-                    // 堵路方让步：进入冷却 + 释放全部锁 + 重建路径绕路
-                    _yieldCooldownTicks[blockerId] = YieldCooldownFrames;
-                    _claimBoard.ReleaseAllByRobot(blockerId);
+                    // 堵路方让步
+                    HandleYieldOrRetreat(blocker, r, gridCount);
 
-                    if (blocker.AutoNavigator.IsEnabled)
-                    {
-                        blocker.AutoNavigator.RebuildPath();
-                    }
-
-                    // 立刻为堵路方重新抢占当前格，保证其能移向格心停稳
-                    ReclaimCurrentCell(blocker);
-
-                    // 被堵方也重建路径以适应新布局，并重新抢占
+                    // 被堵方重新 claim
                     _claimBoard.ReleaseAllByRobot(r.Id);
                     r.AutoNavigator.RebuildPath();
 
@@ -279,7 +296,10 @@ namespace GridDemo.Models
                         int newStart = 0;
                         for (int j = 0; j < newPath.Count; j++)
                         {
-                            if (newPath[j].Equals(rCell)) { newStart = j; break; }
+                            if (newPath[j].Equals(rCell)) 
+                            { 
+                                newStart = j; break; 
+                            }
                         }
                         List<GridPos> rClaimed = _claimBoard.ClaimPathToGoalOrPrefix(r.Id, newPath, newStart);
                         r.AutoNavigator.SetClaimedPathPrefix(rClaimed);
@@ -291,13 +311,8 @@ namespace GridDemo.Models
                 }
                 else
                 {
-                    // 被堵方优先级更低 → 被堵方自己让步
-                    _yieldCooldownTicks[r.Id] = YieldCooldownFrames;
-                    _claimBoard.ReleaseAllByRobot(r.Id);
-                    r.AutoNavigator.RebuildPath();
-
-                    // 立刻为被堵方重新抢占当前格，保证其能移向格心停稳
-                    ReclaimCurrentCell(r);
+                    // 被堵方优先级更低 → 被堵方让步
+                    HandleYieldOrRetreat(r, blocker, gridCount);
                 }
             }
         }
@@ -404,6 +419,203 @@ namespace GridDemo.Models
             return blockerNextCell.Equals(blockedCurrentCell);
         }
 
+        // ══════════════════════════════════════════════════════════
+        //  让步 / 后退让路
+        // ══════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 让步入口：先尝试绕路（以 keeper 格为额外障碍做 A*），
+        /// 找到替代路径则用替代路径 + 冷却；找不到则触发后退让路。
+        /// </summary>
+        private void HandleYieldOrRetreat(RobotInstance yielder, RobotInstance keeper, int gridCount)
+        {
+            _claimBoard.ReleaseAllByRobot(yielder.Id);
+
+            GridPos keeperCell = keeper.GetGridPos_NoLock();
+            List<GridPos> altPath = FindAlternatePath(yielder, keeperCell, gridCount);
+
+            if (altPath != null && altPath.Count > 0)
+            {
+                yielder.AutoNavigator.OverridePath(altPath);
+                _yieldCooldownTicks[yielder.Id] = YieldCooldownFrames;
+                ReclaimCurrentCell(yielder);
+            }
+            else
+            {
+                TriggerRetreat(yielder, keeper, gridCount);
+            }
+        }
+
+        private List<GridPos> FindAlternatePath(RobotInstance yielder, GridPos blockerCell, int gridCount)
+        {
+            GridPos start = yielder.GetGridPos_NoLock();
+            GridPos? goal = yielder.AutoNavigator.GetGoalGridSnapshot();
+            if (!goal.HasValue)
+            {
+                return null;
+            }
+
+            var obstacleMap = _world.ObstacleMap;
+            List<GridPos> path = GridPathfinder.FindPath(
+                width: gridCount,
+                height: gridCount,
+                start: start,
+                goal: goal.Value,
+                isWalkable: p => !obstacleMap.IsObstacle(p) && !p.Equals(blockerCell),
+                algorithm: EnumPathfindingAlgorithm.AStar);
+
+            return (path != null && path.Count > 0) ? path : null;
+        }
+
+        private void TriggerRetreat(RobotInstance yielder, RobotInstance keeper, int gridCount)
+        {
+            GridPos yPos = yielder.GetGridPos_NoLock();
+            GridPos kPos = keeper.GetGridPos_NoLock();
+
+            int rdx = yPos.X - kPos.X;
+            int rdy = yPos.Y - kPos.Y;
+            if (Math.Abs(rdx) >= Math.Abs(rdy))
+            { 
+                rdx = rdx >= 0 ? 1 : -1; rdy = 0; 
+            }
+            else
+            { 
+                rdx = 0; rdy = rdy >= 0 ? 1 : -1; 
+            }
+
+            List<GridPos> retreatPath = BuildRetreatPath(yPos, rdx, rdy, gridCount);
+
+            if (retreatPath.Count <= 1)
+            {
+                _yieldCooldownTicks[yielder.Id] = YieldCooldownFrames;
+                ReclaimCurrentCell(yielder);
+                return;
+            }
+
+            _retreatByRobotId[yielder.Id] = new RetreatState
+            {
+                KeeperId = keeper.Id,
+                RetreatDx = rdx,
+                RetreatDy = rdy
+            };
+
+            yielder.AutoNavigator.OverridePath(retreatPath);
+            List<GridPos> claimed = _claimBoard.ClaimPathToGoalOrPrefix(yielder.Id, retreatPath, 0);
+            yielder.AutoNavigator.SetClaimedPathPrefix(claimed);
+        }
+
+        private List<GridPos> BuildRetreatPath(GridPos origin, int retreatDx, int retreatDy, int gridCount)
+        {
+            var obstacleMap = _world.ObstacleMap;
+            var path = new List<GridPos> { origin };
+
+            for (int step = 1; step <= gridCount; step++)
+            {
+                GridPos next = new GridPos(origin.X + retreatDx * step, origin.Y + retreatDy * step);
+                if (next.X < 0 || next.Y < 0 || next.X >= gridCount || next.Y >= gridCount)
+                {
+                    break;
+                }
+                 
+                if (obstacleMap.IsObstacle(next))
+                {
+                    break;
+                }
+
+                path.Add(next);
+
+                // 检查侧向出口
+                GridPos? side = FindSideExit(next, retreatDx, retreatDy, gridCount, obstacleMap);
+                if (side.HasValue)
+                {
+                    path.Add(side.Value);
+                    break;
+                }
+            }
+            return path;
+        }
+
+        private static GridPos? FindSideExit(GridPos cell, int retreatDx, int retreatDy,
+            int gridCount, ObstacleMap obstacleMap)
+        {
+            int s1x, s1y, s2x, s2y;
+            if (retreatDx != 0)
+            { 
+                s1x = cell.X; s1y = cell.Y - 1; s2x = cell.X; s2y = cell.Y + 1; 
+            }
+            else
+            { 
+                s1x = cell.X - 1; s1y = cell.Y; s2x = cell.X + 1; s2y = cell.Y; 
+            }
+
+            if (s1x >= 0 && s1y >= 0 && s1x < gridCount && s1y < gridCount
+                && !obstacleMap.IsObstacle(new GridPos(s1x, s1y)))
+            {
+                return new GridPos(s1x, s1y);
+            }
+
+            if (s2x >= 0 && s2y >= 0 && s2x < gridCount && s2y < gridCount
+                && !obstacleMap.IsObstacle(new GridPos(s2x, s2y)))
+            {
+                return new GridPos(s2x, s2y);
+            }
+
+            return null;
+        }
+
+        private void HandleRetreatingRobot(RobotInstance r, RetreatState state,
+            int gridCount, Dictionary<int, int> occupiedByKey)
+        {
+            RobotInstance keeper = TryGetRobotById_NoLock(state.KeeperId);
+            if (keeper == null) 
+            { 
+                EndRetreat(r); return; 
+            }
+
+            GridPos rPos = r.GetGridPos_NoLock();
+            GridPos kPos = keeper.GetGridPos_NoLock();
+
+            int forwardDx = -state.RetreatDx;
+            int forwardDy = -state.RetreatDy;
+            int dot = (kPos.X - rPos.X) * forwardDx + (kPos.Y - rPos.Y) * forwardDy;
+
+            if (dot <= 0 && IsAtCellCenter(r))
+            {
+                EndRetreat(r);
+                return;
+            }
+
+            _claimBoard.ReleaseAllByRobot(r.Id);
+            List<GridPos> retreatPath = r.AutoNavigator.GetPathGridSnapshot();
+            if (retreatPath == null || retreatPath.Count == 0)
+            {
+                ReclaimCurrentCell(r);
+                return;
+            }
+
+            int startIdx = 0;
+            for (int j = 0; j < retreatPath.Count; j++)
+            {
+                if (retreatPath[j].Equals(rPos)) 
+                { 
+                    startIdx = j;
+                    break; 
+                }
+            }
+                
+
+            List<GridPos> claimed = _claimBoard.ClaimPathToGoalOrPrefix(r.Id, retreatPath, startIdx);
+            r.AutoNavigator.SetClaimedPathPrefix(claimed);
+        }
+
+        private void EndRetreat(RobotInstance r)
+        {
+            _retreatByRobotId.Remove(r.Id);
+            _claimBoard.ReleaseAllByRobot(r.Id);
+            r.AutoNavigator.RebuildPath();
+            ReclaimCurrentCell(r);
+        }
+
         /// <summary>
         /// 边走边释放：当机器人检测到"网格位置发生变化"，就释放其上一个格子的锁。
         /// 要求：调用方已持有 RobotLock，且在 Move.Update() 之后调用。
@@ -461,6 +673,7 @@ namespace GridDemo.Models
             _claimBoard.ReleaseAllByRobot(robotId);
             _lastGridCellByRobotId.Remove(robotId);
             _yieldCooldownTicks.Remove(robotId);
+            _retreatByRobotId.Remove(robotId);
         }
 
         /// <summary> 内部工具：按 Id 查找机器人（已持有锁）。 </summary>

@@ -588,6 +588,43 @@ namespace GridDemo.Models
             }
         }
 
+        /// <summary>
+        /// 外部直接覆写内部路径（用于后退让路等非标准路径）。
+        /// 覆写后清空已有的 claimedPathPrefix，并智能设置 _pathIndex。
+        /// </summary>
+        public void OverridePath(List<GridPos> path)
+        {
+            lock (_robotLock)
+            {
+                _path.Clear();
+                _claimedPathPrefix.Clear();
+
+                if (path == null || path.Count == 0)
+                {
+                    _pathIndex = 0;
+                    return;
+                }
+
+                _path.AddRange(path);
+                _pathIndex = 0;
+
+                double rx = _getRobotX();
+                double ry = _getRobotY();
+
+                if (_path.Count > 0)
+                {
+                    GridPos first = _path[0];
+                    double cx = GridToCenterWorldX(first.X);
+                    double cy = GridToCenterWorldY(first.Y);
+
+                    if (Math.Abs(rx - cx) <= ArriveEpsilonM && Math.Abs(ry - cy) <= ArriveEpsilonM)
+                    {
+                        _pathIndex = Math.Min(1, _path.Count);
+                    }
+                }
+            }
+        }
+
         public List<GridPos> GetPathGridSnapshot()
         {
             lock (_robotLock)

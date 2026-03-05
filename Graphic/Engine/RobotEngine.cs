@@ -667,7 +667,7 @@ namespace GridDemo.Models
                                 reachedGoal = true;
                             }
 
-                            if (reachedGoal)
+                            if (reachedGoal && !_pathClaimManager.IsRetreating(r.Id))
                             {
                                 // 到达目标格中心：启动停顿倒计时，立即停车
                                 r.ArrivalPauseRemainS = ArrivalPauseDurationS;
