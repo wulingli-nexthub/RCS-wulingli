@@ -84,21 +84,7 @@ namespace GridDemo.Models
                 // A* 寻路用的 GridPos 判定
                 me.AutoNavigator.SetIsWalkableProvider(p =>
                 {
-                    if (obstacleMap.IsObstacle(p))
-                    {
-                        return false;
-                    }
-
-                    int key = p.Y * gridCount + p.X;
-
-                    // 自己当前所在格必须允许，否则寻路起点会失败
-                    if (key == myKey)
-                    {
-                        return true;
-                    }
-
-                    // 禁止进入其它机器人当前占用格
-                    return !occupied.Contains(key);
+                    return !obstacleMap.IsObstacle(p);
                 });
 
                 // 运动学 / 碰撞层使用的世界坐标判定
