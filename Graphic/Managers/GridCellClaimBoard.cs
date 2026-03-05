@@ -1,5 +1,4 @@
 ﻿using GridDemo.Maps;
-using GridDemo.Models;
 using GridDemo.Models.Pathfinding;
 using System;
 using System.Collections.Generic;
