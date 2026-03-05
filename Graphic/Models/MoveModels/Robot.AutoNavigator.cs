@@ -216,10 +216,6 @@ namespace GridDemo.Models
             }
         }
 
-        /// <summary>
-        /// 引擎层“格子锁”抢占后，将“我拥有的路径前缀”回灌到导航器。
-        /// 注意：这里不负责抢占逻辑，只存储结果，用于后续出指令。
-        /// </summary>
         public void SetClaimedPathPrefix(List<GridPos> claimedPrefix)
         {
             lock (_robotLock)
@@ -232,6 +228,31 @@ namespace GridDemo.Models
                 }
 
                 _claimedPathPrefix.AddRange(claimedPrefix);
+
+                // 当 _pathIndex 超出新前缀长度时，重新定位到第一个尚未到达的格子
+                // 避免前缀缩短后 _pathIndex 越界导致无法生成移向格心的指令
+                if (_pathIndex >= _claimedPathPrefix.Count)
+                {
+                    _pathIndex = 0;
+                    double x = _getRobotX();
+                    double y = _getRobotY();
+
+                    for (int i = 0; i < _claimedPathPrefix.Count; i++)
+                    {
+                        GridPos p = _claimedPathPrefix[i];
+                        double tx = GridToCenterWorldX(p.X);
+                        double ty = GridToCenterWorldY(p.Y);
+
+                        if (Math.Abs(x - tx) <= ArriveEpsilonM && Math.Abs(y - ty) <= ArriveEpsilonM)
+                        {
+                            _pathIndex = i + 1;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
             }
         }
 
@@ -442,7 +463,16 @@ namespace GridDemo.Models
             _pathIndex = 0;
             if (_path.Count > 0 && _path[0].Equals(start))
             {
-                _pathIndex = Math.Min(1, _path.Count);
+                double cx = GridToCenterWorldX(start.X);
+                double cy = GridToCenterWorldY(start.Y);
+                double rx = _getRobotX();
+                double ry = _getRobotY();
+
+                // 仅当机器人确实在起点格心时才跳过，否则保持 _pathIndex=0 使其先移向格心
+                if (Math.Abs(rx - cx) <= ArriveEpsilonM && Math.Abs(ry - cy) <= ArriveEpsilonM)
+                {
+                    _pathIndex = Math.Min(1, _path.Count);
+                }
             }
         }
 
